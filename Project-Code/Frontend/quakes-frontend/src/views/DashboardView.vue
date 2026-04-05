@@ -2,6 +2,7 @@
 import { onMounted, ref, computed } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { apiUrl } from '../config/api'
 
 // --- 类型定义 ---
 type Quake = {
@@ -13,8 +14,6 @@ type Quake = {
   lon: number
   lat: number
 }
-
-const API_BASE = 'http://43.162.117.155:8001'
 
 // --- 关键修改：双图层叠加策略 (Esri灰底 + 高德中文注记) ---
 
@@ -100,7 +99,7 @@ function render() {
 
 async function loadInitial() {
   try {
-    const res = await fetch(`${API_BASE}/api/events?hours=24&minMag=3.0&limit=20000`)
+    const res = await fetch(apiUrl('/events?hours=24&minMag=3.0&limit=20000'))
     events.value = await res.json()
     render()
   } catch (e) {
@@ -111,7 +110,7 @@ async function loadInitial() {
 }
 
 function connectSSE() {
-  const es = new EventSource(`${API_BASE}/api/stream`)
+  const es = new EventSource(apiUrl('/stream'))
   es.addEventListener('new_events', (evt: MessageEvent) => {
     const msg = JSON.parse(evt.data)
     events.value.push(...msg.data)

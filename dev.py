@@ -18,10 +18,10 @@ FRONTEND_DIR = ROOT / "Project-Code" / "Frontend" / "quakes-frontend"
 BACKEND_REQUIREMENTS = BACKEND_DIR / "requirements.txt"
 VENV_DIR = BACKEND_DIR / ".venv"
 DEFAULT_DB_URL = "postgresql+psycopg://127.0.0.1:5432/quakes"
-BACKEND_HOST = "127.0.0.1"
-BACKEND_PORT = 8001
-FRONTEND_HOST = "127.0.0.1"
-FRONTEND_PORT = 5173
+DEFAULT_BACKEND_HOST = "127.0.0.1"
+DEFAULT_BACKEND_PORT = 8001
+DEFAULT_FRONTEND_HOST = "127.0.0.1"
+DEFAULT_FRONTEND_PORT = 5173
 
 
 def info(message: str) -> None:
@@ -31,6 +31,40 @@ def info(message: str) -> None:
 def fail(message: str, code: int = 1) -> None:
     print(f"[dev][error] {message}", file=sys.stderr)
     raise SystemExit(code)
+
+
+def parse_port_env(name: str, default: int) -> int:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        port = int(value)
+    except ValueError:
+        fail(f"环境变量 {name} 必须是整数端口号。")
+    if not (1 <= port <= 65535):
+        fail(f"环境变量 {name} 端口超出范围（1-65535）。")
+    return port
+
+
+def resolve_dev_network() -> tuple[str, int, str, int]:
+    backend_host = (os.environ.get("BACKEND_HOST") or DEFAULT_BACKEND_HOST).strip()
+    frontend_host = (os.environ.get("FRONTEND_HOST") or DEFAULT_FRONTEND_HOST).strip()
+    if not backend_host:
+        backend_host = DEFAULT_BACKEND_HOST
+    if not frontend_host:
+        frontend_host = DEFAULT_FRONTEND_HOST
+    backend_port = parse_port_env("BACKEND_PORT", DEFAULT_BACKEND_PORT)
+    frontend_port = parse_port_env("FRONTEND_PORT", DEFAULT_FRONTEND_PORT)
+    return backend_host, backend_port, frontend_host, frontend_port
+
+
+def default_cors_origins(frontend_host: str, frontend_port: int) -> str:
+    candidates = {
+        f"http://{frontend_host}:{frontend_port}",
+        f"http://127.0.0.1:{frontend_port}",
+        f"http://localhost:{frontend_port}",
+    }
+    return ",".join(sorted(candidates))
 
 
 def run(
@@ -283,12 +317,15 @@ def ensure_database_initialized() -> None:
 
 def print_status() -> None:
     psql = find_executable("psql")
+    backend_host, backend_port, frontend_host, frontend_port = resolve_dev_network()
     info(f"Python: {sys.version.split()[0]}")
     info(f"Node: {shutil.which('node') or '未安装'}")
     info(f"npm: {shutil.which('npm') or '未安装'}")
     info(f"psql: {psql or '未安装'}")
     info(f"Backend dir: {BACKEND_DIR}")
     info(f"Frontend dir: {FRONTEND_DIR}")
+    info(f"Backend bind: {backend_host}:{backend_port}")
+    info(f"Frontend bind: {frontend_host}:{frontend_port}")
 
 
 def terminate_process(proc: subprocess.Popen[str], name: str) -> None:
@@ -304,8 +341,15 @@ def terminate_process(proc: subprocess.Popen[str], name: str) -> None:
 
 
 def start_services() -> int:
+    backend_host, backend_port, frontend_host, frontend_port = resolve_dev_network()
+
     backend_env = os.environ.copy()
     backend_env.setdefault("DATABASE_URL", DEFAULT_DB_URL)
+    backend_env.setdefault("CORS_ORIGINS", default_cors_origins(frontend_host, frontend_port))
+
+    frontend_env = os.environ.copy()
+    frontend_env.setdefault("VITE_API_BASE", "/api")
+    frontend_env.setdefault("VITE_PROXY_TARGET", f"http://{backend_host}:{backend_port}")
 
     backend_cmd = [
         str(venv_python()),
@@ -313,9 +357,9 @@ def start_services() -> int:
         "uvicorn",
         "app.main:app",
         "--host",
-        BACKEND_HOST,
+        backend_host,
         "--port",
-        str(BACKEND_PORT),
+        str(backend_port),
         "--reload",
     ]
     frontend_cmd = [
@@ -324,18 +368,21 @@ def start_services() -> int:
         "dev",
         "--",
         "--host",
-        FRONTEND_HOST,
+        frontend_host,
         "--port",
-        str(FRONTEND_PORT),
+        str(frontend_port),
     ]
 
     info("启动后端服务")
     backend_proc = subprocess.Popen(backend_cmd, cwd=str(BACKEND_DIR), env=backend_env)
     info("启动前端服务")
-    frontend_proc = subprocess.Popen(frontend_cmd, cwd=str(FRONTEND_DIR))
+    frontend_proc = subprocess.Popen(frontend_cmd, cwd=str(FRONTEND_DIR), env=frontend_env)
 
-    info(f"后端地址: http://{BACKEND_HOST}:{BACKEND_PORT}")
-    info(f"前端地址: http://{FRONTEND_HOST}:{FRONTEND_PORT}")
+    info(f"后端地址: http://{backend_host}:{backend_port}")
+    info(f"前端地址: http://{frontend_host}:{frontend_port}")
+    info(f"前端 API_BASE: {frontend_env['VITE_API_BASE']}")
+    info(f"前端代理目标: {frontend_env['VITE_PROXY_TARGET']}")
+    info(f"后端 CORS_ORIGINS: {backend_env['CORS_ORIGINS']}")
     info("按 Ctrl+C 可同时停止前后端")
 
     procs = [("backend", backend_proc), ("frontend", frontend_proc)]
