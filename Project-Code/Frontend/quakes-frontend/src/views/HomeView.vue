@@ -169,7 +169,7 @@ const papers = [
 
         <div class="visual-group">
           <div class="simple-image-card">
-            <img src="/snow_moutain.jpg" alt="Deep Earth Structure" />
+            <img src="/snow_moutain.png" alt="Deep Earth Structure" />
           </div>
         </div>
       </div>
@@ -202,19 +202,19 @@ const papers = [
       </div>
       <div class="team-grid">
         <div class="member-card">
-          <div class="avatar"><img src="/lct.jpg" alt="梁春涛" style="object-fit: cover; object-position: top;" /></div>
+          <div class="avatar"><img src="/lct.png" alt="梁春涛" style="object-fit: cover; object-position: top;" /></div>
           <h3>梁春涛</h3><span class="role">实验室主任</span><span class="field">固体地球物理学</span>
         </div>
         <div class="member-card">
-          <div class="avatar"><img src="/fxl.jpg" alt="范兴利" style="object-fit: cover; object-position: top;" /></div>
+          <div class="avatar"><img src="/fxl.png" alt="范兴利" style="object-fit: cover; object-position: top;" /></div>
           <h3>范兴利</h3><span class="role">教授</span><span class="field">固体地球物理学</span>
         </div>
         <div class="member-card">
-          <div class="avatar"><img src="/ly.jpg" alt="林弈" style="object-fit: cover; object-position: top;" /></div>
+          <div class="avatar"><img src="/ly.png" alt="林弈" style="object-fit: cover; object-position: top;" /></div>
           <h3>林弈</h3><span class="role">副教授</span><span class="field">固体地球物理学</span>
         </div>
         <div class="member-card">
-          <div class="avatar"><img src="/lxy.jpg" alt="刘兴业" style="object-fit: cover; object-position: top;" /></div>
+          <div class="avatar"><img src="/lxy.png" alt="刘兴业" style="object-fit: cover; object-position: top;" /></div>
           <h3>刘兴业</h3><span class="role">教授</span><span class="field">固体地球物理学</span>
         </div>
       </div>

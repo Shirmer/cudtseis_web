@@ -1,0 +1,6 @@
+Project-Code/backend/.venv/
+Project-Code/backend/app/__pycache__/
+Project-Code/Frontend/quakes-frontend/node_modules/
+Project-Code/Frontend/quakes-frontend/.npm-cache/
+Project-Code/Frontend/quakes-frontend/.vite/
+
