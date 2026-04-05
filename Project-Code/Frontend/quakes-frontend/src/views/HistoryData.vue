@@ -223,9 +223,9 @@
 import { ref, reactive, computed, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import MapVisual from '../components/MapVisual.vue'
+import { apiUrl } from '../config/api'
 
 const router = useRouter()
-const API_BASE = 'http://43.162.117.155:8001'
 
 const loading = ref(false)
 const hasSearched = ref(false)
@@ -366,7 +366,7 @@ async function doSearch() {
     if (queryParams.maxLat) params.append('maxLat', queryParams.maxLat.toString())
     params.append('limit', queryParams.limit.toString())
 
-    const url = `${API_BASE}/api/events?${params.toString()}`
+    const url = apiUrl(`/events?${params.toString()}`)
     const res = await fetch(url)
     if (!res.ok) throw new Error('API Error')
     results.value = await res.json()

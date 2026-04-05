@@ -28,12 +28,17 @@ REST + SSE + 后台轮询任务
 
 app = FastAPI(title="QuakeViz")
 
+
+def parse_cors_origins(raw: str) -> list[str]:
+    origins = [item.strip() for item in raw.split(",") if item.strip()]
+    if origins:
+        return origins
+    return ["http://127.0.0.1:5173", "http://localhost:5173"]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://43.162.117.155:5173",
-        "http://43.162.117.155",
-    ],
+    allow_origins=parse_cors_origins(settings.cors_origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
