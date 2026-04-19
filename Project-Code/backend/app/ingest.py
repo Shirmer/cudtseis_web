@@ -128,8 +128,20 @@ def upsert_and_get_new(db: Session, geojson: dict) -> list[dict]:
             "lon": lon,
             "lat": lat,
             "url": props.get("url"),
-            "mag_type": mag_type, # 示例：如果前端立刻需要显示这个，就加在这里
-            "type": event_type
+            "magType": mag_type,
+            "nst": nst,
+            "gap": gap,
+            "dmin": dmin,
+            "rms": rms,
+            "net": net,
+            "type": event_type,
+            "horizontalError": horizontal_error,
+            "depthError": depth_error,
+            "magError": mag_error,
+            "magNst": mag_nst,
+            "status": status,
+            "locationSource": location_source,
+            "magSource": mag_source
         })
 
     if new_items:

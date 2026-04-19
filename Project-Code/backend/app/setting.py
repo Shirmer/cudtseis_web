@@ -6,5 +6,7 @@ class Settings(BaseSettings):
     usgs_base: str = "https://earthquake.usgs.gov/fdsnws/event/1/query"
     poll_seconds: int = 60
     min_magnitude: float = 3.0
+    semantic_scholar_api_key: str = ""
+    openalex_email: str = ""
 
 settings = Settings()
