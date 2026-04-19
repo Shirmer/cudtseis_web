@@ -54,6 +54,18 @@ type ResearchPaper = {
   evidenceSnippet: string
 }
 
+type SummarySection = {
+  key: string
+  title: string
+  paragraphs: string[]
+}
+
+type SummaryEvidenceCard = {
+  title: string
+  text: string
+  citation: string
+}
+
 type ResearchResponse = {
   event: Quake
   cohort: {
@@ -67,10 +79,11 @@ type ResearchResponse = {
   topicSignals: TopicSignal[]
   summary: {
     headline: string
-    eventContext: string
-    keyPoints: string[]
-    evidenceSnippets: string[]
-    researchGap: string
+    subtitle: string
+    abstract: string
+    sections: SummarySection[]
+    evidenceCards: SummaryEvidenceCard[]
+    closing: string
     limitations: string
   }
   papers: ResearchPaper[]
@@ -628,29 +641,52 @@ onBeforeUnmount(() => {
           </section>
 
           <template v-else-if="research">
-            <section class="detail-card">
-              <div class="section-head">
-                <div>
-                  <span class="section-kicker">Scientific Summary</span>
-                  <h4>{{ research.summary.headline }}</h4>
-                </div>
-                <span class="mode-chip">{{ research.mode }}</span>
-              </div>
-              <p class="summary-paragraph">{{ research.summary.eventContext }}</p>
-              <div class="summary-list">
-                <div v-for="(point, index) in research.summary.keyPoints" :key="index" class="summary-item">
-                  <span class="summary-index">0{{ index + 1 }}</span>
-                  <p>{{ point }}</p>
+            <section class="detail-card article-card">
+              <div class="article-header">
+                <span class="section-kicker">Research Conclusion</span>
+                <h4>{{ research.summary.headline }}</h4>
+                <p class="article-subtitle">{{ research.summary.subtitle }}</p>
+                <div class="article-meta">
+                  <span>{{ formatDateTime(research.generatedAt) }}</span>
+                  <span>{{ research.mode }}</span>
+                  <span>{{ research.queryPlan.sources.join(' / ') }} API</span>
                 </div>
               </div>
-              <div v-if="research.summary.evidenceSnippets.length" class="evidence-box">
-                <h5>摘要证据片段</h5>
-                <p v-for="(snippet, index) in research.summary.evidenceSnippets" :key="index">
-                  {{ snippet }}
-                </p>
+
+              <div class="article-abstract">
+                <div class="abstract-label">摘要式结论</div>
+                <p>{{ research.summary.abstract }}</p>
               </div>
-              <p class="hint-text">{{ research.summary.researchGap }}</p>
-              <p class="limit-text">{{ research.summary.limitations }}</p>
+
+              <div class="report-article">
+                <section
+                  v-for="section in research.summary.sections"
+                  :key="section.key"
+                  class="report-section"
+                >
+                  <h5>{{ section.title }}</h5>
+                  <p v-for="paragraph in section.paragraphs" :key="paragraph">{{ paragraph }}</p>
+                </section>
+              </div>
+
+              <div v-if="research.summary.evidenceCards.length" class="evidence-gallery">
+                <article
+                  v-for="card in research.summary.evidenceCards"
+                  :key="`${card.title}-${card.citation}`"
+                  class="evidence-card"
+                >
+                  <span class="evidence-label">摘要证据</span>
+                  <h5>{{ card.title }}</h5>
+                  <p>{{ card.text }}</p>
+                  <small>{{ card.citation }}</small>
+                </article>
+              </div>
+
+              <div class="article-closing">
+                <h5>综合结论</h5>
+                <p>{{ research.summary.closing }}</p>
+                <p class="limit-text">{{ research.summary.limitations }}</p>
+              </div>
             </section>
 
             <section class="detail-card">
@@ -660,6 +696,8 @@ onBeforeUnmount(() => {
                   <h4>文献主题与检索策略</h4>
                 </div>
               </div>
+
+              <p class="summary-paragraph">{{ research.queryPlan.strategy }}</p>
 
               <div class="chip-row">
                 <span v-for="signal in research.topicSignals" :key="signal.key" class="topic-chip">
@@ -1294,54 +1332,113 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
-.summary-list {
-  display: grid;
-  gap: 12px;
-  margin-bottom: 14px;
+.article-card {
+  background:
+    linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(251, 248, 243, 0.94));
 }
 
-.summary-item {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-}
-
-.summary-item p {
+.article-header h4 {
   margin: 0;
-  line-height: 1.72;
-  color: #334155;
+  font-size: 22px;
+  line-height: 1.45;
+  color: #111827;
+}
+
+.article-subtitle {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #4b5563;
+}
+
+.article-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.article-meta span,
+.abstract-label,
+.evidence-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.1);
+  color: #64748b;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.article-abstract {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(180, 83, 9, 0.12);
+  background: rgba(255, 247, 237, 0.7);
+}
+
+.article-abstract p {
+  margin: 10px 0 0;
+  color: #374151;
+  line-height: 1.9;
   font-size: 14px;
 }
 
-.summary-index {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  background: linear-gradient(145deg, #f97316, #fb923c);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 800;
+.report-article {
+  margin-top: 18px;
+  padding: 22px 22px 8px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.14);
 }
 
-.evidence-box {
-  padding: 14px;
-  border-radius: 16px;
-  background: rgba(248, 250, 252, 0.88);
-  border: 1px solid rgba(148, 163, 184, 0.16);
+.report-section {
+  position: relative;
+  margin-bottom: 22px;
+  padding-left: 18px;
+  border-left: 3px solid rgba(249, 115, 22, 0.24);
+  font-family: 'Songti SC', 'STSong', 'Noto Serif SC', serif;
 }
 
-.evidence-box h5,
+.report-section h5 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  line-height: 1.5;
+  color: #7c2d12;
+}
+
+.report-section p {
+  margin: 0 0 12px;
+  color: #1f2937;
+  font-size: 15px;
+  line-height: 2;
+  text-align: justify;
+}
+
+.evidence-gallery {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.evidence-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+
+.evidence-card h5,
 .info-group h5,
 .paper-card h5 {
   margin: 0 0 10px;
   font-size: 14px;
 }
 
-.evidence-box p,
+.evidence-card p,
 .note-item,
 .paper-abstract,
 .paper-evidence,
@@ -1351,6 +1448,36 @@ onBeforeUnmount(() => {
   font-size: 13px;
   line-height: 1.65;
   color: #475569;
+}
+
+.evidence-card small {
+  color: #9a3412;
+  font-size: 12px;
+}
+
+.article-closing {
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.92));
+}
+
+.article-closing h5 {
+  margin: 0 0 10px;
+  color: #f8fafc;
+  font-size: 16px;
+}
+
+.article-closing p {
+  margin: 0 0 10px;
+  color: rgba(248, 250, 252, 0.9);
+  font-size: 14px;
+  line-height: 1.85;
+}
+
+.article-closing .limit-text {
+  margin-bottom: 0;
+  color: rgba(226, 232, 240, 0.78);
 }
 
 .note-item:last-child,

@@ -15,17 +15,25 @@ import re
 import threading
 import time
 from typing import Any
+import xml.etree.ElementTree as ET
 
 import requests
 
 
 OPENALEX_URL = "https://api.openalex.org/works"
 SEMANTIC_SCHOLAR_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
+ARXIV_URL = "https://export.arxiv.org/api/query"
 REQUEST_TIMEOUT = 20
 SEARCH_CACHE_TTL_SECONDS = 6 * 60 * 60
 DISTANCE_PREFIX_RE = re.compile(r"^\s*\d+(?:\.\d+)?\s*km\s+[A-Z-]+\s+of\s+", re.I)
 WHITESPACE_RE = re.compile(r"\s+")
 NON_ALNUM_RE = re.compile(r"[^a-z0-9\s]")
+ARXIV_ID_RE = re.compile(r"(\d{4}\.\d{4,5})(v\d+)?$")
+
+ARXIV_NS = {
+    "atom": "http://www.w3.org/2005/Atom",
+    "arxiv": "http://arxiv.org/schemas/atom",
+}
 
 SEARCH_CACHE: dict[str, dict[str, Any]] = {}
 SEARCH_CACHE_LOCK = threading.Lock()
@@ -124,42 +132,42 @@ def search_related_papers(
         return cached
 
     papers: list[dict[str, Any]] = []
-    source_breakdown: Counter[str] = Counter()
     query_notes: list[str] = []
 
-    # OpenAlex is generous and often returns abstracts.
-    for query in queries:
-        openalex_results = _search_openalex(query, limit=6, year_min=year_min, email=openalex_email)
-        if openalex_results:
-            papers.extend(openalex_results)
-            source_breakdown["OpenAlex"] += len(openalex_results)
-        else:
-            query_notes.append(f"OpenAlex 未从查询 “{query}” 返回稳定结果。")
-
-        if len(_deduplicate_papers(papers)) >= limit:
-            break
-
-    deduped = _deduplicate_papers(papers)
-
-    # Use Semantic Scholar only when we still need more coverage.
-    if len(deduped) < limit:
-        for query in queries:
-            s2_results = _search_semantic_scholar(
+    source_plan = (
+        ("OpenAlex", lambda query: _search_openalex(query, limit=6, year_min=year_min, email=openalex_email)),
+        (
+            "Semantic Scholar",
+            lambda query: _search_semantic_scholar(
                 query,
                 limit=4,
                 year_min=year_min,
                 api_key=semantic_scholar_api_key,
-            )
-            if s2_results:
-                papers.extend(s2_results)
-                source_breakdown["Semantic Scholar"] += len(s2_results)
-            else:
-                query_notes.append(f"Semantic Scholar 未从查询 “{query}” 返回稳定结果。")
+            ),
+        ),
+        ("arXiv", lambda query: _search_arxiv(query, limit=4, year_min=year_min)),
+    )
 
-            deduped = _deduplicate_papers(papers)
-            if len(deduped) >= limit:
+    for source_name, search_fn in source_plan:
+        source_started = False
+        for query in queries:
+            results = search_fn(query)
+            source_started = True
+            if results:
+                papers.extend(results)
+            else:
+                query_notes.append(f"{source_name} 未从查询 “{query}” 返回稳定结果。")
+
+            if source_name != "arXiv" and len(_deduplicate_papers(papers)) >= limit:
                 break
 
+        deduped = _deduplicate_papers(papers)
+        if len(deduped) >= limit and source_name == "arXiv":
+            break
+        if len(deduped) >= limit and source_started:
+            continue
+
+    deduped = _deduplicate_papers(papers)
     deduped.sort(
         key=lambda paper: (
             int(paper.get("citationCount") or 0),
@@ -170,15 +178,16 @@ def search_related_papers(
     )
 
     final_papers = [_decorate_paper(paper) for paper in deduped[:limit]]
+    final_breakdown = Counter(str(paper.get("source") or "Unknown") for paper in final_papers)
     response = {
-        "mode": "abstract-first",
+        "mode": "public-api-abstract-first",
         "queryPlan": {
             "queries": queries,
             "yearMin": year_min,
-            "sources": ["OpenAlex", "Semantic Scholar"],
-            "strategy": "优先检索题录与摘要，不批量下载 PDF。",
+            "sources": ["OpenAlex", "Semantic Scholar", "arXiv"],
+            "strategy": "通过 OpenAlex、Semantic Scholar 和 arXiv 公共 API 聚合检索题录与摘要，不批量下载 PDF。",
         },
-        "sourceBreakdown": dict(source_breakdown),
+        "sourceBreakdown": dict(final_breakdown),
         "papers": final_papers,
         "notes": _compact_notes(query_notes),
         "generatedAt": datetime.now(timezone.utc).isoformat(),
@@ -348,6 +357,98 @@ def _search_semantic_scholar(
     return papers
 
 
+def _search_arxiv(query: str, *, limit: int, year_min: int) -> list[dict[str, Any]]:
+    params = {
+        "search_query": _build_arxiv_query(query),
+        "start": "0",
+        "max_results": str(min(limit, 10)),
+        "sortBy": "relevance",
+        "sortOrder": "descending",
+    }
+
+    xml_payload = _request_text(ARXIV_URL, params=params)
+    if not xml_payload:
+        return []
+
+    try:
+        root = ET.fromstring(xml_payload)
+    except ET.ParseError:
+        return []
+
+    papers: list[dict[str, Any]] = []
+    for entry in root.findall("atom:entry", ARXIV_NS):
+        title = _clean_text(entry.findtext("atom:title", default="", namespaces=ARXIV_NS))
+        if not title:
+            continue
+
+        published_text = _clean_text(
+            entry.findtext("atom:published", default="", namespaces=ARXIV_NS)
+        )
+        year = int(published_text[:4]) if len(published_text) >= 4 and published_text[:4].isdigit() else 0
+        if year_min > 0 and year and year < year_min:
+            continue
+
+        entry_id = _clean_text(entry.findtext("atom:id", default="", namespaces=ARXIV_NS))
+        arxiv_id_match = ARXIV_ID_RE.search(entry_id)
+        arxiv_id = arxiv_id_match.group(1) if arxiv_id_match else ""
+
+        primary_category = entry.find("arxiv:primary_category", ARXIV_NS)
+        venue = primary_category.attrib.get("term", "") if primary_category is not None else ""
+        doi = _clean_text(entry.findtext("arxiv:doi", default="", namespaces=ARXIV_NS))
+
+        url = ""
+        for link in entry.findall("atom:link", ARXIV_NS):
+            href = _clean_text(link.attrib.get("href"))
+            rel = _clean_text(link.attrib.get("rel"))
+            link_type = _clean_text(link.attrib.get("type"))
+            if rel == "alternate" and link_type == "text/html" and href:
+                url = href
+                break
+        if not url and arxiv_id:
+            url = f"https://arxiv.org/abs/{arxiv_id}"
+
+        papers.append(
+            {
+                "paperId": f"arxiv-{arxiv_id}" if arxiv_id else title.lower(),
+                "title": title,
+                "authors": [
+                    _clean_text(author.findtext("atom:name", default="", namespaces=ARXIV_NS))
+                    for author in entry.findall("atom:author", ARXIV_NS)
+                    if _clean_text(author.findtext("atom:name", default="", namespaces=ARXIV_NS))
+                ],
+                "year": year,
+                "abstract": _clean_text(
+                    entry.findtext("atom:summary", default="", namespaces=ARXIV_NS)
+                ),
+                "venue": venue or "arXiv preprint",
+                "citationCount": 0,
+                "doi": doi,
+                "url": url,
+                "source": "arXiv",
+            }
+        )
+    return papers
+
+
+def _request_text(
+    url: str,
+    *,
+    params: dict[str, str],
+    headers: dict[str, str] | None = None,
+) -> str | None:
+    try:
+        response = requests.get(
+            url,
+            params=params,
+            headers=headers,
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.text
+    except requests.RequestException:
+        return None
+
+
 def _request_json(
     url: str,
     *,
@@ -385,76 +486,112 @@ def _build_summary(
     max_mag = _as_float(cohort_stats.get("maxMagnitude")) or mag
     leading_regions = [item["region"] for item in cohort_stats.get("topRegions", [])[:3]]
     leading_region_text = "、".join(leading_regions) if leading_regions else "当前监测区域"
+    paper_stats = _build_paper_stats(papers)
+    top_signal = topic_signals[0] if topic_signals else None
 
-    if topic_signals:
-        top_signal = topic_signals[0]
-        headline = (
-            f"{region} M{mag:.1f} 事件与“{top_signal['label']}”文献主题最相关"
-        )
-        literature_core = (
-            f"摘要级检索结果显示，“{top_signal['label']}”是最突出的研究方向，"
-            f"说明该区域研究通常从 {top_signal['description']} 的角度解释地震活动。"
+    if top_signal:
+        headline = f"{region} M{mag:.1f} 地震科研解读与文献综合判断"
+        subtitle = (
+            f"该事件在当前摘要级文献中最接近“{top_signal['label']}”解释框架，"
+            "适合按区域构造、序列活动与危险性三条主线联合研判。"
         )
     else:
-        headline = f"{region} M{mag:.1f} 事件的文献结果仍在补充"
-        literature_core = (
-            "当前未获得稳定的摘要级文献结果，因此下面的总结以地震目录统计为主，"
-            "建议在网络稳定时再次触发检索。"
-        )
+        headline = f"{region} M{mag:.1f} 地震科研解读"
+        subtitle = "文献结果仍在补充，目前结论更多依赖事件参数与当前监测样本的综合比较。"
 
-    key_points = [
-        (
-            f"本次事件发生于 {time_text}，地点为 {place}，震级 M{mag:.1f}，"
-            f"震源深度 {depth if depth is not None else '未知'} km，属于{depth_class}事件。"
-        ),
-        (
-            f"与该事件一并纳入面板分析的当前地震样本共有 {cohort_total} 条，"
-            f"最大震级达到 M{max_mag:.1f}，空间上主要集中在 {leading_region_text}。"
-        ),
-        literature_core,
-    ]
-
-    if mag >= 6:
-        key_points.append(
-            "事件震级已经进入强震区间，摘要级文献通常会额外关注余震持续性、"
-            "强震动衰减以及次生灾害链条。"
-        )
-    elif depth is not None and depth < 20:
-        key_points.append(
-            "震源较浅，快速研判时应优先关注近场强震动、地表破裂和滑坡等浅表响应。"
-        )
-    else:
-        key_points.append(
-            "从深度和区域分布看，建议把这次事件放在更长时间尺度的区域活动性背景中解读。"
-        )
-
-    if papers:
-        evidence = [
-            paper["evidenceSnippet"]
-            for paper in papers
-            if paper.get("evidenceSnippet")
-        ][:3]
-    else:
-        evidence = []
-
-    gap_text = (
-        "当前总结仅使用 OpenAlex 与 Semantic Scholar 返回的题录、摘要和关键词，"
-        "没有批量下载全文 PDF，因此更适合做快速科研研判，而不是正式综述。"
+    lead = (
+        f"本结论围绕 {time_text} 发生于 {place} 的 M{mag:.1f} 地震展开，"
+        f"综合当前地震目录样本、{paper_stats['total']} 篇相关文献摘要以及三源公共 API 检索结果，"
+        "尝试给出一个更接近科研综述写法的快速判断。"
     )
+
+    overview_section = {
+        "key": "overview",
+        "title": "一、事件概况与监测背景",
+        "paragraphs": [
+            (
+                f"本次事件位于 {place}，震源深度约 {depth if depth is not None else '未知'} km，"
+                f"属于{depth_class}地震。若仅看单个事件参数，M{mag:.1f} 说明它已经达到需要重点关注的研究对象等级，"
+                "因为这类事件既能反映局部断层的应力释放状态，也常常会影响后续地震序列的解释。"
+            ),
+            (
+                f"把该事件放回当前监测样本后可以看到，系统同时纳入分析的事件共有 {cohort_total} 条，"
+                f"其中最大震级达到 M{max_mag:.1f}，高频区域主要出现在 {leading_region_text}。"
+                "这意味着当前界面展示的不只是一个孤立震例，而是一个可用于做区域活动性对照的实时数据背景。"
+            ),
+        ],
+    }
+
+    literature_section = {
+        "key": "literature",
+        "title": "二、文献检索范围与研究共识",
+        "paragraphs": [
+            _build_literature_scope_paragraph(region, paper_stats, top_signal),
+            _build_literature_consensus_paragraph(topic_signals, papers),
+        ],
+    }
+
+    interpretation_section = {
+        "key": "interpretation",
+        "title": "三、可能机制与科学解释",
+        "paragraphs": [
+            _build_mechanism_paragraph(place, region, depth, mag, top_signal),
+            _build_sequence_paragraph(place, depth, mag, topic_signals),
+        ],
+    }
+
+    risk_section = {
+        "key": "risk",
+        "title": "四、危险性含义与监测建议",
+        "paragraphs": [
+            _build_hazard_paragraph(place, mag, depth, topic_signals),
+            _build_monitoring_paragraph(place, mag, depth, topic_signals),
+        ],
+    }
+
+    limitations_section = {
+        "key": "limits",
+        "title": "五、证据边界与后续工作",
+        "paragraphs": [
+            (
+                "当前页面结论主要依据 OpenAlex、Semantic Scholar 与 arXiv 返回的题录、摘要和基础元数据完成，"
+                "尚未对高相关论文做大规模全文下载、图件核验和 PDF 逐段抽取，因此它更适合作为实时科研研判和筛选入口，"
+                "而不是直接替代正式的系统综述或论文级结论。"
+            ),
+            (
+                "如果后续要把这部分内容继续做深，建议优先补充三类证据：其一是高相关论文的全文或图件抽取，"
+                "其二是该事件的震源机制解、余震迁移和断层几何资料，其三是与本地台网波形、InSAR 或 GPS 观测的联合验证。"
+            ),
+        ],
+    }
+
+    evidence_cards = _build_evidence_cards(papers)
+    closing = _build_closing_paragraph(place, region, mag, depth, top_signal, paper_stats)
+    gap_text = (
+        "本页采用的是公共 API 摘要级证据链。它比纯手写总结更系统，但仍弱于全文阅读、专家筛选和正式综述流程。"
+    )
+
+    sections = [
+        overview_section,
+        literature_section,
+        interpretation_section,
+        risk_section,
+        limitations_section,
+    ]
 
     return {
         "headline": headline,
-        "eventContext": (
-            f"{normalized_place} 在当前样本中表现为一个{depth_class}地震案例，"
-            f"适合与区域活动性、构造环境和危险性研究联合解读。"
-        ),
-        "keyPoints": key_points,
-        "evidenceSnippets": evidence,
-        "researchGap": (
-            "后续如果要形成更完整的科学结论，建议对高相关文献继续做全文抓取、"
-            "震源机制图件核验以及与台网波形结果的交叉验证。"
-        ),
+        "subtitle": subtitle,
+        "abstract": lead,
+        "sections": sections,
+        "evidenceCards": evidence_cards,
+        "closing": closing,
         "limitations": gap_text,
+        # Backward-compatible fallback fields.
+        "eventContext": lead,
+        "keyPoints": [paragraph for section in sections for paragraph in section["paragraphs"][:1]],
+        "evidenceSnippets": [card["text"] for card in evidence_cards],
+        "researchGap": limitations_section["paragraphs"][-1],
     }
 
 
@@ -508,6 +645,261 @@ def _build_cohort_stats(events: list[dict[str, Any]]) -> dict[str, Any]:
             {"label": "深源(>300km)", "count": deep},
         ],
     }
+
+
+def _build_paper_stats(papers: list[dict[str, Any]]) -> dict[str, Any]:
+    years = [int(paper.get("year") or 0) for paper in papers if int(paper.get("year") or 0) > 0]
+    source_counts = Counter(str(paper.get("source") or "Unknown") for paper in papers)
+    venue_counts = Counter(
+        _clean_text(paper.get("venue")) or str(paper.get("source") or "Unknown")
+        for paper in papers
+    )
+
+    return {
+        "total": len(papers),
+        "sourceCounts": dict(source_counts),
+        "venues": [venue for venue, _ in venue_counts.most_common(3)],
+        "minYear": min(years) if years else 0,
+        "maxYear": max(years) if years else 0,
+        "avgYear": round(sum(years) / len(years), 1) if years else 0,
+    }
+
+
+def _build_literature_scope_paragraph(
+    region: str,
+    paper_stats: dict[str, Any],
+    top_signal: dict[str, Any] | None,
+) -> str:
+    if paper_stats["total"] <= 0:
+        return (
+            "当前尚未得到稳定的文献样本，因此这一轮解读更多依赖事件参数本身，"
+            "还不能把区域研究共识完整展开。"
+        )
+
+    sources_text = _format_counter_text(paper_stats["sourceCounts"], unit="篇")
+    venue_text = "、".join(paper_stats["venues"]) if paper_stats["venues"] else "多个跨学科期刊/数据库来源"
+    year_text = (
+        f"{paper_stats['minYear']}-{paper_stats['maxYear']}"
+        if paper_stats["minYear"] and paper_stats["maxYear"]
+        else "近年"
+    )
+    signal_text = (
+        f"其中最突出的主题是“{top_signal['label']}”，说明研究者更倾向于从该角度解释区域地震活动。"
+        if top_signal
+        else "目前尚未形成足够清晰的主题集中趋势。"
+    )
+
+    return (
+        f"本次检索直接调用 OpenAlex、Semantic Scholar 与 arXiv 的公共 API，围绕 {region} 及相近构造语义形成"
+        f"{paper_stats['total']} 篇去重结果，来源构成为 {sources_text}。这些结果主要分布在 {year_text} 年，"
+        f"高频发表平台包括 {venue_text}。{signal_text}"
+    )
+
+
+def _build_literature_consensus_paragraph(
+    topic_signals: list[dict[str, Any]],
+    papers: list[dict[str, Any]],
+) -> str:
+    if not papers:
+        return "由于缺少摘要样本，当前还不能对研究共识做更细的归纳。"
+
+    signal_labels = "、".join(signal["label"] for signal in topic_signals[:3]) if topic_signals else "区域背景研究"
+    top_papers = _top_papers(papers, limit=2)
+    paper_text = "；".join(
+        f"《{_clean_text(paper.get('title'))}》把重点放在{_clean_text(paper.get('relevanceHint') or paper.get('venue') or '区域地震背景')}"
+        for paper in top_papers
+    )
+
+    return (
+        f"从主题分布上看，当前摘要样本主要围绕 {signal_labels} 展开，这说明相关研究并不是只看单次地震本身，"
+        "而是强调把它放进区域构造、序列演化和危险性评估的联合框架里理解。"
+        f"{paper_text}。这类文献结构与传统地震学综述较为接近，因此适合直接转化为界面中的科研结论页面。"
+    )
+
+
+def _build_mechanism_paragraph(
+    place: str,
+    region: str,
+    depth: float | None,
+    magnitude: float,
+    top_signal: dict[str, Any] | None,
+) -> str:
+    if depth is None:
+        depth_text = "由于震源深度尚不完整，机制判断需要保留更大不确定性。"
+    elif depth < 70:
+        depth_text = "震源较浅，通常更容易与上地壳断层活动、应力快速释放和近场破裂过程联系起来。"
+    elif depth < 300:
+        depth_text = "震源处于中等深度范围，研究上往往会联系板片俯冲、脱水脆化或中深层应力重分布。"
+    else:
+        depth_text = "深源特征明显，这类事件在机制上更常被放进深部板片动力学或地幔转换带背景中讨论。"
+
+    signal_text = (
+        f"当前最强的文献主题是“{top_signal['label']}”，说明对 {region} 附近事件的解释更偏向 {top_signal['description']}"
+        if top_signal
+        else f"当前文献主题还未充分集中，因此对 {region} 的机制解释需要更多辅助观测支撑。"
+    )
+
+    mag_text = (
+        "从震级看，这一事件已具备独立进入研究样本库的价值，"
+        if magnitude >= 5
+        else "虽然震级未到强震级别，但它仍可作为区域应力演化的一个局部样本，"
+    )
+
+    return (
+        f"就机制解释而言，{place} 地震首先应结合其深度特征来理解。{depth_text}"
+        f"{mag_text}{signal_text}。因此，现阶段更稳妥的判断不是直接下定论某一条断层已完全控制该事件，"
+        "而是认为它反映了区域构造应力场在特定深度带上的一次可识别释放。"
+    )
+
+
+def _build_sequence_paragraph(
+    place: str,
+    depth: float | None,
+    magnitude: float,
+    topic_signals: list[dict[str, Any]],
+) -> str:
+    sequence_bias = next((signal for signal in topic_signals if signal["key"] == "seismicity"), None)
+    hazard_bias = next((signal for signal in topic_signals if signal["key"] == "hazard"), None)
+
+    if sequence_bias:
+        sequence_text = (
+            "文献中对地震序列和活动性分析的关注较高，这提示后续需要继续跟踪余震时空迁移、b 值变化和目录完备性。"
+        )
+    else:
+        sequence_text = "目前没有看到序列研究在主题中占据绝对主导，因此后续仍需靠新的观测数据判断余震链条是否会显著发展。"
+
+    if hazard_bias or magnitude >= 6:
+        hazard_text = "同时，危险性维度不能忽视，尤其要关注强震动衰减、局地放大效应以及潜在次生灾害响应。"
+    elif depth is not None and depth < 20:
+        hazard_text = "由于震源浅，近场地表响应和地形相关风险仍应列入后续监测清单。"
+    else:
+        hazard_text = "若后续没有明显余震放大，这一事件更可能体现为区域背景活动的一次中等强度扰动。"
+
+    return (
+        f"从事件序列的角度看，{place} 不能只作为单点震例处理。{sequence_text}"
+        f"{hazard_text} 这也是为什么界面中的总结应当写成长段落综述，而不是只给出一句简短标签。"
+    )
+
+
+def _build_hazard_paragraph(
+    place: str,
+    magnitude: float,
+    depth: float | None,
+    topic_signals: list[dict[str, Any]],
+) -> str:
+    monitoring_bias = next((signal for signal in topic_signals if signal["key"] == "monitoring"), None)
+    if magnitude >= 6:
+        base = (
+            f"{place} 事件已达到强震研究关注阈值，快速评估时需要同时看震源参数、局地场地条件和后续余震响应，"
+            "因为这些因素会共同影响危险性判断。"
+        )
+    elif depth is not None and depth < 20:
+        base = (
+            f"{place} 事件虽然不一定会造成广域影响，但浅源特征意味着局部强震动和地表破坏更值得警惕。"
+        )
+    else:
+        base = (
+            f"{place} 事件的直接破坏性未必极端，但在区域活动性研究中仍有价值，"
+            "因为它可能代表某一应力分区进入新的活跃阶段。"
+        )
+
+    if monitoring_bias:
+        follow_up = (
+            "由于监测方法类文献也占有一定比例，说明现有研究倾向于结合波形、定位误差和多源观测做快速反演。"
+        )
+    else:
+        follow_up = "现阶段最重要的是继续保持台网连续监测，避免仅凭一次事件参数就过度解释其危险性。"
+
+    return f"{base}{follow_up}"
+
+
+def _build_monitoring_paragraph(
+    place: str,
+    magnitude: float,
+    depth: float | None,
+    topic_signals: list[dict[str, Any]],
+) -> str:
+    top_topics = "、".join(signal["label"] for signal in topic_signals[:2]) if topic_signals else "区域构造背景"
+    depth_hint = (
+        "重点补做震源机制解和断层几何约束"
+        if depth is None or depth < 70
+        else "重点关注深部应力迁移与序列持续性"
+    )
+    magnitude_hint = "加强余震自动检测和地震目录滚动更新" if magnitude >= 5 else "持续记录后续小震活动以验证是否出现成簇演化"
+
+    return (
+        f"就监测建议而言，当前最值得继续投入的方向是：{depth_hint}，{magnitude_hint}。"
+        f"如果后续要把界面内容进一步升级成可发表级的研究笔记，应围绕 {top_topics} 两条主线建立更系统的数据抽取和全文阅读流程。"
+    )
+
+
+def _build_evidence_cards(papers: list[dict[str, Any]]) -> list[dict[str, str]]:
+    cards: list[dict[str, str]] = []
+    for paper in _top_papers(papers, limit=3):
+        title = _clean_text(paper.get("title"))
+        cards.append(
+            {
+                "title": title or "摘要证据",
+                "text": _pick_evidence_sentence(_clean_text(paper.get("abstract"))),
+                "citation": _paper_citation_meta(paper),
+            }
+        )
+    return cards
+
+
+def _build_closing_paragraph(
+    place: str,
+    region: str,
+    magnitude: float,
+    depth: float | None,
+    top_signal: dict[str, Any] | None,
+    paper_stats: dict[str, Any],
+) -> str:
+    signal_text = (
+        f"现有文献最支持从“{top_signal['label']}”框架来理解这次事件，"
+        if top_signal
+        else "现有文献尚未形成足够稳定的主题集中，"
+    )
+    depth_text = (
+        "浅源特征使其更适合与近场断层和地表响应联动分析。"
+        if depth is not None and depth < 70
+        else "其深度特征提示我们应把它放回更大的构造背景中考察。"
+    )
+    return (
+        f"综合来看，{place} M{magnitude:.1f} 地震不是一个只需简单播报的实时点位，而是一个可以继续追踪的科研案例。"
+        f"{signal_text}当前已汇总 {paper_stats['total']} 篇摘要级证据，说明 {region} 附近事件具有较明确的研究上下文；"
+        f"{depth_text} 因此，这一页面最合理的定位应是“实时事件驱动的微型地震综述页”。"
+    )
+
+
+def _format_counter_text(counter_like: dict[str, int], unit: str = "") -> str:
+    if not counter_like:
+        return f"0{unit}"
+    return "、".join(
+        f"{label} {count}{unit}"
+        for label, count in counter_like.items()
+    )
+
+
+def _top_papers(papers: list[dict[str, Any]], limit: int = 3) -> list[dict[str, Any]]:
+    return sorted(
+        papers,
+        key=lambda paper: (
+            int(paper.get("citationCount") or 0),
+            int(paper.get("year") or 0),
+            len(_clean_text(paper.get("abstract"))),
+        ),
+        reverse=True,
+    )[:limit]
+
+
+def _paper_citation_meta(paper: dict[str, Any]) -> str:
+    venue = _clean_text(paper.get("venue")) or str(paper.get("source") or "Unknown")
+    year = int(paper.get("year") or 0)
+    citation_count = int(paper.get("citationCount") or 0)
+    if citation_count > 0:
+        return f"{venue} · {year or '未知年份'} · 引用 {citation_count}"
+    return f"{venue} · {year or '未知年份'}"
 
 
 def _extract_topic_signals(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -633,6 +1025,17 @@ def _shorten_query(query: str, max_terms: int = 6) -> str:
     if not tokens:
         return ""
     return " ".join(tokens[:max_terms])
+
+
+def _build_arxiv_query(query: str) -> str:
+    tokens = [
+        token
+        for token in re.split(r"[^a-zA-Z0-9]+", query)
+        if token and token.lower() not in {"the", "and", "for", "with", "into", "from", "near"}
+    ]
+    if not tokens:
+        return "all:earthquake"
+    return " AND ".join(f"all:{token}" for token in tokens[:6])
 
 
 def _normalize_title(title: str) -> str:
