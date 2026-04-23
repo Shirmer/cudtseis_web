@@ -1,14 +1,58 @@
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted, computed } from 'vue'
 import { NDropdown, NConfigProvider, type GlobalThemeOverrides } from 'naive-ui'
+import { apiUrl } from '../config/api'
+
+type ChatMessage = {
+  id: number
+  role: 'ai' | 'user'
+  content: string
+  contexts?: RagContext[]
+  suggestions?: string[]
+}
+
+type RagContext = {
+  title: string
+  sourceType: string
+  score?: number
+}
+
+type RagResponse = {
+  answer: string
+  question?: string
+  event?: {
+    id?: string
+    place?: string
+    mag?: number
+  }
+  retrievedContexts?: RagContext[]
+  suggestedQuestions?: string[]
+}
+
+type EventOption = {
+  id: string
+  place: string | null
+  mag: number | null
+}
 
 // --- 逻辑部分 (保持不变) ---
-const chatHistory = ref([
+const chatHistory = ref<ChatMessage[]>([
   { id: 1, role: 'ai', content: '你好，我是 Terra。准备好开始深地探索了吗？' }
 ])
 
 const userInput = ref('')
+const isSending = ref(false)
 const currentModel = ref('Terra 4.0 (Seismo)')
+const availableEvents = ref<EventOption[]>([])
+const selectedEventId = ref('')
+
+const selectedEventLabel = computed(() => {
+  const found = availableEvents.value.find((item) => item.id === selectedEventId.value)
+  if (!found) return '自动选择最新事件'
+  const place = found.place || '未知位置'
+  const mag = typeof found.mag === 'number' ? `M${found.mag.toFixed(1)}` : 'M?'
+  return `${place} · ${mag}`
+})
 
 const modelOptions = [
   { label: 'Terra 4.0 (Seismo)', key: 'Terra 4.0 (Seismo)' },
@@ -32,22 +76,84 @@ const dropdownTheme: GlobalThemeOverrides = {
   }
 }
 
-const handleSend = () => {
-  if (!userInput.value.trim()) return
-  chatHistory.value.push({ id: Date.now(), role: 'user', content: userInput.value })
-  const question = userInput.value
-  userInput.value = ''
-  
-  nextTick(scrollToBottom)
+const formatRagReply = (payload: RagResponse): string => {
+  const event = payload.event
+  const eventLine = event?.place
+    ? `关联事件：${event.place}${typeof event.mag === 'number' ? `，M${event.mag.toFixed(1)}` : ''}`
+    : ''
+  const sources = (payload.retrievedContexts ?? [])
+    .slice(0, 3)
+    .map((item) => `- ${item.title} (${item.sourceType}${typeof item.score === 'number' ? ` · ${item.score.toFixed(2)}` : ''})`)
+    .join('\n')
+  const suggestions = (payload.suggestedQuestions ?? [])
+    .slice(0, 3)
+    .map((item) => `- ${item}`)
+    .join('\n')
 
-  setTimeout(() => {
-    chatHistory.value.push({ 
-      id: Date.now() + 1, 
-      role: 'ai', 
-      content: '收到："' + question + '"。\n正在调用 RAG 检索...' 
+  return [
+    payload.answer,
+    eventLine
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+const handleSend = async () => {
+  if (!userInput.value.trim() || isSending.value) return
+  chatHistory.value.push({ id: Date.now(), role: 'user', content: userInput.value })
+  const question = userInput.value.trim()
+  userInput.value = ''
+  nextTick(scrollToBottom)
+  isSending.value = true
+
+  try {
+    const response = await fetch(apiUrl('/rag/query'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        eventId: selectedEventId.value || undefined,
+      })
     })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    const payload: RagResponse = await response.json()
+    chatHistory.value.push({
+      id: Date.now() + 1,
+      role: 'ai',
+      content: formatRagReply(payload),
+      contexts: payload.retrievedContexts?.slice(0, 3) ?? [],
+      suggestions: payload.suggestedQuestions?.slice(0, 3) ?? []
+    })
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Unknown error'
+    chatHistory.value.push({
+      id: Date.now() + 1,
+      role: 'ai',
+      content: `RAG 调用失败：${detail}\n请确认后端服务和文献检索链路已正常启动。`
+    })
+  } finally {
+    isSending.value = false
     nextTick(scrollToBottom)
-  }, 600)
+  }
+}
+
+const resetChat = () => {
+  chatHistory.value = [{ id: 1, role: 'ai', content: '你好，我是 Terra。准备好开始深地探索了吗？' }]
+}
+
+const loadRecentEvents = async () => {
+  try {
+    const response = await fetch(apiUrl('/events/search?hours=24&minMag=3.0&limit=20&offset=0'))
+    if (!response.ok) return
+    const payload = await response.json() as { items?: EventOption[] }
+    availableEvents.value = payload.items ?? []
+  } catch {
+    availableEvents.value = []
+  }
 }
 
 const chatContainer = ref<HTMLElement | null>(null)
@@ -56,6 +162,10 @@ const scrollToBottom = () => {
     chatContainer.value.scrollTop = chatContainer.value.scrollHeight
   }
 }
+
+onMounted(() => {
+  void loadRecentEvents()
+})
 </script>
 
 <template>
@@ -66,7 +176,26 @@ const scrollToBottom = () => {
       <div class="content-width-limiter">
         <div v-for="msg in chatHistory" :key="msg.id" class="msg-row" :class="msg.role">
           <div v-if="msg.role === 'ai'" class="avatar ai">✨</div>
-          <div class="bubble">{{ msg.content }}</div>
+          <div class="message-stack">
+            <div class="bubble">{{ msg.content }}</div>
+            <div v-if="msg.contexts?.length" class="citation-list">
+              <article v-for="context in msg.contexts" :key="`${msg.id}-${context.title}`" class="citation-card">
+                <strong>{{ context.title }}</strong>
+                <span>{{ context.sourceType }}<template v-if="typeof context.score === 'number'"> · {{ context.score.toFixed(2) }}</template></span>
+              </article>
+            </div>
+            <div v-if="msg.suggestions?.length" class="suggestion-list">
+              <button
+                v-for="suggestion in msg.suggestions"
+                :key="`${msg.id}-${suggestion}`"
+                type="button"
+                class="suggestion-chip"
+                @click="userInput = suggestion"
+              >
+                {{ suggestion }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </main>
@@ -77,7 +206,7 @@ const scrollToBottom = () => {
         
         <!-- === 悬浮 Header (样式微调为白色风格) === -->
         <div class="floating-header">
-          
+          <div class="header-left">
           <n-config-provider :theme-overrides="dropdownTheme">
             <n-dropdown 
               trigger="click" 
@@ -92,12 +221,22 @@ const scrollToBottom = () => {
               </button>
             </n-dropdown>
           </n-config-provider>
+          <label class="event-context">
+            <span>事件上下文</span>
+            <select v-model="selectedEventId" class="context-select">
+              <option value="">自动选择最新事件</option>
+              <option v-for="event in availableEvents" :key="event.id" :value="event.id">
+                {{ (event.place || '未知位置') + (typeof event.mag === 'number' ? ` · M${event.mag.toFixed(1)}` : '') }}
+              </option>
+            </select>
+          </label>
+          </div>
 
           <div class="header-tools">
             <button class="icon-btn" title="History">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
             </button>
-            <button class="new-chat-btn">
+            <button class="new-chat-btn" @click="resetChat" :title="`当前上下文：${selectedEventLabel}`">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
           </div>
@@ -174,11 +313,54 @@ const scrollToBottom = () => {
 }
 .avatar.ai { background-color: #ffffff; border: 1px solid #e5e7eb; }
 .bubble { padding: 8px 0; font-size: 15px; line-height: 1.6; color: #1f2329; max-width: 90%; }
+.bubble { white-space: pre-wrap; }
+.message-stack { display: flex; flex-direction: column; gap: 10px; max-width: 90%; }
 
 /* 用户气泡：浅灰/浅蓝背景 */
 .msg-row.user .bubble { 
   background-color: #f3f4f6; /* 浅灰 */
   padding: 10px 16px; border-radius: 12px; color: #1f2329; 
+}
+
+.citation-list,
+.suggestion-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.citation-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+
+.citation-card strong {
+  font-size: 13px;
+  color: #111827;
+}
+
+.citation-card span {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.suggestion-chip {
+  border: 1px solid #dbe4ee;
+  background: #ffffff;
+  color: #374151;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.suggestion-chip:hover {
+  background: #f3f4f6;
 }
 
 /* 4. 底部固定区域 */
@@ -191,6 +373,30 @@ const scrollToBottom = () => {
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: 12px;
   padding: 0 4px; 
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.event-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.context-select {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 8px 10px;
+  color: #374151;
+  background: #ffffff;
+  min-width: 220px;
 }
 
 /* 模型胶囊按钮 (浅色版) */
@@ -261,4 +467,16 @@ const scrollToBottom = () => {
 }
 
 .footer-text { text-align: center; color: #9ca3af; font-size: 11px; margin-top: 8px; }
+
+@media (max-width: 720px) {
+  .floating-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .context-select {
+    min-width: 100%;
+  }
+}
 </style>

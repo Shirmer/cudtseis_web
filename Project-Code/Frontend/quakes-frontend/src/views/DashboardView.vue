@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -82,6 +82,7 @@ type ResearchResponse = {
     subtitle: string
     abstract: string
     sections: SummarySection[]
+    keyPoints: string[]
     evidenceCards: SummaryEvidenceCard[]
     closing: string
     limitations: string
@@ -99,12 +100,35 @@ type ResearchResponse = {
   generatedAt: string
 }
 
+type ResearchWorkflowStep = {
+  key: string
+  title: string
+  description: string
+  status: string
+}
+
+type ResearchWorkflowResponse = {
+  event: Quake
+  generatedAt: string
+  workflow: ResearchWorkflowStep[]
+  papers: ResearchPaper[]
+  topicSignals: TopicSignal[]
+}
+
+type VectorIndexResponse = {
+  eventId: string
+  documents: number
+  retrievalMode: string
+  storePath: string
+}
+
 const TILE_BASE =
   'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'
 const TILE_LABEL =
   'https://wprd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}'
 
 const mapEl = ref<HTMLDivElement | null>(null)
+const quakeListEl = ref<HTMLDivElement | null>(null)
 let map: L.Map | null = null
 let layer = L.layerGroup()
 let eventSource: EventSource | null = null
@@ -115,11 +139,25 @@ const events = ref<Quake[]>([])
 const loading = ref(true)
 const researchLoading = ref(false)
 const researchError = ref('')
+const vectorIndexMessage = ref('')
+const rebuildingVectorIndex = ref(false)
 const sidebarOpen = ref(true)
 const detailPanelOpen = ref(true)
+const translateToChinese = ref(true)
 const currentZoom = ref(2)
 const selectedQuake = ref<Quake | null>(null)
 const research = ref<ResearchResponse | null>(null)
+const workflow = ref<ResearchWorkflowResponse | null>(null)
+const researchEventId = ref('')
+const researchCache = new Map<string, ResearchResponse>()
+const workflowCache = new Map<string, ResearchWorkflowResponse>()
+let latestResearchRequest = 0
+
+const compactWorkflow = computed(() => (workflow.value?.workflow ?? []).slice(0, 4))
+const compactTopicSignals = computed(() => (research.value?.topicSignals ?? []).slice(0, 3))
+const compactQueries = computed(() => (research.value?.queryPlan.queries ?? []).slice(0, 3))
+const compactNotes = computed(() => (research.value?.notes ?? []).slice(0, 2))
+const sourceBreakdownEntries = computed(() => Object.entries(research.value?.sourceBreakdown ?? {}))
 
 const recentEvents = computed(() => {
   return [...events.value]
@@ -174,6 +212,23 @@ function formatNumber(value?: number | null, digits = 1): string {
   return Number(value).toFixed(digits)
 }
 
+function shortenText(value?: string | null, max = 96): string {
+  const text = String(value ?? '').trim()
+  if (!text) return '—'
+  if (text.length <= max) return text
+  return `${text.slice(0, max).trim()}…`
+}
+
+function formatWorkflowStatus(status?: string | null): string {
+  const normalized = String(status ?? '').trim().toLowerCase()
+  const map: Record<string, string> = {
+    completed: '完成',
+    running: '进行中',
+    pending: '待处理',
+  }
+  return map[normalized] || (status?.trim() || '已记录')
+}
+
 function formatCoordinate(value?: number | null): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
   return `${Number(value).toFixed(3)}°`
@@ -187,22 +242,110 @@ function depthClass(depth?: number | null): string {
 }
 
 function quakePlace(quake: Quake | null | undefined): string {
-  return quake?.place?.trim() || 'Unknown'
+  return quake?.place?.trim() || '未知位置'
+}
+
+function translateDirectionToken(token: string): string {
+  const map: Record<string, string> = {
+    N: '北',
+    S: '南',
+    E: '东',
+    W: '西',
+    NE: '东北',
+    NW: '西北',
+    SE: '东南',
+    SW: '西南',
+    NNE: '北偏东北',
+    NNW: '北偏西北',
+    ENE: '东偏东北',
+    ESE: '东偏东南',
+    SSE: '南偏东南',
+    SSW: '南偏西南',
+    WNW: '西偏西北',
+    WSW: '西偏西南',
+  }
+  return map[token.toUpperCase()] || token
+}
+
+function translatePlace(place: string): string {
+  if (!translateToChinese.value) return place
+
+  let result = place.trim()
+  if (!result) return '未知位置'
+
+  result = result
+    .replace(/^Near the coast of\s+/i, '靠近')
+    .replace(/^Off the coast of\s+/i, '')
+    .replace(/^Southern\s+/i, '南部')
+    .replace(/^Northern\s+/i, '北部')
+    .replace(/^Eastern\s+/i, '东部')
+    .replace(/^Western\s+/i, '西部')
+    .replace(/^Central\s+/i, '中部')
+    .replace(/\bregion\b/gi, '地区')
+
+  const relativeMatch = result.match(/^(\d+(?:\.\d+)?)\s*km\s+([A-Za-z]{1,3})\s+of\s+(.+)$/i)
+  if (relativeMatch) {
+    const [, distance, direction, target] = relativeMatch
+    return `距${target.trim()}${translateDirectionToken(direction)}约 ${distance} 千米`
+  }
+
+  return result
+}
+
+function translateEventType(type?: string | null): string {
+  if (!type) return '地震'
+  if (!translateToChinese.value) return type
+
+  const normalized = type.trim().toLowerCase()
+  const map: Record<string, string> = {
+    earthquake: '地震',
+    quarry_blast: '采石爆破',
+    explosion: '爆炸',
+    ice_quake: '冰震',
+    mine_collapse: '矿井坍塌',
+    induced_or_triggered_event: '诱发事件',
+    volcanic_eruption: '火山喷发',
+    landslide: '滑坡',
+    sonic_boom: '音爆',
+    other_event: '其他事件',
+  }
+
+  return map[normalized] || type
+}
+
+function translateStatus(status?: string | null): string {
+  if (!status) return '—'
+  if (!translateToChinese.value) return status
+
+  const normalized = status.trim().toLowerCase()
+  const map: Record<string, string> = {
+    automatic: '自动解算',
+    reviewed: '人工复核',
+    preliminary: '初步结果',
+    confirmed: '已确认',
+    deleted: '已删除',
+  }
+
+  return map[normalized] || status
+}
+
+function displayPlace(quake: Quake | null | undefined): string {
+  return translatePlace(quakePlace(quake))
 }
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 function popupHtml(quake: Quake): string {
   const color = magnitudeColor(quake.mag)
-  const place = escapeHtml(quakePlace(quake))
-  const typeText = escapeHtml(quake.type || 'earthquake')
+  const place = escapeHtml(displayPlace(quake))
+  const typeText = escapeHtml(translateEventType(quake.type))
   const magTypeText = escapeHtml(quake.magType || 'M')
   const sourceText = escapeHtml(quake.locationSource || quake.net || 'USGS')
 
@@ -233,6 +376,7 @@ function focusQuake(
   options: { flyTo?: boolean; openPopup?: boolean } = {},
 ): void {
   const { flyTo = false, openPopup = false } = options
+  const selectedChanged = selectedQuake.value?.id !== quake.id
   selectedQuake.value = quake
   detailPanelOpen.value = true
 
@@ -249,7 +393,22 @@ function focusQuake(
   }
 
   render()
-  void loadResearch(quake.id)
+  void nextTick(() => {
+    scrollSelectedIntoView(quake.id)
+  })
+
+  if (selectedChanged || researchEventId.value !== quake.id) {
+    researchError.value = ''
+    void loadResearch(quake.id)
+  }
+}
+
+function scrollSelectedIntoView(quakeId: string): void {
+  const listEl = quakeListEl.value
+  if (!listEl) return
+
+  const activeItem = listEl.querySelector<HTMLElement>(`.quake-item[data-quake-id="${quakeId}"]`)
+  activeItem?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
 }
 
 function upsertEvents(incoming: Quake[]): void {
@@ -364,32 +523,92 @@ async function loadInitial(): Promise<void> {
 }
 
 async function loadResearch(eventId: string): Promise<void> {
+  const cached = researchCache.get(eventId)
+  const cachedWorkflow = workflowCache.get(eventId)
+  if (cached && cachedWorkflow) {
+    researchEventId.value = eventId
+    research.value = cached
+    workflow.value = cachedWorkflow
+    researchError.value = ''
+    researchLoading.value = false
+    return
+  }
+
   researchAbortController?.abort()
   const controller = new AbortController()
   researchAbortController = controller
+  const requestId = ++latestResearchRequest
+  researchEventId.value = eventId
   researchLoading.value = true
   researchError.value = ''
+  research.value = null
+  workflow.value = null
+
+  try {
+    const [researchResponse, workflowResponse] = await Promise.all([
+      fetch(
+        apiUrl(`/events/${eventId}/research?hours=24&minMag=3.0&cohortLimit=2000&paperLimit=12&yearMin=2015`),
+        { signal: controller.signal },
+      ),
+      fetch(
+        apiUrl(`/events/${eventId}/workflow?hours=24&minMag=3.0&cohortLimit=2000&paperLimit=12&yearMin=2015`),
+        { signal: controller.signal },
+      ),
+    ])
+
+    if (!researchResponse.ok) {
+      throw new Error(`Research API failed with ${researchResponse.status}`)
+    }
+    if (!workflowResponse.ok) {
+      throw new Error(`Workflow API failed with ${workflowResponse.status}`)
+    }
+
+    const payload = (await researchResponse.json()) as ResearchResponse
+    const workflowPayload = (await workflowResponse.json()) as ResearchWorkflowResponse
+    if (requestId !== latestResearchRequest || selectedQuake.value?.id !== eventId) {
+      return
+    }
+
+    researchCache.set(eventId, payload)
+    workflowCache.set(eventId, workflowPayload)
+    research.value = payload
+    workflow.value = workflowPayload
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') return
+    if (requestId !== latestResearchRequest || selectedQuake.value?.id !== eventId) {
+      return
+    }
+
+    console.error('Research fetch error:', error)
+    research.value = null
+    workflow.value = null
+    researchError.value = '文献检索暂时不可用，可能是网络或学术接口限流导致。'
+  } finally {
+    if (researchAbortController === controller && requestId === latestResearchRequest) {
+      researchLoading.value = false
+    }
+  }
+}
+
+async function rebuildVectorIndex(eventId: string): Promise<void> {
+  rebuildingVectorIndex.value = true
+  vectorIndexMessage.value = ''
 
   try {
     const response = await fetch(
-      apiUrl(`/events/${eventId}/research?hours=24&minMag=3.0&cohortLimit=2000&paperLimit=12&yearMin=2015`),
-      { signal: controller.signal },
+      apiUrl(`/events/${eventId}/vector-index?force=true&hours=24&minMag=3.0&cohortLimit=2000&paperLimit=12&yearMin=2015`),
+      { method: 'POST' },
     )
-
     if (!response.ok) {
-      throw new Error(`Research API failed with ${response.status}`)
+      throw new Error(`Vector index API failed with ${response.status}`)
     }
-
-    research.value = (await response.json()) as ResearchResponse
+    const payload = (await response.json()) as VectorIndexResponse
+    vectorIndexMessage.value = `索引已更新：${payload.documents} 个文档，模式 ${payload.retrievalMode}`
   } catch (error) {
-    if ((error as Error).name === 'AbortError') return
-    console.error('Research fetch error:', error)
-    research.value = null
-    researchError.value = '文献检索暂时不可用，可能是网络或学术接口限流导致。'
+    console.error('Vector index rebuild error:', error)
+    vectorIndexMessage.value = '索引重建失败，请检查后端配置或 OpenAI key。'
   } finally {
-    if (researchAbortController === controller) {
-      researchLoading.value = false
-    }
+    rebuildingVectorIndex.value = false
   }
 }
 
@@ -441,6 +660,10 @@ onBeforeUnmount(() => {
   eventSource?.close()
   map?.remove()
 })
+
+watch(translateToChinese, () => {
+  render()
+})
 </script>
 
 <template>
@@ -454,8 +677,12 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="nav-actions">
+        <div class="nav-actions">
         <span class="live-status"><span class="blink">●</span> 实时监控运行中</span>
+        <label class="translate-toggle">
+          <input v-model="translateToChinese" type="checkbox" />
+          <span>中文翻译</span>
+        </label>
         <button class="panel-toggle desktop-only" @click="detailPanelOpen = !detailPanelOpen">
           {{ detailPanelOpen ? '收起科研面板' : '展开科研面板' }}
         </button>
@@ -495,11 +722,12 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="quake-list">
+        <div ref="quakeListEl" class="quake-list">
           <button
             v-for="quake in recentEvents"
             :key="quake.id"
             class="quake-item"
+            :data-quake-id="quake.id"
             :class="{ active: quake.id === selectedQuake?.id }"
             @click="focusQuake(quake, { flyTo: true, openPopup: true })"
           >
@@ -507,7 +735,7 @@ onBeforeUnmount(() => {
               {{ quake.mag.toFixed(1) }}
             </div>
             <div class="quake-info">
-              <div class="place" :title="quakePlace(quake)">{{ quakePlace(quake) }}</div>
+              <div class="place" :title="displayPlace(quake)">{{ displayPlace(quake) }}</div>
               <div class="meta">
                 <span>{{ formatClock(quake.time) }}</span>
                 <span class="depth-tag">{{ formatNumber(quake.depth_km, 1) }}km</span>
@@ -533,7 +761,7 @@ onBeforeUnmount(() => {
           <div class="overlay-card selected" v-if="selectedQuake">
             <span class="overlay-label">当前选中</span>
             <strong>M{{ selectedQuake.mag.toFixed(1) }}</strong>
-            <small>{{ quakePlace(selectedQuake) }}</small>
+            <small>{{ displayPlace(selectedQuake) }}</small>
           </div>
         </div>
 
@@ -567,13 +795,19 @@ onBeforeUnmount(() => {
               </span>
               <span class="hero-time">{{ formatDateTime(selectedQuake.time) }}</span>
             </div>
-            <h2>{{ quakePlace(selectedQuake) }}</h2>
+            <h2>{{ displayPlace(selectedQuake) }}</h2>
             <p>{{ depthClass(selectedQuake.depth_km) }}地震，深度 {{ formatNumber(selectedQuake.depth_km, 1) }} km</p>
             <div class="chip-row">
-              <span class="chip">{{ selectedQuake.type || 'earthquake' }}</span>
+              <span class="chip">{{ translateEventType(selectedQuake.type) }}</span>
               <span class="chip">网络 {{ selectedQuake.net || '—' }}</span>
-              <span class="chip">状态 {{ selectedQuake.status || '—' }}</span>
+              <span class="chip">状态 {{ translateStatus(selectedQuake.status) }}</span>
               <span class="chip">坐标 {{ formatCoordinate(selectedQuake.lat) }}, {{ formatCoordinate(selectedQuake.lon) }}</span>
+            </div>
+            <div class="hero-actions">
+              <button class="panel-toggle" :disabled="rebuildingVectorIndex" @click="rebuildVectorIndex(selectedQuake.id)">
+                {{ rebuildingVectorIndex ? '索引重建中…' : '重建向量索引' }}
+              </button>
+              <span v-if="vectorIndexMessage" class="vector-index-message">{{ vectorIndexMessage }}</span>
             </div>
           </section>
 
@@ -654,8 +888,28 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="article-abstract">
-                <div class="abstract-label">摘要式结论</div>
+                <div class="abstract-label">一句话判断</div>
                 <p>{{ research.summary.abstract }}</p>
+              </div>
+
+              <div v-if="research.summary.keyPoints.length" class="article-focus">
+                <div class="section-head compact">
+                  <div>
+                    <span class="section-kicker">Key Takeaways</span>
+                    <h4>解读重点</h4>
+                  </div>
+                </div>
+
+                <div class="focus-grid">
+                  <article
+                    v-for="point in research.summary.keyPoints.slice(0, 3)"
+                    :key="point"
+                    class="focus-point"
+                  >
+                    <span class="focus-index">重点</span>
+                    <p>{{ point }}</p>
+                  </article>
+                </div>
               </div>
 
               <div class="report-article">
@@ -671,11 +925,11 @@ onBeforeUnmount(() => {
 
               <div v-if="research.summary.evidenceCards.length" class="evidence-gallery">
                 <article
-                  v-for="card in research.summary.evidenceCards"
+                  v-for="card in research.summary.evidenceCards.slice(0, 2)"
                   :key="`${card.title}-${card.citation}`"
                   class="evidence-card"
                 >
-                  <span class="evidence-label">摘要证据</span>
+                  <span class="evidence-label">关键证据</span>
                   <h5>{{ card.title }}</h5>
                   <p>{{ card.text }}</p>
                   <small>{{ card.citation }}</small>
@@ -683,24 +937,50 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="article-closing">
-                <h5>综合结论</h5>
+                <h5>结论与边界</h5>
                 <p>{{ research.summary.closing }}</p>
                 <p class="limit-text">{{ research.summary.limitations }}</p>
               </div>
+            </section>
+
+            <section v-if="workflow" class="detail-card workflow-card">
+              <div class="section-head">
+                <div>
+                  <span class="section-kicker">Research Workflow</span>
+                  <h4>研究流程速览</h4>
+                </div>
+                <span class="paper-count">更新于 {{ formatDateTime(workflow.generatedAt) }}</span>
+              </div>
+
+              <div class="workflow-list">
+                <article
+                  v-for="step in compactWorkflow"
+                  :key="step.key"
+                  class="workflow-item"
+                >
+                  <div class="workflow-badge" :class="step.status">{{ formatWorkflowStatus(step.status) }}</div>
+                  <div class="workflow-copy">
+                    <h5>{{ step.title }}</h5>
+                    <p>{{ shortenText(step.description, 72) }}</p>
+                  </div>
+                </article>
+              </div>
+
+              <p class="workflow-hint">展示关键流程节点，细节留在文献与摘要证据中查看。</p>
             </section>
 
             <section class="detail-card">
               <div class="section-head">
                 <div>
                   <span class="section-kicker">Literature Signals</span>
-                  <h4>文献主题与检索策略</h4>
+                  <h4>研判辅助信息</h4>
                 </div>
               </div>
 
-              <p class="summary-paragraph">{{ research.queryPlan.strategy }}</p>
+              <p class="summary-paragraph">{{ shortenText(research.queryPlan.strategy, 120) }}</p>
 
               <div class="chip-row">
-                <span v-for="signal in research.topicSignals" :key="signal.key" class="topic-chip">
+                <span v-for="signal in compactTopicSignals" :key="signal.key" class="topic-chip">
                   {{ signal.label }} · {{ signal.paperCount }}
                 </span>
               </div>
@@ -727,7 +1007,7 @@ onBeforeUnmount(() => {
               <div class="info-group">
                 <h5>检索查询</h5>
                 <div class="query-list">
-                  <span v-for="query in research.queryPlan.queries" :key="query" class="query-chip">{{ query }}</span>
+                  <span v-for="query in compactQueries" :key="query" class="query-chip">{{ shortenText(query, 38) }}</span>
                 </div>
               </div>
 
@@ -735,7 +1015,7 @@ onBeforeUnmount(() => {
                 <h5>来源统计</h5>
                 <div class="query-list">
                   <span
-                    v-for="(count, source) in research.sourceBreakdown"
+                    v-for="[source, count] in sourceBreakdownEntries"
                     :key="source"
                     class="source-chip"
                   >
@@ -757,9 +1037,9 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <div class="info-group" v-if="research.notes.length">
-                <h5>检索备注</h5>
-                <p v-for="note in research.notes" :key="note" class="note-item">{{ note }}</p>
+              <div class="info-group" v-if="compactNotes.length">
+                <h5>补充说明</h5>
+                <p v-for="note in compactNotes" :key="note" class="note-item">{{ shortenText(note, 88) }}</p>
               </div>
             </section>
 
@@ -874,6 +1154,23 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 16px;
   font-size: 14px;
+}
+
+.translate-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: #475569;
+  cursor: pointer;
+}
+
+.translate-toggle input {
+  margin: 0;
+  accent-color: #0ea5e9;
 }
 
 .nav-actions a,
@@ -1302,6 +1599,10 @@ onBeforeUnmount(() => {
   margin-bottom: 14px;
 }
 
+.section-head.compact {
+  margin-bottom: 12px;
+}
+
 .section-kicker {
   display: block;
   margin-bottom: 6px;
@@ -1358,6 +1659,20 @@ onBeforeUnmount(() => {
   margin-top: 12px;
 }
 
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.vector-index-message {
+  display: inline-flex;
+  align-items: center;
+  color: rgba(248, 250, 252, 0.86);
+  font-size: 12px;
+}
+
 .article-meta span,
 .abstract-label,
 .evidence-label {
@@ -1386,9 +1701,45 @@ onBeforeUnmount(() => {
   font-size: 14px;
 }
 
+.article-focus {
+  margin-top: 16px;
+}
+
+.focus-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.focus-point {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(14, 165, 233, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.focus-index {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.1);
+  color: #0f766e;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.focus-point p {
+  margin: 0;
+  color: #1f2937;
+  font-size: 13px;
+  line-height: 1.72;
+}
+
 .report-article {
   margin-top: 18px;
-  padding: 22px 22px 8px;
+  padding: 18px 18px 2px;
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid rgba(148, 163, 184, 0.14);
@@ -1396,25 +1747,23 @@ onBeforeUnmount(() => {
 
 .report-section {
   position: relative;
-  margin-bottom: 22px;
-  padding-left: 18px;
+  margin-bottom: 16px;
+  padding-left: 14px;
   border-left: 3px solid rgba(249, 115, 22, 0.24);
-  font-family: 'Songti SC', 'STSong', 'Noto Serif SC', serif;
 }
 
 .report-section h5 {
-  margin: 0 0 12px;
-  font-size: 18px;
-  line-height: 1.5;
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 1.4;
   color: #7c2d12;
 }
 
 .report-section p {
-  margin: 0 0 12px;
-  color: #1f2937;
-  font-size: 15px;
-  line-height: 2;
-  text-align: justify;
+  margin: 0 0 10px;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.75;
 }
 
 .evidence-gallery {
@@ -1457,7 +1806,7 @@ onBeforeUnmount(() => {
 
 .article-closing {
   margin-top: 18px;
-  padding: 18px;
+  padding: 16px 18px;
   border-radius: 18px;
   background: linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.92));
 }
@@ -1526,6 +1875,60 @@ onBeforeUnmount(() => {
 .paper-count {
   color: #64748b;
   font-size: 12px;
+}
+
+.workflow-list {
+  display: grid;
+  gap: 10px;
+}
+
+.workflow-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.workflow-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: #334155;
+  background: rgba(148, 163, 184, 0.18);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.workflow-badge.completed {
+  color: #166534;
+  background: rgba(34, 197, 94, 0.16);
+}
+
+.workflow-copy h5 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.workflow-copy p {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.workflow-hint {
+  margin: 12px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .paper-list {
