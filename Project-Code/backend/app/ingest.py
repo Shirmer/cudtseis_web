@@ -5,7 +5,7 @@
 from datetime import datetime, timedelta, timezone
 import requests
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
@@ -64,12 +64,6 @@ def upsert_and_get_new(db: Session, geojson: dict) -> list[dict]:
         t = _dt_ms_to_dt(int(tms))
         u = _dt_ms_to_dt(int(ums))
         place = props.get("place")
-
-        # 检查是否存在
-        exists = db.execute(select(Earthquake.id).where(Earthquake.id == eid)).first()
-        if exists:
-            # 如果需要更新现有数据（比如 updated 变了），可以在这里写逻辑
-            continue
         
         # --- 关键修改：提取新字段 ---
         # 使用 .get() 方法，如果数据里没有这个字段，会自动设为 None，不会报错
@@ -88,33 +82,38 @@ def upsert_and_get_new(db: Session, geojson: dict) -> list[dict]:
         location_source = props.get("locationSource")
         mag_source = props.get("magSource")
 
-        # --- 创建数据库对象 ---
-        row = Earthquake(
-            id=eid,
-            time=t,
-            updated=u,
-            mag=mag,
-            place=place,
-            depth_km=depth_km,
-            geom=from_shape(Point(lon, lat), srid=4326),
-            
-            # --- 填入新字段 ---
-            mag_type=mag_type,
-            nst=nst,
-            gap=gap,
-            dmin=dmin,
-            rms=rms,
-            net=net,
-            type=event_type, # 对应模型的 type 字段
-            horizontal_error=horizontal_error,
-            depth_error=depth_error,
-            mag_error=mag_error,
-            mag_nst=mag_nst,
-            status=status,
-            location_source=location_source,
-            mag_source=mag_source
-        )
-        db.add(row)
+        values = {
+            "id": eid,
+            "time": t,
+            "updated": u,
+            "mag": mag,
+            "place": place,
+            "depth_km": depth_km,
+            "geom": from_shape(Point(lon, lat), srid=4326),
+            "mag_type": mag_type,
+            "nst": nst,
+            "gap": gap,
+            "dmin": dmin,
+            "rms": rms,
+            "net": net,
+            "type": event_type,
+            "horizontal_error": horizontal_error,
+            "depth_error": depth_error,
+            "mag_error": mag_error,
+            "mag_nst": mag_nst,
+            "status": status,
+            "location_source": location_source,
+            "mag_source": mag_source,
+        }
+
+        inserted_id = db.execute(
+            insert(Earthquake)
+            .values(**values)
+            .on_conflict_do_nothing(index_elements=[Earthquake.id])
+            .returning(Earthquake.id)
+        ).scalar_one_or_none()
+        if inserted_id is None:
+            continue
 
         # 构建返回给前端/WebSocket的数据包
         # 您可以根据需要把新字段也加进去

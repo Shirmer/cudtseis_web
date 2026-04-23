@@ -1,14 +1,18 @@
 '''
 PostGIS表
 '''
+from __future__ import annotations
+
 from typing import Optional
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Float, DateTime, Integer, Index
+from sqlalchemy import String, Float, DateTime, Integer
 from geoalchemy2 import Geometry
 from datetime import datetime
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class Earthquake(Base):
     __tablename__ = "earthquakes"
@@ -22,8 +26,6 @@ class Earthquake(Base):
     place: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     depth_km: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
-    # 1. 去掉 : Mapped[str] 类型注解，让 GeoAlchemy 自行处理类型
-    # 2. index=True 会自动创建 GiST 索引
     geom = mapped_column(Geometry(geometry_type="POINT", srid=4326), index=True)
 
     mag_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
