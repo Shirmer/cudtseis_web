@@ -4,6 +4,7 @@ import subprocess
 import shutil
 import sys
 import os
+import platform
 
 ROOT = Path(__file__).resolve().parent
 
@@ -12,12 +13,19 @@ FRONTEND_DIR = ROOT / "Project-Code" / "Frontend" / "quakes-frontend"
 
 
 def pick_python():
-    candidates = [
-        ROOT / ".venv-win" / "Scripts" / "python.exe",
-        ROOT / ".venv" / "Scripts" / "python.exe",
-    ]
+    if platform.system() == "Windows":
+        candidates = [
+            ROOT / ".venv-win" / "Scripts" / "python.exe",
+            ROOT / ".venv" / "Scripts" / "python.exe",
+            BACKEND_DIR / ".venv" / "Scripts" / "python.exe",
+        ]
+    else:
+        candidates = [
+            BACKEND_DIR / ".venv" / "bin" / "python",
+            ROOT / ".venv" / "bin" / "python",
+        ]
     for candidate in candidates:
-        if candidate.exists():
+        if candidate.exists() and os.access(candidate, os.X_OK):
             return str(candidate)
     return sys.executable
 

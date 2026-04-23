@@ -116,10 +116,26 @@ def query_events_page(db: Session, params: EventQueryParams) -> dict[str, Any]:
 
     start, end = _resolve_time_window(params)
     if _should_query_usgs(db, start, end):
-        payload = _query_events_page_from_usgs(params, start, end)
+        try:
+            payload = _query_events_page_from_usgs(params, start, end)
+        except HTTPException as exc:
+            if exc.status_code != 502:
+                raise
+            payload = _query_events_page_from_db(db, params, start, end)
         EVENT_QUERY_CACHE.put(cache_key, payload)
         return payload
 
+    payload = _query_events_page_from_db(db, params, start, end)
+    EVENT_QUERY_CACHE.put(cache_key, payload)
+    return payload
+
+
+def _query_events_page_from_db(
+    db: Session,
+    params: EventQueryParams,
+    start: datetime,
+    end: datetime,
+) -> dict[str, Any]:
     filters = [
         Earthquake.time >= start,
         Earthquake.time <= end,
@@ -171,7 +187,6 @@ def query_events_page(db: Session, params: EventQueryParams) -> dict[str, Any]:
         "offset": params.offset,
         "hasMore": params.offset + len(rows) < total,
     }
-    EVENT_QUERY_CACHE.put(cache_key, payload)
     return payload
 
 
