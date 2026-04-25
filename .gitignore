@@ -1,6 +1,39 @@
+# OS/editor
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local Python environments
+.venv/
+.venv-*/
+venv/
+env/
 Project-Code/backend/.venv/
-Project-Code/backend/app/__pycache__/
+
+# Local environment files
+.env
+Project-Code/backend/.env
+Project-Code/Frontend/quakes-frontend/.env
+Project-Code/Frontend/quakes-frontend/.env.local
+
+# Backend runtime data
+Project-Code/backend/.data/
+
+# Frontend dependencies/build output
+node_modules/
 Project-Code/Frontend/quakes-frontend/node_modules/
 Project-Code/Frontend/quakes-frontend/.npm-cache/
 Project-Code/Frontend/quakes-frontend/.vite/
+Project-Code/Frontend/quakes-frontend/dist/
 
+# Logs
+*.log
+dev-out.log
+dev-err.log
