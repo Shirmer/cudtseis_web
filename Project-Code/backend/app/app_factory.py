@@ -3,21 +3,40 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import Depends, FastAPI, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .db import SessionLocal, engine, get_db
 from .event_service import query_events_page, query_events_payload
 from .ingest import fetch_usgs_geojson, upsert_and_get_new
+from .paper_database import add_paper, get_paper_architecture, get_paper_detail, initialize_paper_database, search_papers
 from .rag import answer_event_question, prepare_event_vector_index
+from .raganything_service import (
+    get_raganything_status,
+    ingest_document_with_raganything,
+    ingest_event_bundle_with_raganything,
+    query_raganything as query_raganything_service,
+)
 from .research_service import build_event_research_bundle
 from .schemas import (
     EventOut,
     EventQueryParams,
     EventRagRequest,
     EventsPageOut,
+    PaperArchitectureOut,
+    PaperCreateRequest,
+    PaperDatabaseResponseOut,
+    PaperDetailOut,
+    PaperStorageOut,
+    RagAnythingDocumentRequest,
+    RagAnythingEventIngestRequest,
+    RagAnythingIngestOut,
+    RagAnythingQueryOut,
+    RagAnythingQueryRequest,
+    RagAnythingStatusOut,
     RagQueryRequest,
     RagResponseOut,
     ResearchResponseOut,
@@ -47,7 +66,11 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
     )
 
     if create_tables:
-        Base.metadata.create_all(bind=engine)
+        try:
+            Base.metadata.create_all(bind=engine)
+        except SQLAlchemyError as exc:
+            print("database initialization skipped:", exc)
+    initialize_paper_database()
 
     @app.get("/")
     def root():
@@ -56,6 +79,7 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
             "status": "ok",
             "docs": "/docs",
             "eventsApi": "/api/events",
+            "papersApi": "/api/papers",
             "streamApi": "/api/stream",
         }
 
@@ -170,6 +194,44 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
             "generatedAt": bundle["literature"]["generatedAt"],
         }
 
+    @app.get("/api/papers/architecture", response_model=PaperArchitectureOut)
+    def get_papers_architecture():
+        return get_paper_architecture()
+
+    @app.get("/api/papers/storage", response_model=PaperStorageOut)
+    def get_papers_storage():
+        return initialize_paper_database()
+
+    @app.get("/api/papers", response_model=PaperDatabaseResponseOut)
+    def list_papers(
+        q: str = Query("", max_length=500),
+        topic: str = Query("", max_length=100),
+        yearMin: int | None = Query(None, ge=1900, le=2100),
+        yearMax: int | None = Query(None, ge=1900, le=2100),
+        limit: int = Query(20, ge=1, le=100),
+    ):
+        return search_papers(
+            query=q,
+            topic=topic,
+            year_min=yearMin,
+            year_max=yearMax,
+            limit=limit,
+        )
+
+    @app.get("/api/papers/{paper_id}", response_model=PaperDetailOut)
+    def get_paper(paper_id: str):
+        paper = get_paper_detail(paper_id)
+        if paper is None:
+            raise HTTPException(status_code=404, detail="Paper not found")
+        return paper
+
+    @app.post("/api/papers", response_model=PaperDetailOut, status_code=201)
+    def create_paper(payload: PaperCreateRequest):
+        try:
+            return add_paper(payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/events/{event_id}/workflow", response_model=ResearchWorkflowOut)
     def get_event_workflow(
         event_id: str,
@@ -251,6 +313,49 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
             papers=bundle["literature"]["papers"],
             synthesis=bundle["synthesis"],
             force_rebuild=force,
+        )
+
+    @app.get("/api/raganything/status", response_model=RagAnythingStatusOut)
+    def get_raganything_runtime_status():
+        return get_raganything_status()
+
+    @app.post("/api/raganything/events", response_model=RagAnythingIngestOut)
+    async def ingest_event_into_raganything(
+        payload: RagAnythingEventIngestRequest,
+        db: Session = Depends(get_db),
+    ):
+        bundle = build_event_research_bundle(
+            db,
+            event_id=payload.eventId,
+            hours=payload.hours,
+            minMag=payload.minMag,
+            cohortLimit=payload.cohortLimit,
+            paperLimit=payload.paperLimit,
+            yearMin=payload.yearMin,
+        )
+        return await ingest_event_bundle_with_raganything(
+            event=bundle["event"],
+            cohort_events=bundle["cohort_events"],
+            papers=bundle["literature"]["papers"],
+            synthesis=bundle["synthesis"],
+            force=payload.force,
+        )
+
+    @app.post("/api/raganything/documents", response_model=RagAnythingIngestOut)
+    async def ingest_document_into_raganything(payload: RagAnythingDocumentRequest):
+        return await ingest_document_with_raganything(
+            file_path=payload.filePath,
+            doc_id=payload.docId,
+            parse_method=payload.parseMethod,
+            parser=payload.parser,
+        )
+
+    @app.post("/api/raganything/query", response_model=RagAnythingQueryOut)
+    async def ask_raganything(payload: RagAnythingQueryRequest):
+        return await query_raganything_service(
+            question=payload.question,
+            mode=payload.mode,
+            vlm_enhanced=payload.vlmEnhanced,
         )
 
     @app.post("/api/rag/query", response_model=RagResponseOut)

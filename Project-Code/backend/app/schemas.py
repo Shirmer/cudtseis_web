@@ -73,6 +73,88 @@ class PaperOut(BaseModel):
     relevanceHint: str | None = None
 
 
+class PaperDatabaseItemOut(BaseModel):
+    id: str
+    title: str
+    authors: list[str]
+    authorsText: str
+    journal: str
+    year: int
+    doi: str
+    url: str
+    topics: list[str]
+    evidenceType: str
+    abstractPreview: str
+    parserStatus: dict[str, str]
+    cer: dict[str, str]
+    relations: list[dict[str, str]]
+    retrievalScore: float = 0.0
+    retrievalBreakdown: dict[str, float] = Field(default_factory=dict)
+    metadataDecision: dict[str, Any] = Field(default_factory=dict)
+    evidencePack: dict[str, Any] = Field(default_factory=dict)
+    validation: dict[str, Any] = Field(default_factory=dict)
+    professionalInterpretation: dict[str, Any] = Field(default_factory=dict)
+
+
+class PaperChunkOut(BaseModel):
+    type: str
+    content: str
+    ordinal: int
+
+
+class PaperDetailOut(PaperDatabaseItemOut):
+    chunks: list[PaperChunkOut] = Field(default_factory=list)
+
+
+class PaperCreateRequest(BaseModel):
+    id: str | None = None
+    title: str = Field(..., min_length=1, max_length=500)
+    authors: list[str] = Field(..., min_length=1)
+    journal: str = Field(..., min_length=1, max_length=200)
+    year: int = Field(..., ge=1900, le=2100)
+    doi: str = ""
+    url: str = ""
+    topics: list[str] = Field(..., min_length=1)
+    evidenceType: str = "Manual"
+    abstractPreview: str = Field(..., min_length=1, max_length=3000)
+    claim: str = Field(..., min_length=1, max_length=2000)
+    evidence: str = Field(..., min_length=1, max_length=3000)
+    reasoning: str = Field(..., min_length=1, max_length=3000)
+
+
+class PaperStorageOut(BaseModel):
+    path: str
+    papers: int
+    topics: int
+    chunks: int
+    relations: int
+    sizeBytes: int
+    status: str
+
+
+class PaperArchitectureOut(BaseModel):
+    name: str
+    pipeline: list[dict[str, str]]
+    parserSlots: list[str]
+    retrievalModes: list[str]
+    storageUnits: list[str]
+    structuredFields: list[str]
+    generationSchema: list[str]
+    validationChecks: list[str]
+
+
+class PaperDatabaseResponseOut(BaseModel):
+    query: str
+    filters: dict[str, Any]
+    total: int
+    items: list[PaperDatabaseItemOut]
+    topicCounts: dict[str, int]
+    yearRange: dict[str, int]
+    architecture: PaperArchitectureOut
+    queryPlan: dict[str, Any]
+    generatedAt: str
+
+
 class TopicSignalOut(BaseModel):
     key: str
     label: str
@@ -142,6 +224,56 @@ class RagResponseOut(BaseModel):
     suggestedQuestions: list[str]
     event: EventOut
     generatedAt: str
+    mode: str
+
+
+class RagAnythingDocumentRequest(BaseModel):
+    filePath: str = Field(..., min_length=1, max_length=1000)
+    docId: str | None = Field(default=None, max_length=300)
+    parseMethod: str | None = Field(default=None, max_length=30)
+    parser: str | None = Field(default=None, max_length=30)
+
+
+class RagAnythingEventIngestRequest(BaseModel):
+    eventId: str
+    hours: int = Field(default=24, ge=1, le=168)
+    minMag: float = Field(default=3.0)
+    cohortLimit: int = Field(default=5000, ge=1, le=20000)
+    paperLimit: int = Field(default=12, ge=1, le=20)
+    yearMin: int = Field(default=2015, ge=1990, le=2100)
+    force: bool = False
+
+
+class RagAnythingQueryRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
+    mode: str | None = Field(default=None, max_length=30)
+    vlmEnhanced: bool | None = None
+
+
+class RagAnythingStatusOut(BaseModel):
+    enabled: bool
+    available: bool
+    reason: str
+    workingDir: str
+    outputDir: str
+    documentDir: str
+    parser: str
+    parseMethod: str
+    queryMode: str
+
+
+class RagAnythingIngestOut(BaseModel):
+    status: str
+    mode: str
+    documents: int = 0
+    storePath: str
+    message: str
+
+
+class RagAnythingQueryOut(BaseModel):
+    question: str
+    answer: str
+    retrievalMode: str
     mode: str
 
 
