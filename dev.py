@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse, urlunparse
+import getpass
 import os
 import platform
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -243,8 +245,73 @@ def read_env_value(path: Path, key: str) -> str | None:
     return None
 
 
+def write_env_value(path: Path, key: str, value: str) -> None:
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    replacement = f"{key}={value}"
+    for index, raw_line in enumerate(lines):
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, _ = line.split("=", 1)
+        if name.strip() == key:
+            lines[index] = replacement
+            break
+    else:
+        lines.append(replacement)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def configured_database_url() -> str:
     return os.getenv("DATABASE_URL") or read_env_value(BACKEND_ENV, "DATABASE_URL") or DEFAULT_DATABASE_URL
+
+
+def mask_database_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.password is None:
+        return url
+    username = quote(unquote(parsed.username or ""), safe="")
+    host = parsed.hostname or "127.0.0.1"
+    netloc = f"{username}:***@{host}"
+    if parsed.port:
+        netloc += f":{parsed.port}"
+    return urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
+
+
+def persist_database_url(url: str) -> None:
+    if os.getenv("DATABASE_URL"):
+        return
+    if read_env_value(BACKEND_ENV, "DATABASE_URL") == url:
+        return
+    write_env_value(BACKEND_ENV, "DATABASE_URL", url)
+    log(f"Saved DATABASE_URL to {BACKEND_ENV.relative_to(ROOT)}: {mask_database_url(url)}")
+
+
+def prompt_database_credentials(url: str, *, force: bool = False) -> str:
+    parsed = urlparse(url)
+    if not parsed.scheme.startswith("postgresql"):
+        return url
+    if not force and parsed.username is not None and parsed.password is not None:
+        return url
+    if not sys.stdin.isatty():
+        return url
+
+    print("请输入您postgresql用户名/密码", flush=True)
+    default_user = unquote(parsed.username) if parsed.username else "postgres"
+    username = input("postgresql用户名 : ").strip() or default_user
+    while True:
+        password = getpass.getpass("postgresql密码: ")
+        if password:
+            break
+        warn("postgresql密码不能为空，请重新输入。")
+
+    host = parsed.hostname or "127.0.0.1"
+    netloc = quote(username, safe="")
+    netloc += f":{quote(password, safe='')}"
+    netloc += f"@{host}"
+    if parsed.port:
+        netloc += f":{parsed.port}"
+
+    return urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
 
 
 def parse_database_url(url: str) -> dict[str, str | int | None]:
@@ -283,7 +350,7 @@ def psql_base_args(psql: str, db_config: dict[str, str | int | None]) -> list[st
 def psql_env(db_config: dict[str, str | int | None]) -> dict[str, str]:
     env = os.environ.copy()
     password = db_config["password"]
-    if password:
+    if password is not None:
         env["PGPASSWORD"] = str(password)
     return env
 
@@ -309,22 +376,38 @@ def ensure_database() -> bool:
         return False
 
     try_start_postgres()
-    db_config = parse_database_url(configured_database_url())
-    database = str(db_config["database"])
-    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]{0,62}", database):
-        warn(f"Skipping automatic database creation for unsupported database name: {database}")
-        return False
+    database_url = configured_database_url()
+    db_config: dict[str, str | int | None] | None = None
+    exists: subprocess.CompletedProcess[str] | None = None
+    for attempt in range(3):
+        database_url = prompt_database_credentials(database_url, force=attempt > 0)
+        os.environ["DATABASE_URL"] = database_url
+        db_config = parse_database_url(database_url)
+        base_args = psql_base_args(psql, db_config)
+        env = psql_env(db_config)
+        database = str(db_config["database"])
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]{0,62}", database):
+            warn(f"Skipping automatic database creation for unsupported database name: {database}")
+            return False
 
-    base_args = psql_base_args(psql, db_config)
-    env = psql_env(db_config)
-    exists_sql = f"SELECT 1 FROM pg_database WHERE datname = {sql_literal(database)}"
-    exists = run_capture(base_args + ["-d", "postgres", "-tAc", exists_sql], env=env)
-    if exists.returncode != 0:
+        exists_sql = f"SELECT 1 FROM pg_database WHERE datname = {sql_literal(database)}"
+        exists = run_capture(base_args + ["-d", "postgres", "-tAc", exists_sql], env=env)
+        if exists.returncode == 0:
+            persist_database_url(database_url)
+            break
         warn("Could not connect to PostgreSQL with the configured DATABASE_URL.")
-        warn("Set Project-Code/backend/.env DATABASE_URL for your local PostgreSQL user/password.")
         if exists.stderr.strip():
             warn(exists.stderr.strip().splitlines()[-1])
+        if not sys.stdin.isatty() or attempt == 2:
+            warn("Set Project-Code/backend/.env DATABASE_URL for your local PostgreSQL user/password.")
+            return False
+        warn("请重新输入 PostgreSQL 用户名和密码。")
+
+    if db_config is None or exists is None:
         return False
+    database = str(db_config["database"])
+    base_args = psql_base_args(psql, db_config)
+    env = psql_env(db_config)
 
     if exists.stdout.strip() != "1":
         create_sql = f"CREATE DATABASE {sql_identifier(database)}"
@@ -352,15 +435,53 @@ def setup() -> int:
     ensure_backend_env()
     ensure_backend_venv()
     ensure_frontend_deps()
-    ensure_database()
-    return 0
+    return 0 if ensure_database() else 1
+
+
+def is_port_available(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.2)
+        return sock.connect_ex((host, port)) != 0
+
+
+def available_port(host: str, preferred: int) -> int:
+    port = preferred
+    while port < preferred + 100:
+        if is_port_available(host, port):
+            return port
+        port += 1
+    raise RuntimeError(f"No available port found near {preferred}")
+
+
+def configured_port(name: str, default: int, host: str) -> str:
+    raw_value = os.getenv(name)
+    if raw_value:
+        return raw_value
+    port = available_port(host, default)
+    if port != default:
+        warn(f"{name} default port {default} is already in use; using {port}.")
+    return str(port)
+
+
+def wait_for_port(host: str, port: int, proc: subprocess.Popen[str], name: str, timeout: float = 20.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        code = proc.poll()
+        if code is not None:
+            warn(f"{name} exited with code {code}")
+            return False
+        if not is_port_available(host, port):
+            return True
+        time.sleep(0.2)
+    warn(f"Timed out waiting for {name} to listen on {host}:{port}.")
+    return False
 
 
 def with_dev_env() -> tuple[dict[str, str], dict[str, str], str, str]:
     backend_host = os.getenv("BACKEND_HOST", "127.0.0.1")
-    backend_port = os.getenv("BACKEND_PORT", "8001")
     frontend_host = os.getenv("FRONTEND_HOST", "127.0.0.1")
-    frontend_port = os.getenv("FRONTEND_PORT", "5173")
+    backend_port = configured_port("BACKEND_PORT", 8001, backend_host)
+    frontend_port = configured_port("FRONTEND_PORT", 5173, frontend_host)
 
     backend_origin = f"http://{backend_host}:{backend_port}"
     frontend_origin = f"http://{frontend_host}:{frontend_port}"
@@ -414,7 +535,9 @@ def terminate(proc: subprocess.Popen[str], name: str) -> None:
 
 
 def up() -> int:
-    setup()
+    setup_result = setup()
+    if setup_result != 0:
+        return setup_result
     npm = find_npm()
     if not npm:
         error("npm not found. Install Node.js 20+ first.")
@@ -426,6 +549,12 @@ def up() -> int:
 
     log(command_text(backend_cmd))
     backend_proc = subprocess.Popen([str(part) for part in backend_cmd], cwd=str(BACKEND_DIR), env=backend_env)
+    backend_host = backend_env["BACKEND_HOST"]
+    backend_port = int(backend_env["BACKEND_PORT"])
+    if not wait_for_port(backend_host, backend_port, backend_proc, "backend"):
+        terminate(backend_proc, "backend")
+        return 1
+
     log(command_text(frontend_cmd))
     frontend_proc = subprocess.Popen([str(part) for part in frontend_cmd], cwd=str(FRONTEND_DIR), env=frontend_env)
 
@@ -456,7 +585,9 @@ def up() -> int:
 
 
 def test() -> int:
-    setup()
+    setup_result = setup()
+    if setup_result != 0:
+        return setup_result
     run_checked([backend_python(), "-m", "unittest", "discover", "-s", "tests"], cwd=BACKEND_DIR)
     npm = find_npm()
     if not npm:

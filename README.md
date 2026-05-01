@@ -239,6 +239,8 @@ DATABASE_URL=postgresql+psycopg://postgres:你的PostgreSQL密码@127.0.0.1:5432
 py dev.py setup
 ```
 
+也可以按终端提示直接输入 PostgreSQL 用户名和密码；连接成功后，`dev.py` 会把可用的 `DATABASE_URL` 保存到 `Project-Code/backend/.env`，下次启动不用重复输入。
+
 ### 手动确认 PostGIS
 
 如果提示 PostGIS 无法启用，说明 PostgreSQL 装好了，但 PostGIS 没装好或没匹配当前 PostgreSQL 版本。
