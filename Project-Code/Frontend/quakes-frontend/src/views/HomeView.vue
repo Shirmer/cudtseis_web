@@ -22,10 +22,8 @@ const dbOptions: DropdownOption[] = [
 // 点击"地震目录" -> 进入原来的 Dashboard 功能
 const handleDbSelect = (key: string | number) => {
   if (key === 'catalog') {
-    console.log('通过目录进入工作台...')
     router.push('/dashboard') 
   } else if (key === 'papers') {
-    console.log('跳转到论文库')
     // router.push('/papers') 
   }
 }
@@ -400,7 +398,7 @@ const papers = [
 }
 
 /* --- 3. Parallax Window --- */
-.parallax-window { position: relative; height: 600px; width: 100%; background-image: url('/chengdu_moutain.jpg'); background-attachment: fixed; background-position: center; background-size: cover; display: flex; align-items: center; justify-content: center; }
+.parallax-window { position: relative; height: 600px; width: 100%; background-image: url('/snow_moutain.png'); background-attachment: fixed; background-position: center; background-size: cover; display: flex; align-items: center; justify-content: center; }
 .parallax-window::before { content: ""; position: absolute; inset: 0; background: rgba(17, 24, 39, 0.7); z-index: 0; }
 .parallax-content { position: relative; z-index: 1; width: 100%; max-width: 1000px; color: #fff; display: flex; flex-direction: column; }
 .window-header { font-size: 12px; letter-spacing: 3px; font-weight: bold; color: #dc2626; margin-bottom: 20px; font-family: sans-serif; }

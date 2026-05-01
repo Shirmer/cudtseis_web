@@ -7,8 +7,17 @@ import { ref, onMounted, watch, nextTick } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
+interface EarthquakeEvent {
+  lon: number | null
+  lat: number | null
+  mag: number | null
+  time: string | null
+  place: string | null
+  depth_km: number | null
+}
+
 const props = defineProps<{
-  events: any[]
+  events: EarthquakeEvent[]
 }>()
 
 const mapEl = ref<HTMLDivElement | null>(null)
@@ -50,14 +59,15 @@ function render() {
     const dx = 360 * k
 
     props.events.forEach(q => {
-      if (!q.lon || !q.lat) return
+      if (q.lon == null || q.lat == null) return
 
       // 核心技巧：原始经度 + 偏移量 = 在副本上的正确位置
       const renderLon = q.lon + dx
       
-      const mag = q.mag || 0
+      const mag = q.mag ?? 0
       const r = Math.max(3, mag * 2 * baseRadius)
       const color = mag >= 6 ? '#dc2626' : mag >= 5 ? '#f59e0b' : mag >= 4 ? '#fbbf24' : '#10b981'
+      const depth = q.depth_km == null ? '-' : `${q.depth_km} km`
 
       L.circleMarker([q.lat, renderLon], {
         radius: r,
@@ -74,7 +84,7 @@ function render() {
           </div>
           <div class="popup-body">
             <div class="row">📍 ${q.place || 'Unknown'}</div>
-            <div class="row">🌊 深度 ${q.depth_km} km</div>
+            <div class="row">🌊 深度 ${depth}</div>
           </div>
         </div>`,
         { minWidth: 200 }
