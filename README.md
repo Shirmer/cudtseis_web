@@ -164,6 +164,16 @@ py dev.py setup
 - 尝试创建 `quakes` 数据库
 - 尝试启用 PostGIS 扩展
 
+`dev.py` 会把依赖缓存和安装记录放在项目目录里：
+
+- 后端虚拟环境：`Project-Code/backend/.venv`
+- pip 下载缓存：`Project-Code/backend/.data/pip-cache`
+- pip 安装记录：`Project-Code/backend/.data/pip-stamps`
+- 前端依赖：`Project-Code/Frontend/quakes-frontend/node_modules`
+- npm 下载缓存：`Project-Code/Frontend/quakes-frontend/.npm-cache`
+
+依赖文件没有变化时，`python dev.py` 会跳过重复安装。只有首次安装、依赖清单变化，或显式设置 `FORCE_INSTALL=1` 时才会重新安装。
+
 ### pip 镜像源说明
 
 国内网络、校园网或公司网经常会在安装 Python 依赖时出现类似错误：
@@ -219,6 +229,206 @@ py dev.py
 PIP_INDEX_URL=https://pypi.org/simple python dev.py setup
 ```
 
+### 大模型 API 配置说明
+
+普通开发不一定需要大模型 API；没有 API key 时，文献检索会使用本地 hash embedding fallback，问答会使用本地模板 fallback。
+
+如果需要让文献问答和地震地质分析调用大模型，在自己的 `Project-Code/backend/.env` 里配置兼容 OpenAI 的服务：
+
+```env
+OPENAI_API_KEY=你的 API Key
+OPENAI_BASE_URL=你的 OpenAI 兼容接口地址
+GEO_RAG_CHAT_MODEL=你的聊天模型名
+```
+
+火山方舟豆包在线推理可参考：
+
+```env
+OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+GEO_RAG_CHAT_MODEL=doubao-seed-2-0-lite-260215
+```
+
+注意：火山方舟的在线推理 API 和 Coding Plan API 地址不同。地质文献问答使用在线推理地址 `api/v3`；如果你在控制台创建的是推理接入点，也可以把 `GEO_RAG_CHAT_MODEL` 改成控制台给出的接入点 ID。
+
+如果该服务只提供聊天/推理模型，不提供 embeddings 接口，可以把 embedding 模型留空：
+
+```env
+OPENAI_EMBEDDING_MODEL=
+```
+
+这样系统会继续用本地 hash embedding 做 MVP 检索，同时用配置的大模型生成回答。API key 只放在本机 `.env`，不要写入 `.env.example`、README 或源码。
+
+### Embedding 与 Qdrant 本地模式
+
+Geo RAG v2 推荐使用火山 VikingDB 的 `bge-m3` 做中英混合文献 embedding，使用 Qdrant 本地持久化模式做向量存储。先安装可选依赖：
+
+```bash
+python dev.py setup-qdrant
+```
+
+这会把 `qdrant-client`、`vikingdb-python-sdk`、`PyMuPDF` 安装到 `Project-Code/backend/.venv`，不会安装系统服务，也不会写到项目目录外。
+
+本机配置示例：
+
+```env
+VIKINGDB_AK=你的火山AK
+VIKINGDB_SK=你的火山SK
+VIKINGDB_HOST=api-vikingdb.volces.com
+VIKINGDB_REGION=cn-beijing
+
+GEO_RAG_EMBEDDING_PROVIDER=vikingdb
+GEO_RAG_EMBEDDING_MODEL=bge-m3
+GEO_RAG_EMBEDDING_DIM=1024
+GEO_RAG_EMBEDDING_BATCH_SIZE=32
+GEO_RAG_INDEX_VERSION=geo-rag-v2
+
+QDRANT_USE_LOCAL=true
+QDRANT_LOCAL_PATH=./.data/qdrant-local
+QDRANT_COLLECTION=geo_knowledge_v2
+```
+
+如果 VikingDB 权限未开通，后端会自动降级为 `vikingdb-fallback`，使用本地 hash 向量保持项目可运行。火山返回 `check user strategy failed` 时，通常需要在控制台确认 VikingDB/向量化模型权限、IAM 策略或服务开通状态。
+
+### RAG-Anything / 高级 RAG 说明
+
+本项目后续目标会借鉴 RAG-Anything、ResearchClaw 等方案，但普通协作开发不默认安装这些重依赖。默认的 `python dev.py setup` 只安装项目运行和 MVP 文献知识库需要的轻量依赖。
+
+只有在你负责 RAGAnything/MinerU 解析适配时，才运行：
+
+```bash
+python dev.py setup-raganything
+```
+
+Windows：
+
+```powershell
+py dev.py setup-raganything
+```
+
+要实际启用 RAG-Anything 运行时，还需要在 `Project-Code/backend/.env` 中配置：
+
+```env
+RAGANYTHING_ENABLED=true
+OPENAI_API_KEY=你的 API Key
+```
+
+说明：`raganything[text]` 依赖 MinerU、Lightrag、OpenCV、ONNX、Gradio 等较大的包，首次安装会明显慢一些。如果遇到 `incomplete-download` 或网络中断，重新运行 `python dev.py setup-raganything`。
+
+如果看到类似：
+
+```text
+Cannot install mineru[core,pipeline]==3.1.6 and shapely==2.0.6
+ResolutionImpossible
+```
+
+这不是业务代码错误，而是把高级解析实验依赖装进默认环境后触发了依赖冲突。普通开发不要安装 `setup-raganything`；确实要做解析适配时，使用项目提供的 `Project-Code/backend/requirements-raganything.txt`，其中只启用 `mineru[core]`，避免默认开发环境被 `pipeline` 依赖拖垮。
+
+### 外部方案参考快照
+
+项目根目录的 `references/source-snapshots/` 保存了从 RAGAnything / ResearchClaw / literature-review 里挑出的关键源码和文档，供后续设计高级 RAG 时参考。
+
+不要把完整的外部仓库、它们自己的 `.venv`、`node_modules`、解析输出、样例 PDF 或缓存提交进本项目。完整导入目录 `Agent-RAG/`、`AutoResearchClaw/`、`literature-review/` 已经加入 `.gitignore`；协作开发只需要保留 `references/` 里的轻量快照。
+
+### MVP 地质文献知识库说明
+
+当前 MVP 已经提供“先本地建库，再基于库做问答/分析”的后端接口：
+
+- `POST /api/knowledge/init`：初始化知识库向量存储
+- `POST /api/documents/ingest`：导入本地 PDF/TXT/Markdown 文献
+- `POST /api/knowledge/search`：检索知识单元
+- `POST /api/rag/papers/query`：论文/文献知识库问答
+- `POST /api/events/{event_id}/geo-analysis`：结合地震事件和文献证据做地质分析
+
+MVP 默认可自动 fallback。Geo RAG v2 推荐使用 Qdrant 本地持久化模式；没有 Qdrant 客户端时后端会自动使用本地 JSON fallback，适合少量文献调试。
+
+如果要对齐团队向量库环境，先安装可选 Qdrant 客户端：
+
+```bash
+python dev.py setup-qdrant
+```
+
+Windows：
+
+```powershell
+py dev.py setup-qdrant
+```
+
+默认推荐本地持久化模式，不需要 Docker：
+
+```env
+QDRANT_USE_LOCAL=true
+QDRANT_LOCAL_PATH=./.data/qdrant-local
+QDRANT_COLLECTION=geo_knowledge_v2
+```
+
+如果团队要连接远程 Qdrant Server，再改成：
+
+```env
+QDRANT_USE_LOCAL=false
+QDRANT_URL=http://127.0.0.1:6333
+QDRANT_COLLECTION=geo_knowledge_v2
+```
+
+如果同事电脑暂时没有 Qdrant 客户端，后端仍然可以启动，会自动退回到本地 JSON fallback 向量库，适合少量文献调试；正式协作和迁移云端时应使用 Qdrant。
+
+导入一篇本地文献示例：
+
+前端“文献入库”的文件路径要填写具体文件，不能只填目录。比如已经把 PDF 放到 `Project-Code/backend/.data/geo_rag_documents/` 后，应填写：
+
+```text
+Project-Code/backend/.data/geo_rag_documents/2604.27126v1.pdf
+```
+
+```bash
+curl -X POST http://127.0.0.1:8001/api/documents/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "filePath": "Project-Code/backend/.data/geo_rag_documents/example.pdf",
+    "title": "Example Geology Paper",
+    "authors": ["Author A"],
+    "year": 2024,
+    "force": true
+  }'
+```
+
+检索/问答示例：
+
+```bash
+curl -X POST http://127.0.0.1:8001/api/rag/papers/query \
+  -H "Content-Type: application/json" \
+  -d '{"question":"这批文献中关于断层破裂和构造背景有哪些证据？","topK":6}'
+```
+
+### PostgreSQL 账号密码说明
+
+默认配置尽量不写账号密码：
+
+```env
+DATABASE_URL=postgresql+psycopg:///quakes
+```
+
+这个写法会优先使用本机 PostgreSQL 的本地连接方式和当前系统用户，适合 macOS/Homebrew 这类常见开发环境。`dev.py` 会先尝试免密连接；只有本机 PostgreSQL 明确要求密码时，才会提示输入你自己电脑的 PostgreSQL 用户名和密码。
+
+每位同事的数据库账号密码只应该存在于自己的：
+
+```text
+Project-Code/backend/.env
+```
+
+`.env` 已经被 `.gitignore` 忽略，不应该提交到 Git。不要把某一个人的 PostgreSQL 用户名或密码写进 README、`.env.example` 或源码。
+
+如果你的本机 PostgreSQL 需要账号密码，可以在 `.env` 里使用：
+
+```env
+DATABASE_URL=postgresql+psycopg://postgres:你的PostgreSQL密码@127.0.0.1:5432/quakes
+```
+
+如果你的 PostgreSQL 允许指定用户但不需要密码，也可以写：
+
+```env
+DATABASE_URL=postgresql+psycopg://你的用户名@127.0.0.1:5432/quakes
+```
+
 ### Windows 常见数据库配置
 
 如果 `setup` 提示数据库连接失败，编辑：
@@ -239,7 +449,7 @@ DATABASE_URL=postgresql+psycopg://postgres:你的PostgreSQL密码@127.0.0.1:5432
 py dev.py setup
 ```
 
-也可以按终端提示直接输入 PostgreSQL 用户名和密码；连接成功后，`dev.py` 会把可用的 `DATABASE_URL` 保存到 `Project-Code/backend/.env`，下次启动不用重复输入。
+也可以按终端提示直接输入 PostgreSQL 用户名和密码；如果本机允许免密，密码处可以直接回车。连接成功后，`dev.py` 会把可用的 `DATABASE_URL` 保存到 `Project-Code/backend/.env`，下次启动不用重复输入。
 
 ### 手动确认 PostGIS
 
@@ -297,6 +507,7 @@ python dev.py check   # 检查环境，不安装
 python dev.py setup   # 安装依赖、初始化数据库，不启动
 python dev.py up      # 初始化后启动，等同 python dev.py
 python dev.py test    # 后端测试 + 前端类型检查 + 前端构建
+python dev.py clean   # 删除本项目内的依赖目录和下载缓存
 ```
 
 Windows 把 `python` 换成 `py` 即可。
@@ -333,13 +544,39 @@ py dev.py
 - `VITE_API_BASE`，默认 `/api`
 - `VITE_PROXY_TARGET`，默认 `http://<BACKEND_HOST>:<BACKEND_PORT>`
 - `CORS_ORIGINS`，默认自动包含当前前端地址
-- `DATABASE_URL`，数据库连接串
+- `DATABASE_URL`，数据库连接串；默认 `postgresql+psycopg:///quakes`，尽量使用本机免密连接
 - `PIP_INDEX_URL`，默认 `https://pypi.tuna.tsinghua.edu.cn/simple`
 - `PIP_TRUSTED_HOST`，默认 `pypi.tuna.tsinghua.edu.cn`
+- `PIP_CACHE_DIR`，默认 `Project-Code/backend/.data/pip-cache`
+- `QDRANT_URL`，MVP 地质文献知识库的 Qdrant 地址，默认 `http://127.0.0.1:6333`
+- `QDRANT_COLLECTION`，MVP 地质文献知识库集合名，默认 `geo_knowledge_v1`
+- `GEO_RAG_INDEX_VERSION`，知识库索引版本，默认 `geo-rag-v1`
 - `SKIP_DB_SETUP=1`，跳过数据库自动初始化
-- `FORCE_INSTALL=1`，强制重新安装前端依赖
+- `FORCE_INSTALL=1`，强制重新安装后端和前端依赖
 
-## 8. 常见问题
+## 8. 清理本机依赖
+
+如果以后要卸载本项目的本地依赖，或者想重新安装一个干净环境，在仓库根目录运行：
+
+```bash
+python dev.py clean
+```
+
+Windows：
+
+```powershell
+py dev.py clean
+```
+
+这只会删除项目目录里的依赖和下载缓存，不会删除源码、`.env`、数据库或文献数据：
+
+- `Project-Code/backend/.venv`
+- `Project-Code/backend/.data/pip-cache`
+- `Project-Code/backend/.data/pip-stamps`
+- `Project-Code/Frontend/quakes-frontend/node_modules`
+- `Project-Code/Frontend/quakes-frontend/.npm-cache`
+
+## 9. 常见问题
 
 ### 找不到 node 或 npm
 
@@ -364,7 +601,7 @@ macOS Homebrew 常见路径：
 /opt/homebrew/opt/postgresql@17/bin
 ```
 
-### 数据库密码错误
+### 数据库连接失败或密码错误
 
 编辑：
 
@@ -372,7 +609,7 @@ macOS Homebrew 常见路径：
 Project-Code/backend/.env
 ```
 
-改成正确密码后重新运行：
+如果本机不能免密连接，改成你自己电脑的 PostgreSQL 用户名和密码后重新运行：
 
 ```bash
 python dev.py setup
@@ -452,7 +689,7 @@ http://127.0.0.1:8001/docs
 BACKEND_PORT=18001 FRONTEND_PORT=15173 python dev.py
 ```
 
-## 9. 协作约定
+## 10. 协作约定
 
 不要提交本机生成物或个人配置：
 

@@ -10,7 +10,7 @@ DATA_DIR = BACKEND_DIR / ".data"
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(BACKEND_DIR / ".env"),
+        env_file=(str(BACKEND_DIR / ".env"), str(BACKEND_DIR / ".env.local")),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -42,6 +42,25 @@ class Settings(BaseSettings):
     raganything_enable_table_processing: bool = True
     raganything_enable_equation_processing: bool = True
     paper_database_path: str = str(DATA_DIR / "papers.sqlite")
+    qdrant_use_local: bool = False
+    qdrant_local_path: str = str(DATA_DIR / "qdrant-local")
+    qdrant_url: str = "http://127.0.0.1:6333"
+    qdrant_api_key: str = ""
+    qdrant_collection: str = "geo_knowledge_v1"
+    geo_rag_chat_model: str = "gpt-4o-mini"
+    geo_rag_index_version: str = "geo-rag-v1"
+    geo_rag_embedding_provider: str = "auto"
+    geo_rag_embedding_model: str = ""
+    geo_rag_embedding_dim: int = 1536
+    geo_rag_embedding_batch_size: int = 32
+    geo_rag_chunk_chars: int = 1200
+    geo_rag_chunk_overlap: int = 180
+    geo_rag_storage_root: str = str(DATA_DIR / "geo_rag_documents")
+    geo_rag_fallback_store_path: str = str(DATA_DIR / "geo_rag_vector_fallback.json")
+    vikingdb_ak: str = ""
+    vikingdb_sk: str = ""
+    vikingdb_host: str = "vikingdb.cn-beijing.volcengineapi.com"
+    vikingdb_region: str = "cn-beijing"
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     openai_embedding_model: str = "text-embedding-3-small"

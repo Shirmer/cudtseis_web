@@ -20,11 +20,17 @@ Project-Code/backend/.venv/
 # Local environment files
 .env
 Project-Code/backend/.env
+Project-Code/backend/.env.local
 Project-Code/Frontend/quakes-frontend/.env
 Project-Code/Frontend/quakes-frontend/.env.local
 
 # Backend runtime data
 Project-Code/backend/.data/
+
+# Imported external repositories are kept only as lightweight snapshots under references/.
+/Agent-RAG/
+/AutoResearchClaw/
+/literature-review/
 
 # Frontend dependencies/build output
 node_modules/

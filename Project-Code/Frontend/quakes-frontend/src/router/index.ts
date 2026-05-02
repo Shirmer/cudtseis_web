@@ -4,6 +4,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import DashboardView from '../views/DashboardView.vue'
 import HomeView from '../views/HomeView.vue'
 import HistoryData from '../views/HistoryData.vue'
+import KnowledgeView from '../views/KnowledgeView.vue'
 import PaperDetailView from '../views/PaperDetailView.vue'
 import PapersView from '../views/PapersView.vue'
 
@@ -34,6 +35,11 @@ const router = createRouter({
       path: '/papers',
       name: 'papers',
       component: PapersView
+    },
+    {
+      path: '/knowledge',
+      name: 'knowledge',
+      component: KnowledgeView
     },
     {
       path: '/papers/:paperId',

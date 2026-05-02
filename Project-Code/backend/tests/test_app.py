@@ -27,6 +27,11 @@ class AppTests(unittest.TestCase):
         self.assertIn("/api/events/{event_id}/workflow", paths)
         self.assertIn("/api/papers", paths)
         self.assertIn("/api/papers/architecture", paths)
+        self.assertIn("/api/knowledge/init", paths)
+        self.assertIn("/api/knowledge/search", paths)
+        self.assertIn("/api/documents/ingest", paths)
+        self.assertIn("/api/rag/papers/query", paths)
+        self.assertIn("/api/events/{event_id}/geo-analysis", paths)
 
     def test_paper_database_search_returns_cer_items(self):
         app = create_app(create_tables=False, enable_poller=False)

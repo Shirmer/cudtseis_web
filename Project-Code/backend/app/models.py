@@ -3,9 +3,9 @@ PostGIS表
 '''
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Float, DateTime, Integer
+from sqlalchemy import JSON, DateTime, Float, Integer, String, Text, UniqueConstraint, func
 from geoalchemy2 import Geometry
 from datetime import datetime
 
@@ -44,3 +44,66 @@ class Earthquake(Base):
     status: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     location_source: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     mag_source: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
+class GeoDocument(Base):
+    __tablename__ = "geo_documents"
+
+    id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    paper_id: Mapped[str] = mapped_column(String(160), index=True)
+    title: Mapped[str] = mapped_column(String(500), default="")
+    authors_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    doi: Mapped[str] = mapped_column(String(200), index=True, default="")
+    source_url: Mapped[str] = mapped_column(String(1000), default="")
+    file_name: Mapped[str] = mapped_column(String(500), default="")
+    file_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    parser: Mapped[str] = mapped_column(String(80), default="mvp-text")
+    parser_version: Mapped[str] = mapped_column(String(80), default="mvp-text-v1")
+    status: Mapped[str] = mapped_column(String(40), default="indexed")
+    page_count: Mapped[int] = mapped_column(Integer, default=0)
+    unit_count: Mapped[int] = mapped_column(Integer, default=0)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class KnowledgeUnit(Base):
+    __tablename__ = "knowledge_units"
+    __table_args__ = (
+        UniqueConstraint("document_id", "unit_index", "content_type", name="uq_knowledge_unit_doc_index_type"),
+    )
+
+    id: Mapped[str] = mapped_column(String(220), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(160), index=True)
+    paper_id: Mapped[str] = mapped_column(String(160), index=True)
+    unit_index: Mapped[int] = mapped_column(Integer)
+    content_type: Mapped[str] = mapped_column(String(40), index=True, default="text")
+    text: Mapped[str] = mapped_column(Text)
+    page: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    section: Mapped[str] = mapped_column(String(300), default="")
+    bbox_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    regions_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    faults_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    topics_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    geo_entities_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    modality_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    citation_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    embedding_backend: Mapped[str] = mapped_column(String(80), default="hashing")
+    index_version: Mapped[str] = mapped_column(String(80), index=True)
+    qdrant_point_id: Mapped[str] = mapped_column(String(80), index=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class GeoRagRun(Base):
+    __tablename__ = "geo_rag_runs"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    mode: Mapped[str] = mapped_column(String(80), index=True)
+    question: Mapped[str] = mapped_column(Text)
+    answer: Mapped[str] = mapped_column(Text)
+    retrieval_mode: Mapped[str] = mapped_column(String(120))
+    evidence_pack_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
