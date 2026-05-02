@@ -227,6 +227,123 @@ class RagResponseOut(BaseModel):
     mode: str
 
 
+class KnowledgeInitOut(BaseModel):
+    status: str
+    backend: str
+    collection: str
+    vectorSize: int
+    documents: int
+    units: int
+    indexVersion: str
+    message: str
+    warning: str = ""
+    generatedAt: str
+
+
+class KnowledgeSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=3000)
+    topK: int = Field(default=8, ge=1, le=30)
+    paperId: str | None = Field(default=None, max_length=200)
+    documentId: str | None = Field(default=None, max_length=200)
+    contentType: str | None = Field(default=None, max_length=40)
+    regions: list[str] = Field(default_factory=list)
+    faults: list[str] = Field(default_factory=list)
+    topics: list[str] = Field(default_factory=list)
+
+
+class KnowledgeHitOut(BaseModel):
+    unitId: str
+    documentId: str
+    paperId: str
+    title: str
+    contentType: str
+    text: str
+    page: int | None = None
+    score: float
+    citation: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class KnowledgeSearchOut(BaseModel):
+    query: str
+    topK: int
+    filters: dict[str, Any]
+    backend: str
+    collection: str
+    warning: str = ""
+    embeddingBackend: str
+    results: list[KnowledgeHitOut]
+    generatedAt: str
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
+    storeStats: dict[str, int]
+
+
+class DocumentIngestRequest(BaseModel):
+    filePath: str = Field(..., min_length=1, max_length=1000)
+    paperId: str | None = Field(default=None, max_length=200)
+    documentId: str | None = Field(default=None, max_length=200)
+    title: str | None = Field(default=None, max_length=500)
+    authors: list[str] = Field(default_factory=list)
+    year: int | None = Field(default=None, ge=1500, le=2200)
+    doi: str | None = Field(default=None, max_length=200)
+    sourceUrl: str | None = Field(default=None, max_length=1000)
+    parser: str | None = Field(default=None, max_length=80)
+    force: bool = False
+
+
+class DocumentIngestOut(BaseModel):
+    documentId: str
+    paperId: str
+    title: str
+    status: str
+    parser: str
+    pages: int
+    units: int
+    fileSha256: str
+    vectorStore: dict[str, Any]
+    embeddingBackend: str
+    message: str
+
+
+class DocumentStatusOut(BaseModel):
+    documentId: str
+    paperId: str
+    title: str
+    status: str
+    parser: str
+    pages: int
+    units: int
+    fileSha256: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    createdAt: str
+    updatedAt: str
+
+
+class PaperRagQueryRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=3000)
+    paperId: str | None = Field(default=None, max_length=200)
+    topK: int = Field(default=6, ge=1, le=20)
+    filters: dict[str, Any] = Field(default_factory=dict)
+
+
+class GeoAnalysisRequest(BaseModel):
+    question: str = Field(default="请结合地质学文献，对该地震事件给出谨慎的专业分析。", max_length=3000)
+    topK: int = Field(default=8, ge=1, le=20)
+
+
+class GeoRagResponseOut(BaseModel):
+    question: str
+    answer: str
+    retrievalMode: str
+    mode: str
+    event: dict[str, Any] | None = None
+    evidencePack: dict[str, Any]
+    retrievedContexts: list[RetrievedContextOut]
+    suggestedQuestions: list[str]
+    generatedAt: str
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
+
+
 class RagAnythingDocumentRequest(BaseModel):
     filePath: str = Field(..., min_length=1, max_length=1000)
     docId: str | None = Field(default=None, max_length=300)

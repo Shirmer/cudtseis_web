@@ -15,6 +15,10 @@ const dbOptions: DropdownOption[] = [
   {
     label: '论文',
     key: 'papers'
+  },
+  {
+    label: '文献知识库',
+    key: 'knowledge'
   }
 ]
 
@@ -25,6 +29,8 @@ const handleDbSelect = (key: string | number) => {
     router.push('/dashboard') 
   } else if (key === 'papers') {
     router.push('/papers')
+  } else if (key === 'knowledge') {
+    router.push('/knowledge')
   }
 }
 
