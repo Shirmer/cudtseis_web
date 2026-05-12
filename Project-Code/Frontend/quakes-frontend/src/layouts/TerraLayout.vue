@@ -12,8 +12,7 @@ const router = useRouter()
       <!-- 1. 顶部品牌区 -->
       <div class="nav-brand">
         <div class="brand-left">
-          <!-- 这里放Logo，如果没有图就显示文字 -->
-          <span class="brand-logo-icon">🧠</span>
+          <span class="brand-logo-icon">T</span>
           <span class="brand-text">Terra</span>
         </div>
         <button class="close-btn" title="隐藏侧边栏">
@@ -22,56 +21,28 @@ const router = useRouter()
       </div>
 
       <!-- 2. 核心入口 (高亮：聊天) -->
-      <div class="nav-item active-chat" @click="router.push('/')">
+      <div class="nav-item active-chat" @click="router.push('/terra/chat')">
         <span class="icon">💬</span> 
-        <span class="text">聊天</span>
+        <span class="text">证据问答</span>
       </div>
 
-      <!-- 3. 滚动功能列表 -->
       <div class="scroll-menu">
-        <div class="nav-item">
-          <span class="icon">📝</span> <span class="text">REC笔记</span>
+        <span class="nav-section">文献流程</span>
+        <div class="nav-item" @click="router.push('/papers')">
+          <span class="icon">⌕</span> <span class="text">论文检索</span>
         </div>
-        <div class="nav-item">
-          <span class="icon">🪐</span> <span class="text">Agent</span>
-        </div>
-        <div class="nav-item">
-          <span class="icon">✒️</span> <span class="text">写作</span>
-        </div>
-        <div class="nav-item">
-          <span class="icon">🌐</span> <span class="text">翻译</span>
-        </div>
-        <div class="nav-item">
-          <span class="icon">👁️</span> <span class="text">OCR</span>
-        </div>
-        <div class="nav-item">
-          <span class="icon">🛡️</span> <span class="text">语法</span>
-        </div>
-        <div class="nav-item">
-          <span class="icon">❓</span> <span class="text">提问</span>
-        </div>
-        <div class="nav-item">
-          <span class="icon">🔍</span> <span class="text">搜索</span>
-        </div>
-        <div class="nav-item">
-          <span class="icon">🧰</span> <span class="text">工具</span>
+        <div class="nav-item" @click="router.push('/knowledge')">
+          <span class="icon">⬡</span> <span class="text">知识库导入</span>
         </div>
 
-        <!-- 分割线 -->
         <div class="divider"></div>
 
-        <!-- 下半部分功能列表 (带箭头) -->
-        <div class="nav-item">
-          <span class="icon">🎨</span> <span class="text">绘画大师</span>
-          <span class="arrow">→</span>
+        <span class="nav-section">地震数据</span>
+        <div class="nav-item" @click="router.push('/dashboard')">
+          <span class="icon">◉</span> <span class="text">实时仪表盘</span>
         </div>
-        <div class="nav-item">
-          <span class="icon">📄</span> <span class="text">ChatPDF</span>
-          <span class="arrow">→</span>
-        </div>
-        <div class="nav-item">
-          <span class="icon">📚</span> <span class="text">Wisebase</span>
-          <span class="arrow">→</span>
+        <div class="nav-item" @click="router.push('/history')">
+          <span class="icon">≋</span> <span class="text">历史数据</span>
         </div>
       </div>
 
@@ -110,138 +81,269 @@ const router = useRouter()
 </template>
 
 <style scoped>
-/* 全局容器 */
 .app-wrapper {
   display: flex;
   width: 100vw;
   height: 100vh;
-  background-color: #ffffff;
   overflow: hidden;
+  background: #101b18;
 }
 
-/* 侧边栏容器 (浅灰色背景) */
 .sider-sidebar {
-  width: 240px;
-  background-color: #f7f7f8; /* 浅灰 */
-  border-right: 1px solid #e5e7eb;
+  width: 252px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  padding: 16px 12px;
-  color: #4b5563;
-  flex-shrink: 0;
+  padding: 18px 14px;
+  color: #dfe8df;
   user-select: none;
+  background:
+    linear-gradient(180deg, rgba(29, 143, 130, 0.16), transparent 34%),
+    repeating-linear-gradient(150deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 30px),
+    #13231f;
+  border-right: 1px solid rgba(235, 232, 214, 0.16);
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.22);
 }
 
-/* 1. 顶部品牌区 */
 .nav-brand {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 16px; padding: 0 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 0 3px;
 }
-.brand-left { display: flex; align-items: center; gap: 8px; }
-.brand-logo-icon { font-size: 24px; }
-.brand-text { font-size: 20px; font-weight: 700; color: #1f2329; }
-.close-btn { 
-  background: none; border: none; color: #9ca3af; cursor: pointer; padding: 4px; 
-  display: flex; align-items: center; justify-content: center;
-}
-.close-btn:hover { color: #374151; background-color: #e5e7eb; border-radius: 4px; }
 
-/* 2. 聊天高亮入口 (仿 Sider 胶囊风格) */
-.active-chat {
-  background-color: #eef2ff; /* 极淡的蓝紫色背景 */
-  color: #4f46e5;          /* 深蓝紫色文字 */
-  padding: 12px;
+.brand-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-logo-icon {
+  width: 34px;
+  height: 34px;
   border-radius: 12px;
-  font-size: 15px; font-weight: 600;
-  display: flex; align-items: center; gap: 10px;
-  margin-bottom: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #e5c46b, #1d8f82);
+  color: #10201d;
+  font-size: 18px;
+  font-weight: 900;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
 }
-.active-chat:hover { background-color: #e0e7ff; }
-.active-chat .icon { font-size: 18px; }
 
-/* 3. 滚动菜单区 */
+.brand-text {
+  font-size: 21px;
+  font-weight: 900;
+  color: #f5f3e8;
+  letter-spacing: 0.02em;
+}
+
+.close-btn,
+.icon-btn,
+.collapse-circle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(235, 232, 214, 0.12);
+  background: rgba(255, 255, 255, 0.045);
+  color: #b9c6bf;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 11px;
+}
+
+.close-btn:hover,
+.icon-btn:hover,
+.collapse-circle-btn:hover {
+  transform: translateY(-1px);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(229, 196, 107, 0.28);
+}
+
+.active-chat {
+  position: relative;
+  background:
+    linear-gradient(135deg, rgba(229, 196, 107, 0.22), rgba(29, 143, 130, 0.22)),
+    rgba(255, 255, 255, 0.06);
+  color: #fff7dc;
+  border: 1px solid rgba(229, 196, 107, 0.26);
+  padding: 13px 12px;
+  border-radius: 15px;
+  font-size: 15px;
+  font-weight: 900;
+  margin-bottom: 10px;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.23);
+}
+
+.active-chat::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 999px;
+  background: #e5c46b;
+}
+
 .scroll-menu {
   flex: 1;
   overflow-y: auto;
-  display: flex; flex-direction: column; gap: 4px;
-  /* 隐藏滚动条 */
-  scrollbar-width: none; 
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  scrollbar-width: none;
 }
-.scroll-menu::-webkit-scrollbar { display: none; }
 
-/* 通用菜单项 */
+.scroll-menu::-webkit-scrollbar {
+  display: none;
+}
+
 .nav-item {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 13px;
   font-size: 14px;
-  color: #646a73; /* 深灰 */
+  color: #aebdb6;
   cursor: pointer;
-  transition: background-color 0.15s;
+  transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease;
 }
-/* 排除 active-chat 的 hover */
-.nav-item:not(.active-chat):hover { background-color: #e5e7eb; color: #1f2329; }
 
-.nav-item .icon { font-size: 18px; width: 22px; text-align: center; color: #8f959e; }
-.nav-item:hover .icon { color: #1f2329; }
+.nav-section {
+  display: block;
+  padding: 13px 12px 6px;
+  color: rgba(245, 243, 232, 0.48);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
 
-.arrow { margin-left: auto; font-size: 14px; color: #9ca3af; opacity: 0; transition: opacity 0.2s; }
-.nav-item:hover .arrow { opacity: 1; }
+.nav-item:not(.active-chat):hover {
+  transform: translateX(3px);
+  background: rgba(255, 255, 255, 0.075);
+  color: #f5f3e8;
+}
 
-/* 分割线 */
+.nav-item .icon {
+  width: 24px;
+  text-align: center;
+  color: #e5c46b;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.nav-item .text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arrow {
+  margin-left: auto;
+  font-size: 14px;
+  color: #8fa39a;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.nav-item:hover .arrow {
+  opacity: 1;
+}
+
 .divider {
   height: 1px;
-  background-color: #e5e7eb;
+  background: linear-gradient(90deg, transparent, rgba(235, 232, 214, 0.18), transparent);
   margin: 12px 8px;
 }
 
-/* 5. 底部 Footer */
 .nav-footer {
   margin-top: auto;
   padding-top: 16px;
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid rgba(235, 232, 214, 0.1);
 }
 
-.footer-left { display: flex; align-items: center; gap: 12px; }
+.footer-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
-/* 空白头像占位符 */
 .avatar-placeholder {
-  width: 32px; height: 32px;
-  background-color: #e0e2e5; /* 稍微深一点的灰，显示出圆形 */
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(235, 232, 214, 0.12);
 }
-.user-icon { font-size: 18px; color: #fff; opacity: 0.8; }
 
-/* 底部图标按钮 */
+.user-icon {
+  font-size: 17px;
+  color: #f5f3e8;
+  opacity: 0.9;
+}
+
 .icon-btn {
-  background: none; border: none; color: #9ca3af; cursor: pointer; padding: 4px;
-  display: flex; align-items: center; justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
 }
-.icon-btn:hover { color: #374151; }
 
-.footer-right { display: flex; align-items: center; }
+.footer-right {
+  display: flex;
+  align-items: center;
+}
 
-/* 圆形折叠按钮 */
 .collapse-circle-btn {
-  width: 32px; height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background-color: #e5e7eb; /* 浅灰底 */
-  color: #646a73;
-  border: none;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
 }
-.collapse-circle-btn:hover { background-color: #d1d5db; color: #000; }
 
-/* 右侧内容区 */
 .content-area {
   flex: 1;
-  background-color: #ffffff;
   overflow: hidden;
   position: relative;
+  background: #f4f1e8;
+}
+
+@media (max-width: 760px) {
+  .sider-sidebar {
+    width: 76px;
+    padding: 14px 10px;
+  }
+
+  .brand-text,
+  .nav-item .text,
+  .nav-section,
+  .arrow,
+  .close-btn,
+  .nav-footer {
+    display: none;
+  }
+
+  .nav-item {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .active-chat::before {
+    left: -10px;
+  }
 }
 </style>

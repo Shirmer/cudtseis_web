@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 from collections import Counter
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
 import math
-from pathlib import Path
 import re
-import sqlite3
+from collections.abc import Iterator, Mapping
 from typing import Any
 
+from sqlalchemy import text
+from sqlalchemy.engine import Connection
+
+from .db import engine
 from .settings import settings
 
 
@@ -270,14 +274,13 @@ def search_papers(
 def initialize_paper_database() -> dict[str, Any]:
     _ensure_database()
     rows = _load_paper_rows()
-    path = _database_path()
     return {
-        "path": str(path),
+        "path": _database_label(),
         "papers": len(rows),
         "topics": len({topic for paper in rows for topic in paper["topics"]}),
         "chunks": _count_rows("paper_chunks"),
         "relations": _count_rows("paper_relations"),
-        "sizeBytes": path.stat().st_size if path.exists() else 0,
+        "sizeBytes": 0,
         "status": "ready",
     }
 
@@ -286,27 +289,29 @@ def get_paper_detail(paper_id: str) -> dict[str, Any] | None:
     _ensure_database()
     with _connect() as conn:
         row = conn.execute(
+            text(
             """
             SELECT
                 id, title, authors_json, journal, year, doi, url, topics_json,
                 evidence_type, abstract_preview, claim, evidence, reasoning
             FROM papers
-            WHERE id = ?
-            """,
-            (paper_id,),
+            WHERE id = :paper_id
+            """
+            ),
+            {"paper_id": paper_id},
         ).fetchone()
         if row is None:
             return None
-        paper = _decorate_paper(_paper_from_row(conn, row))
+        paper = _decorate_paper(_paper_from_row(conn, _as_mapping(row)))
         paper["chunks"] = [
             {
-                "type": item["chunk_type"],
-                "content": item["content"],
-                "ordinal": int(item["ordinal"]),
+                "type": _as_mapping(item)["chunk_type"],
+                "content": _as_mapping(item)["content"],
+                "ordinal": int(_as_mapping(item)["ordinal"]),
             }
             for item in conn.execute(
-                "SELECT chunk_type, content, ordinal FROM paper_chunks WHERE paper_id = ? ORDER BY ordinal ASC",
-                (paper_id,),
+                text("SELECT chunk_type, content, ordinal FROM paper_chunks WHERE paper_id = :paper_id ORDER BY ordinal ASC"),
+                {"paper_id": paper_id},
             ).fetchall()
         ]
         return paper
@@ -317,36 +322,42 @@ def add_paper(payload: dict[str, Any]) -> dict[str, Any]:
     paper = _normalize_input_paper(payload)
     now = datetime.now(timezone.utc).isoformat()
     with _connect() as conn:
-        existing = conn.execute("SELECT id FROM papers WHERE id = ?", (paper["id"],)).fetchone()
+        existing = conn.execute(text("SELECT id FROM papers WHERE id = :paper_id"), {"paper_id": paper["id"]}).fetchone()
         if existing is not None:
             raise ValueError(f"Paper already exists: {paper['id']}")
         conn.execute(
+            text(
             """
             INSERT INTO papers (
                 id, title, authors_json, journal, year, doi, url, topics_json,
                 evidence_type, abstract_preview, claim, evidence, reasoning,
                 source_type, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (
+                :id, :title, :authors_json, :journal, :year, :doi, :url, :topics_json,
+                :evidence_type, :abstract_preview, :claim, :evidence, :reasoning,
+                :source_type, :created_at, :updated_at
+            )
             """,
-            (
-                paper["id"],
-                paper["title"],
-                json.dumps(paper["authors"], ensure_ascii=False),
-                paper["journal"],
-                paper["year"],
-                paper["doi"],
-                paper["url"],
-                json.dumps(paper["topics"], ensure_ascii=False),
-                paper["evidenceType"],
-                paper["abstractPreview"],
-                paper["claim"],
-                paper["evidence"],
-                paper["reasoning"],
-                "manual",
-                now,
-                now,
             ),
+            {
+                "id": paper["id"],
+                "title": paper["title"],
+                "authors_json": json.dumps(paper["authors"], ensure_ascii=False),
+                "journal": paper["journal"],
+                "year": paper["year"],
+                "doi": paper["doi"],
+                "url": paper["url"],
+                "topics_json": json.dumps(paper["topics"], ensure_ascii=False),
+                "evidence_type": paper["evidenceType"],
+                "abstract_preview": paper["abstractPreview"],
+                "claim": paper["claim"],
+                "evidence": paper["evidence"],
+                "reasoning": paper["reasoning"],
+                "source_type": "manual",
+                "created_at": now,
+                "updated_at": now,
+            },
         )
         _write_derived_records(conn, paper)
     detail = get_paper_detail(paper["id"])
@@ -356,10 +367,8 @@ def add_paper(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _ensure_database() -> None:
-    path = _database_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
     with _connect() as conn:
-        conn.executescript(
+        statements = [
             """
             CREATE TABLE IF NOT EXISTS papers (
                 id TEXT PRIMARY KEY,
@@ -378,78 +387,88 @@ def _ensure_database() -> None:
                 source_type TEXT NOT NULL DEFAULT 'seed',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
-            );
-
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS paper_chunks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id BIGSERIAL PRIMARY KEY,
                 paper_id TEXT NOT NULL,
                 chunk_type TEXT NOT NULL,
                 content TEXT NOT NULL,
                 ordinal INTEGER NOT NULL,
                 FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE CASCADE
-            );
-
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS paper_relations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id BIGSERIAL PRIMARY KEY,
                 paper_id TEXT NOT NULL,
                 relation TEXT NOT NULL,
                 target TEXT NOT NULL,
                 FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE CASCADE
-            );
-
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS parser_status (
                 paper_id TEXT NOT NULL,
                 slot TEXT NOT NULL,
                 status TEXT NOT NULL,
                 PRIMARY KEY (paper_id, slot),
                 FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE CASCADE
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_papers_year ON papers(year);
-            CREATE INDEX IF NOT EXISTS idx_papers_evidence_type ON papers(evidence_type);
-            CREATE INDEX IF NOT EXISTS idx_paper_relations_target ON paper_relations(target);
-            """
-        )
-        total = conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0]
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_papers_year ON papers(year)",
+            "CREATE INDEX IF NOT EXISTS idx_papers_evidence_type ON papers(evidence_type)",
+            "CREATE INDEX IF NOT EXISTS idx_paper_relations_target ON paper_relations(target)",
+        ]
+        for statement in statements:
+            conn.execute(text(statement))
+        total = conn.execute(text("SELECT COUNT(*) FROM papers")).scalar_one()
         if total == 0:
             _seed_database(conn)
 
 
-def _seed_database(conn: sqlite3.Connection) -> None:
+def _seed_database(conn: Connection) -> None:
     now = datetime.now(timezone.utc).isoformat()
     for paper in PAPER_CATALOG:
         conn.execute(
+            text(
             """
             INSERT INTO papers (
                 id, title, authors_json, journal, year, doi, url, topics_json,
                 evidence_type, abstract_preview, claim, evidence, reasoning,
                 source_type, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (
+                :id, :title, :authors_json, :journal, :year, :doi, :url, :topics_json,
+                :evidence_type, :abstract_preview, :claim, :evidence, :reasoning,
+                :source_type, :created_at, :updated_at
+            )
             """,
-            (
-                paper["id"],
-                paper["title"],
-                json.dumps(paper["authors"], ensure_ascii=False),
-                paper["journal"],
-                paper["year"],
-                paper["doi"],
-                paper["url"],
-                json.dumps(paper["topics"], ensure_ascii=False),
-                paper["evidenceType"],
-                paper["abstractPreview"],
-                paper["claim"],
-                paper["evidence"],
-                paper["reasoning"],
-                "seed",
-                now,
-                now,
             ),
+            {
+                "id": paper["id"],
+                "title": paper["title"],
+                "authors_json": json.dumps(paper["authors"], ensure_ascii=False),
+                "journal": paper["journal"],
+                "year": paper["year"],
+                "doi": paper["doi"],
+                "url": paper["url"],
+                "topics_json": json.dumps(paper["topics"], ensure_ascii=False),
+                "evidence_type": paper["evidenceType"],
+                "abstract_preview": paper["abstractPreview"],
+                "claim": paper["claim"],
+                "evidence": paper["evidence"],
+                "reasoning": paper["reasoning"],
+                "source_type": "seed",
+                "created_at": now,
+                "updated_at": now,
+            },
         )
         _write_derived_records(conn, paper)
 
 
-def _write_derived_records(conn: sqlite3.Connection, paper: dict[str, Any]) -> None:
+def _write_derived_records(conn: Connection, paper: dict[str, Any]) -> None:
     chunk_payloads = [
         ("正文提取", paper["abstractPreview"]),
         ("Claim", paper["claim"]),
@@ -458,34 +477,38 @@ def _write_derived_records(conn: sqlite3.Connection, paper: dict[str, Any]) -> N
     ]
     for index, (chunk_type, content) in enumerate(chunk_payloads, start=1):
         conn.execute(
-            "INSERT INTO paper_chunks (paper_id, chunk_type, content, ordinal) VALUES (?, ?, ?, ?)",
-            (paper["id"], chunk_type, content, index),
+            text(
+                "INSERT INTO paper_chunks (paper_id, chunk_type, content, ordinal) "
+                "VALUES (:paper_id, :chunk_type, :content, :ordinal)"
+            ),
+            {"paper_id": paper["id"], "chunk_type": chunk_type, "content": content, "ordinal": index},
         )
     for topic in paper["topics"]:
         conn.execute(
-            "INSERT INTO paper_relations (paper_id, relation, target) VALUES (?, ?, ?)",
-            (paper["id"], "has-topic", topic),
+            text("INSERT INTO paper_relations (paper_id, relation, target) VALUES (:paper_id, :relation, :target)"),
+            {"paper_id": paper["id"], "relation": "has-topic", "target": topic},
         )
     for author in paper["authors"]:
         conn.execute(
-            "INSERT INTO paper_relations (paper_id, relation, target) VALUES (?, ?, ?)",
-            (paper["id"], "has-author", author),
+            text("INSERT INTO paper_relations (paper_id, relation, target) VALUES (:paper_id, :relation, :target)"),
+            {"paper_id": paper["id"], "relation": "has-author", "target": author},
         )
     conn.execute(
-        "INSERT INTO paper_relations (paper_id, relation, target) VALUES (?, ?, ?)",
-        (paper["id"], "published-in", paper["journal"]),
+        text("INSERT INTO paper_relations (paper_id, relation, target) VALUES (:paper_id, :relation, :target)"),
+        {"paper_id": paper["id"], "relation": "published-in", "target": paper["journal"]},
     )
     for slot in PARSER_SLOTS:
         status = "ready" if slot == "正文提取" else "planned"
         conn.execute(
-            "INSERT INTO parser_status (paper_id, slot, status) VALUES (?, ?, ?)",
-            (paper["id"], slot, status),
+            text("INSERT INTO parser_status (paper_id, slot, status) VALUES (:paper_id, :slot, :status)"),
+            {"paper_id": paper["id"], "slot": slot, "status": status},
         )
 
 
 def _load_paper_rows() -> list[dict[str, Any]]:
     with _connect() as conn:
         rows = conn.execute(
+            text(
             """
             SELECT
                 id, title, authors_json, journal, year, doi, url, topics_json,
@@ -493,18 +516,19 @@ def _load_paper_rows() -> list[dict[str, Any]]:
             FROM papers
             ORDER BY year DESC, title ASC
             """
+            )
         ).fetchall()
-        return [_paper_from_row(conn, row) for row in rows]
+        return [_paper_from_row(conn, _as_mapping(row)) for row in rows]
 
 
-def _paper_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
+def _paper_from_row(conn: Connection, row: Mapping[str, Any]) -> dict[str, Any]:
     parser_rows = conn.execute(
-        "SELECT slot, status FROM parser_status WHERE paper_id = ? ORDER BY slot ASC",
-        (row["id"],),
+        text("SELECT slot, status FROM parser_status WHERE paper_id = :paper_id ORDER BY slot ASC"),
+        {"paper_id": row["id"]},
     ).fetchall()
     relation_rows = conn.execute(
-        "SELECT relation, target FROM paper_relations WHERE paper_id = ? ORDER BY id ASC",
-        (row["id"],),
+        text("SELECT relation, target FROM paper_relations WHERE paper_id = :paper_id ORDER BY id ASC"),
+        {"paper_id": row["id"]},
     ).fetchall()
     return {
         "id": row["id"],
@@ -520,9 +544,9 @@ def _paper_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any
         "claim": row["claim"],
         "evidence": row["evidence"],
         "reasoning": row["reasoning"],
-        "parserStatus": {item["slot"]: item["status"] for item in parser_rows},
+        "parserStatus": {_as_mapping(item)["slot"]: _as_mapping(item)["status"] for item in parser_rows},
         "relations": [
-            {"source": row["id"], "relation": item["relation"], "target": item["target"]}
+            {"source": row["id"], "relation": _as_mapping(item)["relation"], "target": _as_mapping(item)["target"]}
             for item in relation_rows
         ],
     }
@@ -925,17 +949,21 @@ def _graph_score(paper: dict[str, Any], query: str) -> float:
 
 
 def _count_rows(table: str) -> int:
+    if table not in {"papers", "paper_chunks", "paper_relations", "parser_status"}:
+        raise ValueError(f"Unsupported paper table: {table}")
     with _connect() as conn:
-        return int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+        return int(conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar_one())
 
 
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(_database_path())
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
-    return conn
+@contextmanager
+def _connect() -> Iterator[Connection]:
+    with engine.begin() as conn:
+        yield conn
 
 
-def _database_path() -> Path:
-    return Path(settings.paper_database_path)
+def _database_label() -> str:
+    return f"postgresql:{engine.url.database or 'unknown'}"
+
+
+def _as_mapping(row: Any) -> Mapping[str, Any]:
+    return row._mapping if hasattr(row, "_mapping") else row
