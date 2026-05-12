@@ -677,7 +677,7 @@ watch(translateToChinese, () => {
         </div>
       </div>
 
-        <div class="nav-actions">
+      <div class="nav-actions">
         <span class="live-status"><span class="blink">●</span> 实时监控运行中</span>
         <label class="translate-toggle">
           <input v-model="translateToChinese" type="checkbox" />
@@ -687,7 +687,7 @@ watch(translateToChinese, () => {
           {{ detailPanelOpen ? '收起科研面板' : '展开科研面板' }}
         </button>
         <router-link to="/history">历史数据</router-link>
-        <a href="#">关于系统</a>
+        <router-link to="/terra/chat">文献问答</router-link>
       </div>
     </header>
 
@@ -697,7 +697,7 @@ watch(translateToChinese, () => {
       </svg>
     </button>
 
-    <main class="workspace" :class="{ 'detail-collapsed': !detailPanelOpen }">
+    <main class="workspace" :class="{ 'sidebar-collapsed': !sidebarOpen, 'detail-collapsed': !detailPanelOpen }">
       <aside class="sidebar" :class="{ collapsed: !sidebarOpen }">
         <div class="sidebar-header">
           <div>
@@ -1116,6 +1116,7 @@ watch(translateToChinese, () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 18px;
   background: rgba(255, 255, 255, 0.95);
   border-bottom: 1px solid rgba(148, 163, 184, 0.28);
   backdrop-filter: blur(18px);
@@ -1127,6 +1128,7 @@ watch(translateToChinese, () => {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .school-logo {
@@ -1142,11 +1144,16 @@ watch(translateToChinese, () => {
   color: #1e3a8a;
 }
 
+.title-group {
+  min-width: 0;
+}
+
 .title-group small {
   display: block;
   margin-top: 2px;
   color: #64748b;
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .nav-actions {
@@ -1154,6 +1161,8 @@ watch(translateToChinese, () => {
   align-items: center;
   gap: 16px;
   font-size: 14px;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .translate-toggle {
@@ -1211,10 +1220,19 @@ watch(translateToChinese, () => {
   left: 0;
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr) 430px;
+  transition: grid-template-columns 0.3s ease;
 }
 
 .workspace.detail-collapsed {
   grid-template-columns: 320px minmax(0, 1fr) 0;
+}
+
+.workspace.sidebar-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr) 430px;
+}
+
+.workspace.sidebar-collapsed.detail-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
 }
 
 .sidebar,
@@ -1230,7 +1248,7 @@ watch(translateToChinese, () => {
 .sidebar {
   border-right: 1px solid rgba(148, 163, 184, 0.18);
   box-shadow: 10px 0 40px rgba(15, 23, 42, 0.06);
-  transition: transform 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 .detail-panel {
@@ -1247,6 +1265,8 @@ watch(translateToChinese, () => {
 
 .sidebar.collapsed {
   transform: translateX(-100%);
+  box-shadow: none;
+  pointer-events: none;
 }
 
 .sidebar-toggle {
@@ -1264,6 +1284,7 @@ watch(translateToChinese, () => {
   color: #475569;
   cursor: pointer;
   z-index: 1300;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
 .sidebar-toggle:hover {
@@ -1371,6 +1392,7 @@ watch(translateToChinese, () => {
 
 .quake-info {
   min-width: 0;
+  flex: 1;
 }
 
 .quake-info .place {
@@ -1378,6 +1400,10 @@ watch(translateToChinese, () => {
   font-weight: 700;
   line-height: 1.35;
   color: #0f172a;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .meta {
@@ -1421,7 +1447,8 @@ watch(translateToChinese, () => {
 }
 
 .overlay-card {
-  min-width: 160px;
+  min-width: 150px;
+  max-width: 280px;
   padding: 14px 16px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.86);
@@ -1439,12 +1466,21 @@ watch(translateToChinese, () => {
   margin-top: 6px;
   font-size: 22px;
   color: #0f172a;
+  overflow-wrap: anywhere;
 }
 
 .overlay-card small,
 .overlay-label {
   display: block;
   color: #64748b;
+}
+
+.overlay-card small {
+  margin-top: 4px;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .overlay-label {
@@ -1669,8 +1705,10 @@ watch(translateToChinese, () => {
 .vector-index-message {
   display: inline-flex;
   align-items: center;
-  color: rgba(248, 250, 252, 0.86);
+  color: #0f766e;
   font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .article-meta span,
@@ -2170,6 +2208,11 @@ watch(translateToChinese, () => {
     grid-template-columns: 300px minmax(0, 1fr);
   }
 
+  .workspace.sidebar-collapsed,
+  .workspace.sidebar-collapsed.detail-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr);
+  }
+
   .detail-panel {
     position: absolute;
     top: 0;
@@ -2187,6 +2230,18 @@ watch(translateToChinese, () => {
 }
 
 @media (max-width: 1100px) {
+  .navbar {
+    gap: 12px;
+  }
+
+  .title-group small {
+    display: none;
+  }
+
+  .nav-actions {
+    gap: 8px;
+  }
+
   .map-top-strip {
     right: 90px;
     flex-wrap: wrap;
@@ -2214,12 +2269,15 @@ watch(translateToChinese, () => {
 
   .desktop-only,
   .nav-actions a:last-child,
+  .live-status,
   .legend-panel {
     display: none;
   }
 
   .workspace,
-  .workspace.detail-collapsed {
+  .workspace.detail-collapsed,
+  .workspace.sidebar-collapsed,
+  .workspace.sidebar-collapsed.detail-collapsed {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -2257,6 +2315,11 @@ watch(translateToChinese, () => {
   .overlay-card {
     min-width: 0;
     flex: 1 1 0;
+    padding: 11px 12px;
+  }
+
+  .overlay-card strong {
+    font-size: 18px;
   }
 
   .sidebar-stats,
