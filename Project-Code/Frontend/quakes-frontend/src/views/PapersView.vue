@@ -4,170 +4,193 @@ import { useRouter } from 'vue-router'
 
 import { apiUrl } from '../config/api'
 
-type PaperItem = {
-  id: string
-  title: string
-  authorsText: string
-  journal: string
-  year: number
-  topics: string[]
-  evidenceType: string
-  abstractPreview: string
-  retrievalScore: number
-  retrievalBreakdown: Record<string, number>
-  metadataDecision: { quality: string; reasons: string[] }
-  validation: { passed: boolean }
+type KnowledgeInit = {
+  backend: string
+  documents: number
+  units: number
+  indexVersion: string
+  warning?: string
 }
 
-type PaperResponse = {
-  total: number
-  items: PaperItem[]
-  topicCounts: Record<string, number>
-  queryPlan: {
-    rewritten: string[]
-    candidateCount: number
-    recalledCount: number
-    rerank: string
+type KnowledgeHit = {
+  unitId: string
+  documentId: string
+  paperId: string
+  title: string
+  contentType: string
+  text: string
+  page?: number | null
+  score: number
+  metadata: Record<string, unknown>
+}
+
+type KnowledgeContextItem = {
+  unitId: string
+  documentId: string
+  paperId: string
+  title: string
+  contentType: string
+  text: string
+  page?: number | null
+  unitIndex: number
+  position: 'before' | 'current' | 'after' | 'nearby'
+  metadata: Record<string, unknown>
+}
+
+type KnowledgeContext = {
+  unitId: string
+  documentId: string
+  paperId: string
+  title: string
+  page?: number | null
+  fileName: string
+  sourceAvailable: boolean
+  items: KnowledgeContextItem[]
+}
+
+type KnowledgeSearch = {
+  query: string
+  results: KnowledgeHit[]
+  diagnostics: Record<string, unknown>
+  storeStats: {
+    documents: number
+    units: number
   }
 }
 
-type StorageStatus = {
-  papers: number
-  chunks: number
-  relations: number
-  sizeBytes: number
-  status: string
-}
-
 const router = useRouter()
-const query = ref('')
-const selectedTopic = ref('')
-const loading = ref(false)
-const error = ref('')
-const response = ref<PaperResponse | null>(null)
-const storage = ref<StorageStatus | null>(null)
-const showImport = ref(false)
-const importLoading = ref(false)
-const importError = ref('')
-const importForm = ref({
-  title: '',
-  authors: '',
-  journal: '',
-  year: new Date().getFullYear(),
-  doi: '',
-  url: '',
-  topics: '',
-  evidenceType: 'Manual',
-  abstractPreview: '',
-  claim: '',
-  evidence: '',
-  reasoning: ''
-})
 
-const papers = computed(() => response.value?.items ?? [])
-const topicEntries = computed(() => Object.entries(response.value?.topicCounts ?? {}))
-const queryPlan = computed(() => response.value?.queryPlan)
-const presetQuestions = [
-  '震源机制怎么解释',
-  '四川盆地构造背景',
-  '余震序列风险判断',
-  '地震预警方法比较',
-  '强震动与灾害影响'
+const query = ref('')
+const topK = ref(10)
+const paperId = ref('')
+const loading = ref(false)
+const initLoading = ref(false)
+const error = ref('')
+const initState = ref<KnowledgeInit | null>(null)
+const response = ref<KnowledgeSearch | null>(null)
+const contextByUnit = ref<Record<string, KnowledgeContext>>({})
+const contextLoading = ref<Record<string, boolean>>({})
+const contextError = ref<Record<string, string>>({})
+
+const exampleQueries = [
+  'active fault rupture tectonic setting',
+  '地震危险性 断层 构造背景',
+  'supershear rupture near-field ground motion',
+  '地震震源机制 与 活动断层'
 ]
 
-const loadPapers = async () => {
+const results = computed(() => response.value?.results ?? [])
+const stats = computed(() => {
+  if (response.value?.storeStats) return response.value.storeStats
+  if (initState.value) return { documents: initState.value.documents, units: initState.value.units }
+  return { documents: 0, units: 0 }
+})
+
+const qualityFlags = computed(() => {
+  const flags = response.value?.diagnostics?.qualityFlags
+  return Array.isArray(flags) && flags.length ? flags.join('；') : '暂无明显风险'
+})
+
+const initKnowledge = async () => {
+  initLoading.value = true
+  try {
+    const res = await fetch(apiUrl('/knowledge/init'), { method: 'POST' })
+    if (res.ok) initState.value = await res.json() as KnowledgeInit
+  } finally {
+    initLoading.value = false
+  }
+}
+
+const searchPapers = async () => {
+  if (!query.value.trim()) {
+    error.value = '请输入要检索的问题、关键词或地震源信息'
+    return
+  }
+
   loading.value = true
   error.value = ''
   try {
-    const params = new URLSearchParams()
-    if (query.value.trim()) params.set('q', query.value.trim())
-    if (selectedTopic.value) params.set('topic', selectedTopic.value)
-    params.set('limit', '30')
-    const res = await fetch(apiUrl(`/papers?${params.toString()}`))
-    if (!res.ok) throw new Error(`Paper API failed with ${res.status}`)
-    response.value = (await res.json()) as PaperResponse
+    const res = await fetch(apiUrl('/knowledge/search'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: query.value.trim(),
+        topK: Number(topK.value) || 10,
+        paperId: paperId.value.trim() || undefined
+      })
+    })
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}))
+      throw new Error(detail.detail || `检索失败 (${res.status})`)
+    }
+    response.value = await res.json() as KnowledgeSearch
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '论文数据库暂时不可用'
+    error.value = err instanceof Error ? err.message : '论文检索暂时不可用'
   } finally {
     loading.value = false
   }
 }
 
-const loadStorage = async () => {
-  const res = await fetch(apiUrl('/papers/storage'))
-  if (res.ok) storage.value = (await res.json()) as StorageStatus
+const closeContext = (unitId: string) => {
+  const next = { ...contextByUnit.value }
+  delete next[unitId]
+  contextByUnit.value = next
 }
 
-const selectTopic = (topic: string) => {
-  selectedTopic.value = selectedTopic.value === topic ? '' : topic
-  loadPapers()
-}
+const toggleContext = async (hit: KnowledgeHit) => {
+  if (contextByUnit.value[hit.unitId]) {
+    closeContext(hit.unitId)
+    return
+  }
 
-const runPresetQuery = (value: string) => {
-  query.value = value
-  loadPapers()
-}
-
-const openPaper = (paperId: string) => {
-  router.push(`/papers/${encodeURIComponent(paperId)}`)
-}
-
-const submitPaper = async () => {
-  importLoading.value = true
-  importError.value = ''
+  contextLoading.value = { ...contextLoading.value, [hit.unitId]: true }
+  contextError.value = { ...contextError.value, [hit.unitId]: '' }
   try {
-    const payload = {
-      ...importForm.value,
-      authors: importForm.value.authors.split(/[;,，；]/).map((item) => item.trim()).filter(Boolean),
-      topics: importForm.value.topics.split(/[;,，；]/).map((item) => item.trim()).filter(Boolean)
-    }
-    const res = await fetch(apiUrl('/papers'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
+    const res = await fetch(apiUrl(`/knowledge/units/${encodeURIComponent(hit.unitId)}/context?window=1`))
     if (!res.ok) {
       const detail = await res.json().catch(() => ({}))
-      throw new Error(detail.detail || `Paper import failed with ${res.status}`)
+      throw new Error(detail.detail || `上下文加载失败 (${res.status})`)
     }
-    const created = await res.json()
-    showImport.value = false
-    resetImportForm()
-    await loadStorage()
-    await loadPapers()
-    openPaper(created.id)
+    const payload = await res.json() as KnowledgeContext
+    contextByUnit.value = { ...contextByUnit.value, [hit.unitId]: payload }
   } catch (err) {
-    importError.value = err instanceof Error ? err.message : '入库失败'
+    contextError.value = {
+      ...contextError.value,
+      [hit.unitId]: err instanceof Error ? err.message : '上下文暂时不可用'
+    }
   } finally {
-    importLoading.value = false
+    contextLoading.value = { ...contextLoading.value, [hit.unitId]: false }
   }
 }
 
-const resetImportForm = () => {
-  importForm.value = {
-    title: '',
-    authors: '',
-    journal: '',
-    year: new Date().getFullYear(),
-    doi: '',
-    url: '',
-    topics: '',
-    evidenceType: 'Manual',
-    abstractPreview: '',
-    claim: '',
-    evidence: '',
-    reasoning: ''
-  }
+const openOriginal = (hit: KnowledgeHit) => {
+  const baseUrl = apiUrl(`/documents/${encodeURIComponent(hit.documentId)}/file`)
+  const pageAnchor = hit.page ? `#page=${hit.page}` : ''
+  window.open(`${baseUrl}${pageAnchor}`, '_blank', 'noopener,noreferrer')
 }
 
-const formatBytes = (value: number) => {
-  if (value < 1024) return `${value} B`
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
-  return `${(value / 1024 / 1024).toFixed(1)} MB`
+const positionLabel = (position: KnowledgeContextItem['position']) => {
+  if (position === 'current') return '当前命中'
+  if (position === 'before') return '前文'
+  if (position === 'after') return '后文'
+  return '相关片段'
 }
 
-onMounted(async () => {
-  await Promise.all([loadPapers(), loadStorage()])
+const runExample = (value: string) => {
+  query.value = value
+  void searchPapers()
+}
+
+const askWithCurrentQuery = () => {
+  if (!query.value.trim()) return
+  router.push({
+    path: '/terra/chat',
+    query: { q: query.value.trim() }
+  })
+}
+
+onMounted(() => {
+  void initKnowledge()
 })
 </script>
 
@@ -175,124 +198,120 @@ onMounted(async () => {
   <main class="papers-page">
     <header class="topbar">
       <button class="ghost-button" @click="router.push('/')">返回首页</button>
-      <strong>CDUT SEISLAB · PAPER DATABASE</strong>
-      <button class="ghost-button" @click="showImport = !showImport">论文入库</button>
+      <strong>论文检索</strong>
+      <button class="ghost-button" @click="router.push('/knowledge')">导入文献</button>
     </header>
 
     <section class="hero">
       <div>
-        <span class="kicker">Evidence-first RAG</span>
-        <h1>论文检索</h1>
-        <p>先检索和筛选文献，点击结果进入更完整的地震专业解读、证据链、校验和语义切块页面。</p>
+        <span class="kicker">Literature Search</span>
+        <h1>检索论文与证据</h1>
+        <p>输入科研问题、关键词，或从地震目录复制震级、深度、位置等信息，系统会在已入库文献中寻找相关证据。</p>
       </div>
-      <div v-if="storage" class="metrics">
-        <div><strong>{{ storage.papers }}</strong><span>论文</span></div>
-        <div><strong>{{ storage.chunks }}</strong><span>语义块</span></div>
-        <div><strong>{{ storage.relations }}</strong><span>图谱关系</span></div>
-        <div><strong>{{ formatBytes(storage.sizeBytes) }}</strong><span>本地库</span></div>
+      <div class="metrics">
+        <div><strong>{{ stats.documents }}</strong><span>文献</span></div>
+        <div><strong>{{ stats.units }}</strong><span>知识单元</span></div>
+        <div><strong>{{ initState?.backend ?? '-' }}</strong><span>检索后端</span></div>
       </div>
     </section>
+
+    <section v-if="error" class="notice error">{{ error }}</section>
+    <section v-if="initState?.warning" class="notice warning">{{ initState.warning }}</section>
 
     <section class="search-panel">
-      <input
-        v-model="query"
-        type="search"
-        placeholder="检索论文、方法、区域或证据，例如：四川盆地、余震序列、断层机制"
-        @keyup.enter="loadPapers"
-      />
-      <button class="primary-button" :disabled="loading" @click="loadPapers">
-        {{ loading ? '检索中' : '检索' }}
-      </button>
-    </section>
+      <label>
+        <span>检索问题</span>
+        <textarea
+          v-model="query"
+          rows="4"
+          placeholder="例如：活动断层破裂与地震危险性的证据是什么？"
+          @keydown.meta.enter.prevent="searchPapers"
+          @keydown.ctrl.enter.prevent="searchPapers"
+        ></textarea>
+      </label>
 
-    <section class="preset-strip">
-      <span>问题导向入口</span>
-      <button v-for="item in presetQuestions" :key="item" class="preset-chip" @click="runPresetQuery(item)">
-        {{ item }}
-      </button>
-    </section>
-
-    <section v-if="queryPlan" class="query-strip">
-      <span>候选 {{ queryPlan.candidateCount }}</span>
-      <span>召回 {{ queryPlan.recalledCount }}</span>
-      <span>{{ queryPlan.rerank }}</span>
-      <span v-for="rewrite in queryPlan.rewritten" :key="rewrite">{{ rewrite }}</span>
-    </section>
-
-    <section v-if="showImport" class="import-panel">
-      <h2>论文入库</h2>
-      <div class="import-grid">
-        <input v-model="importForm.title" placeholder="论文标题" />
-        <input v-model="importForm.authors" placeholder="作者，用逗号或分号分隔" />
-        <input v-model="importForm.journal" placeholder="期刊 / 会议 / 来源" />
-        <input v-model.number="importForm.year" type="number" placeholder="年份" />
-        <input v-model="importForm.doi" placeholder="DOI" />
-        <input v-model="importForm.url" placeholder="URL / PDF / HTML 来源" />
-        <input v-model="importForm.topics" placeholder="主题，用逗号或分号分隔" />
-        <input v-model="importForm.evidenceType" placeholder="证据类型" />
+      <div class="search-options">
+        <label>
+          <span>结果数量</span>
+          <input v-model.number="topK" type="number" min="1" max="30" />
+        </label>
+        <label>
+          <span>限定论文 ID</span>
+          <input v-model="paperId" placeholder="可选" />
+        </label>
       </div>
-      <textarea v-model="importForm.abstractPreview" placeholder="正文/摘要提取结果"></textarea>
-      <div class="import-grid cer-inputs">
-        <textarea v-model="importForm.claim" placeholder="Claim"></textarea>
-        <textarea v-model="importForm.evidence" placeholder="Evidence"></textarea>
-        <textarea v-model="importForm.reasoning" placeholder="Reasoning"></textarea>
-      </div>
-      <p v-if="importError" class="import-error">{{ importError }}</p>
-      <div class="import-actions">
-        <button class="ghost-button" @click="resetImportForm">清空</button>
-        <button class="primary-button" :disabled="importLoading" @click="submitPaper">
-          {{ importLoading ? '入库中' : '写入本地库' }}
+
+      <div class="actions">
+        <button class="primary-button" :disabled="loading" @click="searchPapers">
+          {{ loading ? '检索中' : '检索论文' }}
+        </button>
+        <button class="ghost-button" :disabled="!query.trim()" @click="askWithCurrentQuery">去工作台问答</button>
+        <button class="ghost-button" :disabled="initLoading" @click="initKnowledge">
+          {{ initLoading ? '刷新中' : '刷新库状态' }}
         </button>
       </div>
     </section>
 
-    <section class="content">
-      <aside class="filters">
-        <h2>主题</h2>
-        <button
-          v-for="[topic, count] in topicEntries"
-          :key="topic"
-          :class="{ active: selectedTopic === topic }"
-          @click="selectTopic(topic)"
-        >
-          <span>{{ topic }}</span>
-          <strong>{{ count }}</strong>
-        </button>
-      </aside>
+    <section class="example-strip">
+      <span>常用问题</span>
+      <button v-for="item in exampleQueries" :key="item" @click="runExample(item)">{{ item }}</button>
+    </section>
 
-      <section class="results">
-        <div class="result-head">
-          <h2>检索结果</h2>
-          <span>{{ response?.total ?? 0 }} 篇</span>
+    <section v-if="response" class="diagnostic-strip">
+      <span>命中 {{ response.results.length }}</span>
+      <span>候选 {{ response.diagnostics.candidateCount ?? '-' }}</span>
+      <span>策略 {{ response.diagnostics.retrievalStrategy ?? 'hybrid' }}</span>
+      <span>{{ qualityFlags }}</span>
+    </section>
+
+    <section class="results">
+      <div class="result-head">
+        <h2>检索结果</h2>
+        <span>{{ response ? `${response.results.length} 条` : '等待检索' }}</span>
+      </div>
+
+      <div v-if="loading" class="state-card">正在检索文献...</div>
+      <div v-else-if="response && !results.length" class="state-card">没有找到匹配结果，可以换一个问题或先导入更多文献。</div>
+      <div v-else-if="!response" class="state-card">输入问题后开始检索。</div>
+
+      <article v-for="hit in results" v-else :key="hit.unitId" class="result-card">
+        <div class="card-head">
+          <h3>{{ hit.title || hit.paperId }}</h3>
+          <span>{{ hit.score.toFixed(3) }}</span>
         </div>
-        <div v-if="error" class="state-card">{{ error }}</div>
-        <div v-else-if="loading" class="state-card">正在加载论文数据库...</div>
-        <div v-else-if="!papers.length" class="state-card">没有找到匹配论文。</div>
+        <p>{{ hit.text }}</p>
+        <footer>
+          <span>{{ hit.contentType }}</span>
+          <span v-if="hit.page">p.{{ hit.page }}</span>
+          <span>{{ hit.paperId }}</span>
+        </footer>
+        <div class="card-actions">
+          <button class="inline-button" :disabled="contextLoading[hit.unitId]" @click="toggleContext(hit)">
+            <span v-if="contextLoading[hit.unitId]">加载中</span>
+            <span v-else>{{ contextByUnit[hit.unitId] ? '收起上下文' : '查看上下文' }}</span>
+          </button>
+          <button class="inline-button" @click="openOriginal(hit)">
+            打开原文{{ hit.page ? ` p.${hit.page}` : '' }}
+          </button>
+        </div>
 
-        <article v-for="paper in papers" v-else :key="paper.id" class="paper-card" @click="openPaper(paper.id)">
-          <div class="paper-meta">
-            <span>{{ paper.journal }}</span>
-            <span>{{ paper.year }}</span>
-            <span>{{ paper.evidenceType }}</span>
-            <span :class="{ pass: paper.validation.passed }">{{ paper.validation.passed ? '校验通过' : '需复核' }}</span>
+        <div v-if="contextError[hit.unitId]" class="context-error">{{ contextError[hit.unitId] }}</div>
+        <div v-if="contextByUnit[hit.unitId]" class="context-panel">
+          <div
+            v-for="item in contextByUnit[hit.unitId].items"
+            :key="item.unitId"
+            class="context-row"
+            :class="{ current: item.position === 'current' }"
+          >
+            <div class="context-meta">
+              <strong>{{ positionLabel(item.position) }}</strong>
+              <span>{{ item.contentType }}</span>
+              <span v-if="item.page">p.{{ item.page }}</span>
+            </div>
+            <p>{{ item.text }}</p>
           </div>
-          <h3>{{ paper.title }}</h3>
-          <p class="authors">{{ paper.authorsText }}</p>
-          <p>{{ paper.abstractPreview }}</p>
-          <p class="paper-note">{{ paper.metadataDecision.reasons.join(' / ') }}</p>
-          <div class="score-row">
-            <span>Score {{ paper.retrievalScore.toFixed(2) }}</span>
-            <span>V {{ paper.retrievalBreakdown.vector.toFixed(2) }}</span>
-            <span>K {{ paper.retrievalBreakdown.keyword.toFixed(2) }}</span>
-            <span>S {{ paper.retrievalBreakdown.structured.toFixed(2) }}</span>
-            <span>G {{ paper.retrievalBreakdown.graph.toFixed(2) }}</span>
-            <span>R {{ paper.retrievalBreakdown.rerank.toFixed(2) }}</span>
-          </div>
-          <div class="topic-list">
-            <span v-for="topic in paper.topics" :key="topic">{{ topic }}</span>
-          </div>
-        </article>
-      </section>
+        </div>
+      </article>
     </section>
   </main>
 </template>
@@ -300,8 +319,8 @@ onMounted(async () => {
 <style scoped>
 .papers-page {
   min-height: 100vh;
-  background: #f8fafc;
-  color: #111827;
+  background: #f7f9fc;
+  color: #172033;
   font-family: "Helvetica Neue", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
 }
 
@@ -313,86 +332,68 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 40px;
-  background: rgba(255, 255, 255, 0.94);
-  border-bottom: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid #e2e8f0;
   backdrop-filter: blur(12px);
-}
-
-.ghost-button,
-.primary-button {
-  border: 1px solid #111827;
-  border-radius: 6px;
-  padding: 9px 14px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.ghost-button {
-  background: #fff;
-  color: #111827;
-}
-
-.primary-button {
-  background: #111827;
-  color: #fff;
 }
 
 .hero,
 .search-panel,
-.preset-strip,
-.query-strip,
-.import-panel,
-.content {
-  width: min(1240px, 88vw);
-  margin: 24px auto 0;
+.example-strip,
+.diagnostic-strip,
+.results,
+.notice {
+  width: min(1180px, 90vw);
+  margin: 20px auto 0;
 }
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
-  gap: 32px;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 28px;
   align-items: end;
-  padding: 42px 0 14px;
+  padding: 30px 0 8px;
 }
 
 .kicker {
-  display: inline-block;
+  display: block;
   margin-bottom: 10px;
-  color: #dc2626;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 1.6px;
-  text-transform: uppercase;
+  color: #52627a;
+  font-size: 13px;
 }
 
-.hero h1 {
-  margin: 0 0 14px;
-  font-size: 48px;
+h1,
+h2,
+h3 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+h1 {
+  font-size: 42px;
+  line-height: 1.18;
 }
 
 .hero p {
   max-width: 720px;
-  margin: 0;
-  color: #4b5563;
-  font-size: 16px;
+  margin: 14px 0 0;
+  color: #52627a;
   line-height: 1.8;
 }
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
 .metrics div,
 .search-panel,
-.query-strip,
-.import-panel,
-.filters,
+.diagnostic-strip,
 .results {
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
-  background: #fff;
+  background: #ffffff;
 }
 
 .metrics div {
@@ -401,225 +402,282 @@ onMounted(async () => {
 
 .metrics strong {
   display: block;
-  font-size: 24px;
+  font-size: 22px;
+  overflow-wrap: anywhere;
 }
 
-.metrics span,
-.authors,
-.paper-meta {
-  color: #6b7280;
+.metrics span {
+  display: block;
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.notice {
+  padding: 12px 14px;
+  border-radius: 8px;
   font-size: 13px;
 }
 
+.notice.error {
+  color: #a8071a;
+  background: #fff1f0;
+  border: 1px solid #ffccc7;
+}
+
+.notice.warning {
+  color: #7a4f00;
+  background: #fffbe6;
+  border: 1px solid #ffe58f;
+}
+
 .search-panel {
+  padding: 20px;
+}
+
+label {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  padding: 16px;
+  gap: 7px;
 }
 
-.search-panel input,
-.import-grid input,
-.import-panel textarea {
-  box-sizing: border-box;
+label span {
+  color: #475569;
+  font-size: 13px;
+}
+
+textarea,
+input {
   width: 100%;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  padding: 12px 14px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 11px 12px;
   font: inherit;
+  color: #172033;
+  background: #ffffff;
 }
 
-.query-strip {
+textarea {
+  resize: vertical;
+  min-height: 110px;
+}
+
+textarea:focus,
+input:focus {
+  outline: none;
+  border-color: #2f5da8;
+  box-shadow: 0 0 0 3px rgba(47, 93, 168, 0.12);
+}
+
+.search-options {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 14px;
+  gap: 10px;
+  margin-top: 16px;
 }
 
-.query-strip span,
-.score-row span,
-.topic-list span,
-.preset-chip {
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: #eff6ff;
-  color: #1d4ed8;
-  font-size: 12px;
-  font-weight: 800;
+button {
+  min-height: 38px;
+  border-radius: 8px;
+  padding: 0 14px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
 }
 
-.preset-strip {
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.primary-button {
+  border: 1px solid #2f5da8;
+  background: #2f5da8;
+  color: #ffffff;
+}
+
+.ghost-button {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+
+.inline-button {
+  min-height: 32px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #1f4f99;
+  font-size: 13px;
+}
+
+.example-strip,
+.diagnostic-strip {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
 
-.preset-strip span {
-  color: #6b7280;
+.example-strip span,
+.diagnostic-strip span {
+  color: #64748b;
   font-size: 12px;
-  font-weight: 800;
 }
 
-.preset-chip {
-  border: 1px solid #bfdbfe;
-  cursor: pointer;
+.example-strip button,
+.diagnostic-strip span {
+  min-height: 30px;
+  border: 1px solid #dbe4ee;
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 5px 10px;
 }
 
-.import-panel {
-  padding: 20px;
+.diagnostic-strip {
+  padding: 12px;
 }
 
-.import-panel h2 {
-  margin: 0 0 14px;
-  font-size: 20px;
+.diagnostic-strip span {
+  color: #334155;
 }
 
-.import-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.import-panel > textarea,
-.cer-inputs {
-  margin-top: 12px;
-}
-
-.import-panel textarea {
-  min-height: 86px;
-  resize: vertical;
-}
-
-.cer-inputs {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.import-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.import-error {
-  color: #b91c1c;
-  font-size: 13px;
-}
-
-.content {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 18px;
-  align-items: start;
-  padding-bottom: 60px;
-}
-
-.filters,
 .results {
   padding: 20px;
-}
-
-.filters h2,
-.result-head h2 {
-  margin: 0;
-  font-size: 20px;
-}
-
-.filters button {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  margin-top: 10px;
-  padding: 11px 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  background: #fff;
-  cursor: pointer;
-}
-
-.filters button.active {
-  border-color: #dc2626;
-  background: #fff7ed;
+  margin-bottom: 50px;
 }
 
 .result-head {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   margin-bottom: 14px;
 }
 
-.paper-card {
-  padding: 18px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #fff;
-  cursor: pointer;
-}
-
-.paper-card + .paper-card {
-  margin-top: 12px;
-}
-
-.paper-card:hover {
-  border-color: #dc2626;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-}
-
-.paper-meta,
-.score-row,
-.topic-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.paper-meta {
-  margin-bottom: 10px;
-  font-weight: 800;
-}
-
-.paper-meta .pass {
-  color: #166534;
-}
-
-.paper-card h3 {
-  margin: 0 0 8px;
-  font-size: 20px;
-}
-
-.paper-card p {
-  margin: 0 0 12px;
-  color: #4b5563;
-  font-size: 14px;
-  line-height: 1.7;
-}
-
-.paper-note {
-  color: #64748b !important;
-  font-size: 12px !important;
-}
-
-.topic-list span {
-  background: #f3f4f6;
-  color: #111827;
+.result-head span {
+  color: #64748b;
+  font-size: 13px;
 }
 
 .state-card {
-  padding: 24px;
-  border: 1px dashed #d1d5db;
+  padding: 26px;
+  border: 1px dashed #cbd5e1;
   border-radius: 8px;
-  color: #6b7280;
+  color: #64748b;
   text-align: center;
+}
+
+.result-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.result-card + .result-card {
+  margin-top: 12px;
+}
+
+.result-card:hover {
+  border-color: #2f5da8;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.07);
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-head h3 {
+  font-size: 18px;
+}
+
+.card-head span {
+  color: #1f4f99;
+  font-size: 12px;
+}
+
+.result-card p {
+  margin: 10px 0;
+  color: #334155;
+  line-height: 1.75;
+}
+
+.result-card footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.context-error {
+  margin-top: 10px;
+  color: #b42318;
+  font-size: 13px;
+}
+
+.context-panel {
+  margin-top: 12px;
+  padding: 12px 0 0 14px;
+  border-top: 1px solid #e2e8f0;
+  border-left: 3px solid #9db7df;
+}
+
+.context-row {
+  padding: 0 0 14px;
+}
+
+.context-row + .context-row {
+  margin-top: 14px;
+  border-top: 1px dashed #dbe4ee;
+  padding-top: 14px;
+}
+
+.context-row.current {
+  border-left: 3px solid #2f5da8;
+  padding-left: 12px;
+}
+
+.context-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.context-meta strong {
+  color: #1f4f99;
+}
+
+.context-row p {
+  margin: 8px 0 0;
+  color: #334155;
 }
 
 @media (max-width: 900px) {
   .hero,
-  .content,
-  .search-panel,
-  .preset-strip,
-  .import-grid,
-  .cer-inputs {
+  .search-options {
+    grid-template-columns: 1fr;
+  }
+
+  .metrics {
     grid-template-columns: 1fr;
   }
 }

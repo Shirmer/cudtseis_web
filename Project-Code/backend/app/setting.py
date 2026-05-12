@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     geo_rag_chat_model: str = "gpt-4o-mini"
     geo_rag_index_version: str = "geo-rag-v1"
     geo_rag_embedding_provider: str = "auto"
+    geo_rag_embedding_url: str = ""
+    geo_rag_embedding_api_key: str = ""
+    geo_rag_embedding_allow_fallback: bool = True
     geo_rag_embedding_model: str = ""
     geo_rag_embedding_dim: int = 1536
     geo_rag_embedding_batch_size: int = 32

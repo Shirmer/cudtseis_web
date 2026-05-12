@@ -2,16 +2,25 @@ from __future__ import annotations
 
 import asyncio
 import json
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .db import SessionLocal, engine, get_db
 from .event_service import get_event_payload, query_events_page, query_events_payload
-from .geo_ingest_service import get_geo_document_status, ingest_geo_document, initialize_geo_knowledge, search_geo_knowledge
+from .geo_ingest_service import (
+    get_geo_document_status,
+    get_knowledge_unit_context,
+    ingest_geo_document,
+    ingest_geo_document_batch,
+    initialize_geo_knowledge,
+    resolve_geo_document_file,
+    search_geo_knowledge,
+)
 from .geo_rag_service import answer_event_geo_analysis, answer_paper_question
 from .ingest import fetch_usgs_geojson, upsert_and_get_new
 from .paper_database import add_paper, get_paper_architecture, get_paper_detail, initialize_paper_database, search_papers
@@ -28,11 +37,14 @@ from .schemas import (
     EventQueryParams,
     EventRagRequest,
     EventsPageOut,
+    DocumentBatchIngestOut,
+    DocumentBatchIngestRequest,
     DocumentIngestOut,
     DocumentIngestRequest,
     DocumentStatusOut,
     GeoAnalysisRequest,
     GeoRagResponseOut,
+    KnowledgeContextOut,
     KnowledgeInitOut,
     KnowledgeSearchOut,
     KnowledgeSearchRequest,
@@ -425,6 +437,10 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
             },
         )
 
+    @app.get("/api/knowledge/units/{unit_id}/context", response_model=KnowledgeContextOut)
+    def get_knowledge_context(unit_id: str, window: int = Query(default=1, ge=1, le=3), db: Session = Depends(get_db)):
+        return get_knowledge_unit_context(db, unit_id, window=window)
+
     @app.post("/api/documents/ingest", response_model=DocumentIngestOut)
     def ingest_document(payload: DocumentIngestRequest, db: Session = Depends(get_db)):
         try:
@@ -432,9 +448,32 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/documents/batch-ingest", response_model=DocumentBatchIngestOut)
+    def batch_ingest_documents(payload: DocumentBatchIngestRequest, db: Session = Depends(get_db)):
+        try:
+            return ingest_geo_document_batch(db, payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/documents/{document_id}/status", response_model=DocumentStatusOut)
     def get_document_status(document_id: str, db: Session = Depends(get_db)):
         return get_geo_document_status(db, document_id)
+
+    @app.get("/api/documents/{document_id}/file")
+    def get_document_file(document_id: str, db: Session = Depends(get_db)):
+        source_path = resolve_geo_document_file(db, document_id)
+        suffix = source_path.suffix.lower()
+        media_type = {
+            ".pdf": "application/pdf",
+            ".md": "text/markdown; charset=utf-8",
+            ".txt": "text/plain; charset=utf-8",
+        }.get(suffix, "application/octet-stream")
+        filename = quote(source_path.name)
+        return FileResponse(
+            source_path,
+            media_type=media_type,
+            headers={"Content-Disposition": f"inline; filename*=UTF-8''{filename}"},
+        )
 
     @app.post("/api/rag/papers/query", response_model=GeoRagResponseOut)
     def query_paper_rag(payload: PaperRagQueryRequest, db: Session = Depends(get_db)):

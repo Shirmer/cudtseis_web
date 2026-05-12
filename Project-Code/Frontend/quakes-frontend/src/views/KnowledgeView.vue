@@ -5,16 +5,11 @@ import { useRouter } from 'vue-router'
 import { apiUrl } from '../config/api'
 
 type KnowledgeInit = {
-  status: string
   backend: string
-  collection: string
-  vectorSize: number
   documents: number
   units: number
   indexVersion: string
-  message: string
   warning?: string
-  generatedAt: string
 }
 
 type DocumentIngest = {
@@ -25,81 +20,37 @@ type DocumentIngest = {
   parser: string
   pages: number
   units: number
-  fileSha256: string
-  vectorStore: Record<string, unknown>
   embeddingBackend: string
   message: string
 }
 
-type KnowledgeHit = {
-  unitId: string
-  documentId: string
-  paperId: string
-  title: string
-  contentType: string
-  text: string
-  page?: number | null
-  score: number
-  citation: Record<string, unknown>
-  metadata: Record<string, unknown>
-}
-
-type KnowledgeSearch = {
-  query: string
-  topK: number
-  backend: string
-  collection: string
-  warning?: string
-  embeddingBackend: string
-  diagnostics: Record<string, unknown>
-  results: KnowledgeHit[]
-  storeStats: {
-    documents: number
-    units: number
-  }
-}
-
-type GeoRagAnswer = {
-  question: string
-  answer: string
-  retrievalMode: string
-  mode: string
-  evidencePack: {
-    confidence?: string
-    evidence?: Array<{
-      id: string
-      title: string
-      text: string
-      page?: number | null
-      score?: number
-    }>
-    limitations?: string[]
-  }
-  retrievedContexts: Array<{
-    id: string
+type DocumentBatchIngest = {
+  total: number
+  succeeded: number
+  skipped: number
+  failed: number
+  items: Array<{
+    filePath: string
+    status: string
     title: string
-    content: string
-    score: number
-    metadata?: Record<string, unknown>
+    pages: number
+    units: number
+    error: string
   }>
-  suggestedQuestions: string[]
-  diagnostics: Record<string, unknown>
 }
 
 const router = useRouter()
 
+const initState = ref<KnowledgeInit | null>(null)
 const initLoading = ref(false)
 const ingestLoading = ref(false)
-const searchLoading = ref(false)
-const answerLoading = ref(false)
+const batchLoading = ref(false)
 const error = ref('')
-
-const initState = ref<KnowledgeInit | null>(null)
+const mode = ref<'single' | 'batch'>('single')
 const ingestResult = ref<DocumentIngest | null>(null)
-const searchResult = ref<KnowledgeSearch | null>(null)
-const answerResult = ref<GeoRagAnswer | null>(null)
+const batchResult = ref<DocumentBatchIngest | null>(null)
 
-const ingestForm = ref({
+const singleForm = ref({
   filePath: '',
   title: '',
   authors: '',
@@ -109,54 +60,32 @@ const ingestForm = ref({
   force: true
 })
 
-const searchForm = ref({
-  query: 'active fault rupture tectonic setting',
-  topK: 6,
-  paperId: '',
-  topics: ''
+const batchForm = ref({
+  directoryPath: 'Project-Code/backend/.data/geo_rag_documents',
+  recursive: false,
+  force: true,
+  limit: 50
 })
 
-const questionForm = ref({
-  question: '这些文献中关于断层破裂、构造背景和地震危险性的证据是什么？',
-  paperId: '',
-  topK: 6
-})
+const stats = computed(() => ({
+  documents: initState.value?.documents ?? 0,
+  units: initState.value?.units ?? 0,
+  backend: initState.value?.backend ?? '-'
+}))
 
+const batchItems = computed(() => (batchResult.value?.items ?? []).slice(0, 10))
 const allowedDocumentPattern = /\.(pdf|txt|md)$/i
 
-const storeStats = computed(() => {
-  if (searchResult.value?.storeStats) return searchResult.value.storeStats
-  if (initState.value) return { documents: initState.value.documents, units: initState.value.units }
-  return { documents: 0, units: 0 }
-})
-
-const evidenceItems = computed(() => answerResult.value?.evidencePack?.evidence ?? [])
-
-const searchDiagnostics = computed(() => searchResult.value?.diagnostics ?? {})
-
-const answerDiagnostics = computed(() => {
-  const diagnostics = answerResult.value?.diagnostics ?? {}
-  const retrieval = diagnostics.retrieval
-  return typeof retrieval === 'object' && retrieval !== null ? retrieval as Record<string, unknown> : {}
-})
-
-const diagnosticList = computed(() => {
-  const diagnostics = answerResult.value ? answerDiagnostics.value : searchDiagnostics.value
-  const flags = Array.isArray(diagnostics.qualityFlags) ? diagnostics.qualityFlags : []
-  return [
-    ['策略', diagnostics.retrievalStrategy],
-    ['候选', diagnostics.candidateCount],
-    ['Dense', diagnostics.denseCandidateCount],
-    ['Keyword', diagnostics.keywordCandidateCount],
-    ['集中度', diagnostics.topDocumentShare],
-    ['风险', flags.length ? flags.join('; ') : 'none']
-  ].filter(([, value]) => value !== undefined && value !== null && value !== '')
-})
+const readError = async (response: Response, fallback: string) => {
+  const detail = await response.json().catch(() => null)
+  if (detail?.detail) return String(detail.detail)
+  return `${fallback} (${response.status})`
+}
 
 const setError = (value: unknown, fallback: string) => {
   if (value instanceof Error) {
     if (/load failed|failed to fetch/i.test(value.message)) {
-      error.value = '请求后端失败：请确认 python3 dev.py 仍在运行，并使用终端输出的前端地址打开页面。'
+      error.value = '请求后端失败：请确认 python3 dev.py 正在运行。'
       return
     }
     error.value = value.message
@@ -165,50 +94,45 @@ const setError = (value: unknown, fallback: string) => {
   }
 }
 
-const readError = async (response: Response, fallback: string) => {
-  const detail = await response.json().catch(() => null)
-  if (detail?.detail) return String(detail.detail)
-  return `${fallback} (${response.status})`
-}
-
 const initKnowledge = async () => {
   initLoading.value = true
   error.value = ''
   try {
     const response = await fetch(apiUrl('/knowledge/init'), { method: 'POST' })
-    if (!response.ok) throw new Error(await readError(response, '初始化失败'))
+    if (!response.ok) throw new Error(await readError(response, '刷新状态失败'))
     initState.value = await response.json() as KnowledgeInit
   } catch (err) {
-    setError(err, '初始化失败')
+    setError(err, '刷新状态失败')
   } finally {
     initLoading.value = false
   }
 }
 
-const ingestDocument = async () => {
-  const filePath = ingestForm.value.filePath.trim()
+const ingestSingle = async () => {
+  const filePath = singleForm.value.filePath.trim()
   if (!filePath) {
-    error.value = '请填写后端可访问的文献文件路径'
+    error.value = '请填写 PDF/TXT/MD 文件路径'
     return
   }
   if (!allowedDocumentPattern.test(filePath)) {
-    error.value = '这里需要填写具体文献文件，例如 Project-Code/backend/.data/geo_rag_documents/2604.27126v1.pdf；不能只填文件夹。'
+    error.value = '单篇导入要填写具体文件，不是文件夹；文件夹请用批量导入。'
     return
   }
+
   ingestLoading.value = true
   error.value = ''
   try {
     const payload = {
       filePath,
-      title: ingestForm.value.title.trim() || undefined,
-      authors: ingestForm.value.authors
+      title: singleForm.value.title.trim() || undefined,
+      authors: singleForm.value.authors
         .split(/[;,，；]/)
         .map((item) => item.trim())
         .filter(Boolean),
-      year: ingestForm.value.year || undefined,
-      doi: ingestForm.value.doi.trim() || undefined,
-      sourceUrl: ingestForm.value.sourceUrl.trim() || undefined,
-      force: ingestForm.value.force
+      year: singleForm.value.year || undefined,
+      doi: singleForm.value.doi.trim() || undefined,
+      sourceUrl: singleForm.value.sourceUrl.trim() || undefined,
+      force: singleForm.value.force
     }
     const response = await fetch(apiUrl('/documents/ingest'), {
       method: 'POST',
@@ -225,67 +149,35 @@ const ingestDocument = async () => {
   }
 }
 
-const searchKnowledge = async () => {
-  if (!searchForm.value.query.trim()) {
-    error.value = '请填写检索问题'
+const ingestBatch = async () => {
+  const directoryPath = batchForm.value.directoryPath.trim()
+  if (!directoryPath) {
+    error.value = '请填写文献文件夹路径'
     return
   }
-  searchLoading.value = true
-  error.value = ''
-  try {
-    const payload = {
-      query: searchForm.value.query.trim(),
-      topK: Number(searchForm.value.topK) || 6,
-      paperId: searchForm.value.paperId.trim() || undefined,
-      topics: searchForm.value.topics
-        .split(/[;,，；]/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-    }
-    const response = await fetch(apiUrl('/knowledge/search'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    if (!response.ok) throw new Error(await readError(response, '检索失败'))
-    searchResult.value = await response.json() as KnowledgeSearch
-  } catch (err) {
-    setError(err, '检索失败')
-  } finally {
-    searchLoading.value = false
-  }
-}
 
-const askKnowledge = async () => {
-  if (!questionForm.value.question.trim()) {
-    error.value = '请填写问答问题'
-    return
-  }
-  answerLoading.value = true
+  batchLoading.value = true
   error.value = ''
   try {
-    const response = await fetch(apiUrl('/rag/papers/query'), {
+    const response = await fetch(apiUrl('/documents/batch-ingest'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        question: questionForm.value.question.trim(),
-        paperId: questionForm.value.paperId.trim() || undefined,
-        topK: Number(questionForm.value.topK) || 6
+        directoryPath,
+        recursive: batchForm.value.recursive,
+        force: batchForm.value.force,
+        limit: Number(batchForm.value.limit) || 50,
+        extensions: ['.pdf', '.txt', '.md']
       })
     })
-    if (!response.ok) throw new Error(await readError(response, '问答失败'))
-    answerResult.value = await response.json() as GeoRagAnswer
+    if (!response.ok) throw new Error(await readError(response, '批量导入失败'))
+    batchResult.value = await response.json() as DocumentBatchIngest
+    await initKnowledge()
   } catch (err) {
-    setError(err, '问答失败')
+    setError(err, '批量导入失败')
   } finally {
-    answerLoading.value = false
+    batchLoading.value = false
   }
-}
-
-const fillFromIngest = () => {
-  if (!ingestResult.value) return
-  searchForm.value.paperId = ingestResult.value.paperId
-  questionForm.value.paperId = ingestResult.value.paperId
 }
 
 onMounted(() => {
@@ -297,229 +189,140 @@ onMounted(() => {
   <main class="knowledge-page">
     <header class="topbar">
       <button class="ghost-button" @click="router.push('/')">返回首页</button>
-      <strong>CDUT SEISLAB · GEO KNOWLEDGE</strong>
-      <button class="ghost-button" @click="router.push('/papers')">论文库</button>
+      <strong>文献知识库</strong>
+      <button class="ghost-button" @click="router.push('/papers')">检索论文</button>
     </header>
 
-    <section class="summary-band">
+    <section class="hero">
       <div>
-        <span class="eyebrow">MVP Knowledge Base</span>
-        <h1>地质文献知识库</h1>
+        <span class="eyebrow">Knowledge Ingest</span>
+        <h1>导入文献</h1>
+        <p>把本地 PDF、TXT 或 Markdown 文献加入知识库。系统会按“每篇文献独立处理”的规则解析、切块、向量化并写入数据库。</p>
       </div>
-      <div class="metric-row">
-        <div>
-          <strong>{{ initState?.backend ?? '-' }}</strong>
-          <span>向量后端</span>
-        </div>
-        <div>
-          <strong>{{ storeStats.documents }}</strong>
-          <span>文献</span>
-        </div>
-        <div>
-          <strong>{{ storeStats.units }}</strong>
-          <span>知识单元</span>
-        </div>
-        <div>
-          <strong>{{ initState?.indexVersion ?? '-' }}</strong>
-          <span>索引版本</span>
-        </div>
+      <div class="metrics">
+        <div><strong>{{ stats.documents }}</strong><span>文献</span></div>
+        <div><strong>{{ stats.units }}</strong><span>知识单元</span></div>
+        <div><strong>{{ stats.backend }}</strong><span>向量库</span></div>
       </div>
     </section>
 
     <section v-if="error" class="notice error">{{ error }}</section>
     <section v-if="initState?.warning" class="notice warning">{{ initState.warning }}</section>
 
-    <section class="workspace-grid">
-      <section class="panel ingest-panel">
-        <div class="panel-heading">
+    <section class="workspace">
+      <section class="panel">
+        <div class="panel-head">
           <div>
-            <span>01</span>
-            <h2>文献入库</h2>
+            <span>Import</span>
+            <h2>选择导入方式</h2>
           </div>
-          <button class="secondary-button" :disabled="initLoading" @click="initKnowledge">
-            {{ initLoading ? '初始化中' : '初始化' }}
+          <button class="ghost-button" :disabled="initLoading" @click="initKnowledge">
+            {{ initLoading ? '刷新中' : '刷新状态' }}
           </button>
         </div>
 
-        <label>
-          <span>文件路径</span>
-          <input v-model="ingestForm.filePath" placeholder="Project-Code/backend/.data/geo_rag_documents/example.pdf" />
-          <small>填写具体 PDF/TXT/MD 文件路径，不是文件夹路径。</small>
-        </label>
-
-        <div class="form-grid">
-          <label>
-            <span>标题</span>
-            <input v-model="ingestForm.title" placeholder="论文标题" />
-          </label>
-          <label>
-            <span>作者</span>
-            <input v-model="ingestForm.authors" placeholder="Author A; Author B" />
-          </label>
-          <label>
-            <span>年份</span>
-            <input v-model.number="ingestForm.year" type="number" min="1500" max="2200" />
-          </label>
-          <label>
-            <span>DOI</span>
-            <input v-model="ingestForm.doi" placeholder="10.xxxx/example" />
-          </label>
+        <div class="mode-switch">
+          <button :class="{ active: mode === 'single' }" @click="mode = 'single'">单篇导入</button>
+          <button :class="{ active: mode === 'batch' }" @click="mode = 'batch'">批量导入</button>
         </div>
 
-        <label>
-          <span>来源</span>
-          <input v-model="ingestForm.sourceUrl" placeholder="https://..." />
-        </label>
+        <template v-if="mode === 'single'">
+          <label>
+            <span>文件路径</span>
+            <input v-model="singleForm.filePath" placeholder="Project-Code/backend/.data/geo_rag_documents/example.pdf" />
+          </label>
 
-        <label class="checkbox-line">
-          <input v-model="ingestForm.force" type="checkbox" />
-          <span>重建已有文档</span>
-        </label>
+          <div class="form-grid">
+            <label>
+              <span>标题</span>
+              <input v-model="singleForm.title" placeholder="可选，不填则自动使用文件名" />
+            </label>
+            <label>
+              <span>作者</span>
+              <input v-model="singleForm.authors" placeholder="可选，用分号分隔" />
+            </label>
+            <label>
+              <span>年份</span>
+              <input v-model.number="singleForm.year" type="number" min="1500" max="2200" />
+            </label>
+            <label>
+              <span>DOI</span>
+              <input v-model="singleForm.doi" placeholder="可选" />
+            </label>
+          </div>
 
-        <button class="primary-button" :disabled="ingestLoading" @click="ingestDocument">
-          {{ ingestLoading ? '导入中' : '导入并索引' }}
-        </button>
+          <label>
+            <span>来源链接</span>
+            <input v-model="singleForm.sourceUrl" placeholder="可选" />
+          </label>
 
-        <div v-if="ingestResult" class="result-strip">
+          <label class="checkbox-line">
+            <input v-model="singleForm.force" type="checkbox" />
+            <span>如果已存在，重新解析并覆盖旧索引</span>
+          </label>
+
+          <button class="primary-button" :disabled="ingestLoading" @click="ingestSingle">
+            {{ ingestLoading ? '导入中' : '导入并索引' }}
+          </button>
+        </template>
+
+        <template v-else>
+          <label>
+            <span>文件夹路径</span>
+            <input v-model="batchForm.directoryPath" placeholder="Project-Code/backend/.data/geo_rag_documents" />
+          </label>
+
+          <div class="form-grid">
+            <label>
+              <span>最多导入</span>
+              <input v-model.number="batchForm.limit" type="number" min="1" max="1000" />
+            </label>
+            <label class="checkbox-line lower">
+              <input v-model="batchForm.recursive" type="checkbox" />
+              <span>包含子文件夹</span>
+            </label>
+            <label class="checkbox-line lower">
+              <input v-model="batchForm.force" type="checkbox" />
+              <span>重新解析已有文献</span>
+            </label>
+          </div>
+
+          <button class="primary-button" :disabled="batchLoading" @click="ingestBatch">
+            {{ batchLoading ? '批量导入中' : '批量导入并索引' }}
+          </button>
+        </template>
+      </section>
+
+      <section class="panel result-panel">
+        <div class="panel-head">
+          <div>
+            <span>Result</span>
+            <h2>导入结果</h2>
+          </div>
+        </div>
+
+        <div v-if="mode === 'single' && ingestResult" class="result-summary">
           <div><strong>{{ ingestResult.status }}</strong><span>{{ ingestResult.parser }}</span></div>
           <div><strong>{{ ingestResult.pages }}</strong><span>页</span></div>
-          <div><strong>{{ ingestResult.units }}</strong><span>单元</span></div>
-          <button class="tiny-button" @click="fillFromIngest">使用该论文</button>
+          <div><strong>{{ ingestResult.units }}</strong><span>知识单元</span></div>
+          <button class="ghost-button" @click="router.push('/papers')">去检索</button>
         </div>
-      </section>
 
-      <section class="panel">
-        <div class="panel-heading">
-          <div>
-            <span>02</span>
-            <h2>知识检索</h2>
+        <div v-else-if="mode === 'batch' && batchResult" class="batch-result">
+          <div class="result-summary">
+            <div><strong>{{ batchResult.succeeded }}</strong><span>成功</span></div>
+            <div><strong>{{ batchResult.failed }}</strong><span>失败</span></div>
+            <div><strong>{{ batchResult.skipped }}</strong><span>跳过</span></div>
           </div>
+          <article v-for="item in batchItems" :key="item.filePath" class="batch-item">
+            <strong>{{ item.title || item.filePath }}</strong>
+            <span>{{ item.status }} · {{ item.pages }} 页 · {{ item.units }} 单元</span>
+            <small v-if="item.error">{{ item.error }}</small>
+          </article>
+          <button class="ghost-button" @click="router.push('/papers')">去检索</button>
         </div>
 
-        <label>
-          <span>检索问题</span>
-          <textarea v-model="searchForm.query" rows="4"></textarea>
-        </label>
-
-        <div class="form-grid compact">
-          <label>
-            <span>Top K</span>
-            <input v-model.number="searchForm.topK" type="number" min="1" max="30" />
-          </label>
-          <label>
-            <span>Paper ID</span>
-            <input v-model="searchForm.paperId" placeholder="可选" />
-          </label>
-          <label>
-            <span>Topics</span>
-            <input v-model="searchForm.topics" placeholder="fault; rupture" />
-          </label>
-        </div>
-
-        <button class="primary-button" :disabled="searchLoading" @click="searchKnowledge">
-          {{ searchLoading ? '检索中' : '检索知识单元' }}
-        </button>
-
-        <div v-if="searchResult" class="diagnostics">
-          <span>{{ searchResult.backend }}</span>
-          <span>{{ searchResult.embeddingBackend }}</span>
-          <span>{{ searchResult.results.length }} hits</span>
-        </div>
-
-        <div v-if="searchResult" class="quality-card">
-          <strong>检索质量诊断</strong>
-          <dl>
-            <template v-for="([label, value], index) in diagnosticList" :key="`${label}-${index}`">
-              <dt>{{ label }}</dt>
-              <dd>{{ value }}</dd>
-            </template>
-          </dl>
-        </div>
-      </section>
-    </section>
-
-    <section class="qa-layout">
-      <section class="panel qa-panel">
-        <div class="panel-heading">
-          <div>
-            <span>03</span>
-            <h2>文献问答</h2>
-          </div>
-        </div>
-
-        <label>
-          <span>问题</span>
-          <textarea v-model="questionForm.question" rows="4"></textarea>
-        </label>
-
-        <div class="form-grid compact">
-          <label>
-            <span>Paper ID</span>
-            <input v-model="questionForm.paperId" placeholder="可选" />
-          </label>
-          <label>
-            <span>Top K</span>
-            <input v-model.number="questionForm.topK" type="number" min="1" max="20" />
-          </label>
-        </div>
-
-        <button class="primary-button" :disabled="answerLoading" @click="askKnowledge">
-          {{ answerLoading ? '生成中' : '生成证据回答' }}
-        </button>
-      </section>
-
-      <section class="answer-surface">
-        <div v-if="answerResult" class="answer-block">
-          <div class="answer-meta">
-            <span>{{ answerResult.retrievalMode }}</span>
-            <span>{{ answerResult.evidencePack?.confidence ?? 'unknown' }}</span>
-          </div>
-          <p>{{ answerResult.answer }}</p>
-          <div class="quality-card compact-card">
-            <strong>回答证据诊断</strong>
-            <dl>
-              <template v-for="([label, value], index) in diagnosticList" :key="`${label}-${index}`">
-                <dt>{{ label }}</dt>
-                <dd>{{ value }}</dd>
-              </template>
-            </dl>
-          </div>
-        </div>
-        <div v-else class="empty-state">等待文献问答结果</div>
-      </section>
-    </section>
-
-    <section class="results-grid">
-      <section class="results-column">
-        <h2>检索结果</h2>
-        <article v-for="hit in searchResult?.results ?? []" :key="hit.unitId" class="hit-item">
-          <div class="hit-head">
-            <strong>{{ hit.title || hit.paperId }}</strong>
-            <span>{{ hit.score.toFixed(3) }}</span>
-          </div>
-          <p>{{ hit.text }}</p>
-          <footer>
-            <span>{{ hit.contentType }}</span>
-            <span v-if="hit.page">p.{{ hit.page }}</span>
-            <span>{{ hit.paperId }}</span>
-          </footer>
-        </article>
-        <div v-if="searchResult && searchResult.results.length === 0" class="empty-list">未检索到知识单元</div>
-      </section>
-
-      <section class="results-column">
-        <h2>证据包</h2>
-        <article v-for="item in evidenceItems" :key="item.id" class="hit-item evidence">
-          <div class="hit-head">
-            <strong>{{ item.id }} · {{ item.title }}</strong>
-            <span v-if="typeof item.score === 'number'">{{ item.score.toFixed(3) }}</span>
-          </div>
-          <p>{{ item.text }}</p>
-          <footer>
-            <span v-if="item.page">p.{{ item.page }}</span>
-          </footer>
-        </article>
-        <div v-if="answerResult && evidenceItems.length === 0" class="empty-list">暂无证据</div>
+        <div v-else class="empty-state">导入完成后会在这里显示结果。</div>
       </section>
     </section>
   </main>
@@ -528,40 +331,45 @@ onMounted(() => {
 <style scoped>
 .knowledge-page {
   min-height: 100vh;
-  background: #f5f6f8;
-  color: #20242c;
+  background: #f7f9fc;
+  color: #172033;
+  font-family: "Helvetica Neue", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
 }
 
 .topbar {
-  height: 64px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 32px;
-  background: #ffffff;
-  border-bottom: 1px solid #e6e8ec;
+  padding: 16px 40px;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid #e2e8f0;
+  backdrop-filter: blur(12px);
 }
 
-.topbar strong {
-  font-size: 14px;
-  letter-spacing: 0;
+.hero,
+.workspace,
+.notice {
+  width: min(1180px, 90vw);
+  margin: 20px auto 0;
 }
 
-.summary-band {
-  display: flex;
-  justify-content: space-between;
-  gap: 32px;
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 28px;
   align-items: end;
-  padding: 32px;
-  background: #ffffff;
-  border-bottom: 1px solid #e6e8ec;
+  padding: 30px 0 8px;
 }
 
-.eyebrow {
+.eyebrow,
+.panel-head span {
   display: block;
-  color: #667085;
-  font-size: 13px;
   margin-bottom: 8px;
+  color: #64748b;
+  font-size: 13px;
 }
 
 h1,
@@ -571,95 +379,86 @@ h2 {
 }
 
 h1 {
-  font-size: 30px;
-  line-height: 1.2;
+  font-size: 42px;
+  line-height: 1.18;
 }
 
 h2 {
-  font-size: 16px;
-}
-
-.metric-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(112px, 1fr));
-  gap: 12px;
-  min-width: 520px;
-}
-
-.metric-row div,
-.result-strip div {
-  background: #f5f6f8;
-  border: 1px solid #e6e8ec;
-  border-radius: 8px;
-  padding: 12px;
-}
-
-.metric-row strong,
-.result-strip strong {
-  display: block;
   font-size: 18px;
-  line-height: 1.2;
+}
+
+.hero p {
+  max-width: 760px;
+  margin: 14px 0 0;
+  color: #52627a;
+  line-height: 1.8;
+}
+
+.metrics,
+.result-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metrics div,
+.result-summary div,
+.panel {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.metrics div,
+.result-summary div {
+  padding: 14px;
+}
+
+.metrics strong,
+.result-summary strong {
+  display: block;
+  font-size: 22px;
   overflow-wrap: anywhere;
 }
 
-.metric-row span,
-.result-strip span {
+.metrics span,
+.result-summary span {
   display: block;
-  color: #667085;
+  margin-top: 5px;
+  color: #64748b;
   font-size: 12px;
-  margin-top: 6px;
 }
 
 .notice {
-  margin: 16px 32px 0;
   padding: 12px 14px;
   border-radius: 8px;
   font-size: 13px;
 }
 
 .notice.error {
+  color: #a8071a;
   background: #fff1f0;
   border: 1px solid #ffccc7;
-  color: #a8071a;
 }
 
 .notice.warning {
+  color: #7a4f00;
   background: #fffbe6;
   border: 1px solid #ffe58f;
-  color: #7a4f00;
 }
 
-.workspace-grid,
-.qa-layout,
-.results-grid {
+.workspace {
   display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1fr);
   gap: 16px;
-  padding: 16px 32px 0;
+  padding-bottom: 50px;
 }
 
-.workspace-grid {
-  grid-template-columns: minmax(360px, 1.1fr) minmax(360px, 1fr);
-}
-
-.qa-layout {
-  grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.2fr);
-}
-
-.results-grid {
-  grid-template-columns: 1fr 1fr;
-  padding-bottom: 32px;
-}
-
-.panel,
-.answer-surface,
-.results-column {
-  background: #ffffff;
-  border: 1px solid #e6e8ec;
-  border-radius: 8px;
+.panel {
   padding: 20px;
 }
 
-.panel-heading {
+.panel-head {
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -667,11 +466,11 @@ h2 {
   margin-bottom: 18px;
 }
 
-.panel-heading span {
-  display: block;
-  color: #667085;
-  font-size: 12px;
-  margin-bottom: 4px;
+.mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
 label {
@@ -681,38 +480,25 @@ label {
 }
 
 label span {
-  color: #4b5563;
+  color: #475569;
   font-size: 13px;
 }
 
-label small {
-  color: #667085;
-  font-size: 12px;
-}
-
-input,
-textarea {
+input {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid #d0d5dd;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 11px 12px;
   font: inherit;
-  font-size: 14px;
+  color: #172033;
   background: #ffffff;
-  color: #20242c;
 }
 
-textarea {
-  resize: vertical;
-  min-height: 92px;
-}
-
-input:focus,
-textarea:focus {
+input:focus {
   outline: none;
-  border-color: #3366cc;
-  box-shadow: 0 0 0 3px rgba(51, 102, 204, 0.12);
+  border-color: #2f5da8;
+  box-shadow: 0 0 0 3px rgba(47, 93, 168, 0.12);
 }
 
 .form-grid {
@@ -721,16 +507,16 @@ textarea:focus {
   gap: 12px;
 }
 
-.form-grid.compact {
-  grid-template-columns: 120px 1fr 1fr;
-}
-
 .checkbox-line {
   display: inline-flex;
   grid-template-columns: none;
   align-items: center;
   gap: 8px;
-  margin-bottom: 16px;
+}
+
+.checkbox-line.lower {
+  align-self: end;
+  min-height: 42px;
 }
 
 .checkbox-line input {
@@ -739,209 +525,87 @@ textarea:focus {
 }
 
 button {
-  border: none;
+  min-height: 38px;
   border-radius: 8px;
-  cursor: pointer;
+  padding: 0 14px;
   font: inherit;
-  font-weight: 600;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 button:disabled {
+  opacity: 0.55;
   cursor: not-allowed;
-  opacity: 0.58;
-}
-
-.primary-button,
-.secondary-button,
-.ghost-button,
-.tiny-button {
-  min-height: 38px;
-  padding: 0 14px;
 }
 
 .primary-button {
-  background: #254f9f;
+  border: 1px solid #2f5da8;
+  background: #2f5da8;
   color: #ffffff;
 }
 
-.primary-button:hover:not(:disabled) {
-  background: #1f4286;
-}
-
-.secondary-button {
-  background: #eef2ff;
-  color: #254f9f;
-}
-
 .ghost-button,
-.tiny-button {
+.mode-switch button {
+  border: 1px solid #cbd5e1;
   background: #ffffff;
-  color: #344054;
-  border: 1px solid #d0d5dd;
+  color: #334155;
 }
 
-.tiny-button {
-  min-height: 34px;
-  align-self: end;
+.mode-switch button.active {
+  border-color: #2f5da8;
+  background: #eef4ff;
+  color: #1f4f99;
 }
 
-.result-strip {
-  margin-top: 16px;
+.result-panel {
+  min-height: 360px;
+}
+
+.result-summary {
+  margin-bottom: 16px;
+}
+
+.batch-result {
   display: grid;
-  grid-template-columns: repeat(3, minmax(80px, 1fr)) auto;
-  gap: 10px;
-}
-
-.diagnostics,
-.answer-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.diagnostics span,
-.answer-meta span {
-  background: #f2f4f7;
-  color: #344054;
-  border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 12px;
-}
-
-.quality-card {
-  margin-top: 14px;
-  border: 1px solid #e6e8ec;
-  background: #f8fafc;
-  border-radius: 8px;
-  padding: 12px;
-}
-
-.quality-card strong {
-  display: block;
-  font-size: 13px;
-  margin-bottom: 10px;
-}
-
-.quality-card dl {
-  display: grid;
-  grid-template-columns: 86px 1fr;
-  gap: 7px 10px;
-  margin: 0;
-  font-size: 12px;
-}
-
-.quality-card dt {
-  color: #667085;
-}
-
-.quality-card dd {
-  margin: 0;
-  color: #20242c;
-  overflow-wrap: anywhere;
-}
-
-.compact-card {
-  max-width: 720px;
-}
-
-.answer-surface {
-  min-height: 260px;
-}
-
-.answer-block p {
-  white-space: pre-wrap;
-  line-height: 1.75;
-  margin: 16px 0 0;
-}
-
-.empty-state,
-.empty-list {
-  color: #667085;
-  background: #f8fafc;
-  border: 1px dashed #d0d5dd;
-  border-radius: 8px;
-  padding: 24px;
-  text-align: center;
-}
-
-.results-column h2 {
-  margin-bottom: 14px;
-}
-
-.hit-item {
-  border: 1px solid #e6e8ec;
-  border-radius: 8px;
-  padding: 14px;
-  margin-bottom: 12px;
-  background: #ffffff;
-}
-
-.hit-item.evidence {
-  background: #fcfcfd;
-}
-
-.hit-head {
-  display: flex;
-  justify-content: space-between;
   gap: 12px;
-  align-items: start;
 }
 
-.hit-head strong {
-  font-size: 14px;
-  line-height: 1.35;
+.batch-item {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
 }
 
-.hit-head span {
-  color: #254f9f;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.hit-item p {
-  color: #344054;
-  font-size: 13px;
-  line-height: 1.65;
-  margin: 10px 0;
-}
-
-.hit-item footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  color: #667085;
+.batch-item span,
+.batch-item small {
+  color: #64748b;
   font-size: 12px;
 }
 
-@media (max-width: 980px) {
-  .summary-band,
-  .topbar {
-    padding-left: 18px;
-    padding-right: 18px;
-  }
+.batch-item small {
+  color: #a8071a;
+}
 
-  .summary-band {
-    display: block;
-  }
+.empty-state {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #64748b;
+}
 
-  .metric-row {
-    min-width: 0;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin-top: 20px;
-  }
-
-  .workspace-grid,
-  .qa-layout,
-  .results-grid {
+@media (max-width: 900px) {
+  .hero,
+  .workspace,
+  .form-grid {
     grid-template-columns: 1fr;
-    padding-left: 18px;
-    padding-right: 18px;
   }
 
-  .form-grid,
-  .form-grid.compact,
-  .result-strip {
+  .metrics,
+  .result-summary {
     grid-template-columns: 1fr;
   }
 }

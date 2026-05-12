@@ -21,6 +21,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 WHITESPACE_RE = re.compile(r"\s+")
 TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{1,}|[\u4e00-\u9fff]{2,}")
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？.!?])\s+")
+SUPPORTED_DOCUMENT_SUFFIXES = {".pdf", ".txt", ".md"}
 
 
 def initialize_geo_knowledge(db: Session) -> dict[str, Any]:
@@ -39,6 +40,7 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
     digest = file_sha256(source_path)
 
     metadata = _metadata_from_payload(payload)
+    metadata["sourcePath"] = str(source_path)
     paper_id = str(payload.get("paperId") or "").strip()
     if paper_id:
         _merge_known_paper_metadata(metadata, paper_id)
@@ -127,6 +129,8 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
                 "chunkChars": len(chunk["text"]),
                 "language": chunk.get("language", "unknown"),
                 "textQuality": text_quality,
+                "sectionRole": chunk.get("section_role", "body"),
+                "evidenceRole": chunk.get("evidence_role", "primary"),
                 "parserVersion": "geo-parser-v2",
             },
         )
@@ -147,6 +151,8 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
                     text=chunk["text"],
                     page=chunk["page"],
                     section=chunk.get("section", ""),
+                    section_role=chunk.get("section_role", "body"),
+                    evidence_role=chunk.get("evidence_role", "primary"),
                     language=chunk.get("language", "unknown"),
                     text_quality=text_quality,
                     tags=tags,
@@ -176,11 +182,129 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def ingest_geo_document_batch(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
+    directory = _resolve_batch_directory(str(payload.get("directoryPath") or ""))
+    recursive = bool(payload.get("recursive", False))
+    force = bool(payload.get("force", False))
+    limit = int(payload.get("limit") or 100)
+    limit = max(1, min(limit, 1000))
+    extensions = {
+        str(item).lower().strip()
+        for item in (payload.get("extensions") or list(SUPPORTED_DOCUMENT_SUFFIXES))
+        if str(item).strip()
+    }
+    extensions = {item if item.startswith(".") else f".{item}" for item in extensions}
+    extensions = extensions.intersection(SUPPORTED_DOCUMENT_SUFFIXES) or SUPPORTED_DOCUMENT_SUFFIXES
+
+    iterator = directory.rglob("*") if recursive else directory.glob("*")
+    files = sorted(path for path in iterator if path.is_file() and path.suffix.lower() in extensions)[:limit]
+    items: list[dict[str, Any]] = []
+    for path in files:
+        try:
+            result = ingest_geo_document(
+                db,
+                {
+                    "filePath": str(path),
+                    "title": path.stem,
+                    "force": force,
+                },
+            )
+            skipped = "already exists" in str(result.get("message", "")).lower()
+            items.append(
+                {
+                    "filePath": str(path),
+                    "status": "skipped" if skipped else result.get("status", "indexed"),
+                    "documentId": result.get("documentId", ""),
+                    "paperId": result.get("paperId", ""),
+                    "title": result.get("title", path.stem),
+                    "pages": result.get("pages", 0),
+                    "units": result.get("units", 0),
+                    "embeddingBackend": result.get("embeddingBackend", ""),
+                    "message": result.get("message", ""),
+                    "error": "",
+                }
+            )
+        except Exception as exc:
+            db.rollback()
+            items.append(
+                {
+                    "filePath": str(path),
+                    "status": "failed",
+                    "documentId": "",
+                    "paperId": "",
+                    "title": path.stem,
+                    "pages": 0,
+                    "units": 0,
+                    "embeddingBackend": "",
+                    "message": "",
+                    "error": str(exc),
+                }
+            )
+
+    status_counts = Counter(item["status"] for item in items)
+    return {
+        "directoryPath": str(directory),
+        "recursive": recursive,
+        "limit": limit,
+        "total": len(items),
+        "succeeded": status_counts.get("indexed", 0),
+        "skipped": status_counts.get("skipped", 0),
+        "failed": status_counts.get("failed", 0),
+        "items": items,
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def get_geo_document_status(db: Session, document_id: str) -> dict[str, Any]:
     document = db.get(GeoDocument, document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return document_status(document)
+
+
+def get_knowledge_unit_context(db: Session, unit_id: str, window: int = 1) -> dict[str, Any]:
+    unit = db.get(KnowledgeUnit, unit_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="Knowledge unit not found")
+
+    document = db.get(GeoDocument, unit.document_id)
+    citation = unit.citation_json or {}
+    title = document.title if document is not None else citation.get("title", "")
+    window = max(1, min(int(window), 3))
+    start_index = max(1, unit.unit_index - window)
+    end_index = unit.unit_index + window
+
+    neighbors = (
+        db.query(KnowledgeUnit)
+        .filter(KnowledgeUnit.document_id == unit.document_id)
+        .filter(KnowledgeUnit.unit_index >= start_index)
+        .filter(KnowledgeUnit.unit_index <= end_index)
+        .order_by(KnowledgeUnit.unit_index.asc(), KnowledgeUnit.content_type.asc())
+        .all()
+    )
+    source_path = _find_document_file(document) if document is not None else None
+
+    return {
+        "unitId": unit.id,
+        "documentId": unit.document_id,
+        "paperId": unit.paper_id,
+        "title": title,
+        "page": unit.page,
+        "fileName": document.file_name if document is not None else "",
+        "sourceAvailable": source_path is not None,
+        "items": [_context_item(item, unit, title) for item in neighbors],
+    }
+
+
+def resolve_geo_document_file(db: Session, document_id: str) -> Path:
+    document = db.get(GeoDocument, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    source_path = _find_document_file(document)
+    if source_path is None:
+        raise HTTPException(status_code=404, detail="Original document file was not found on this machine")
+    return source_path
 
 
 def search_geo_knowledge(
@@ -239,6 +363,80 @@ def document_status(document: GeoDocument) -> dict[str, Any]:
     }
 
 
+def _context_item(unit: KnowledgeUnit, anchor: KnowledgeUnit, fallback_title: str) -> dict[str, Any]:
+    citation = unit.citation_json or {}
+    metadata = unit.metadata_json or {}
+    if unit.id == anchor.id:
+        position = "current"
+    elif unit.unit_index < anchor.unit_index:
+        position = "before"
+    elif unit.unit_index > anchor.unit_index:
+        position = "after"
+    else:
+        position = "nearby"
+
+    return {
+        "unitId": unit.id,
+        "documentId": unit.document_id,
+        "paperId": unit.paper_id,
+        "title": citation.get("title") or fallback_title,
+        "contentType": unit.content_type,
+        "text": unit.text,
+        "page": unit.page,
+        "unitIndex": unit.unit_index,
+        "position": position,
+        "metadata": {
+            "section": unit.section,
+            "sectionRole": metadata.get("sectionRole") or _section_role(unit.section or "", unit.text),
+            "evidenceRole": metadata.get("evidenceRole") or _evidence_role(
+                metadata.get("sectionRole") or _section_role(unit.section or "", unit.text)
+            ),
+            "language": metadata.get("language", "unknown"),
+        },
+    }
+
+
+def _find_document_file(document: GeoDocument) -> Path | None:
+    metadata = document.metadata_json or {}
+    candidates: list[Path] = []
+
+    for key in ("sourcePath", "filePath"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            candidates.append(Path(value.strip()))
+
+    if document.file_name:
+        candidates.append(_geo_storage_root() / document.file_name)
+
+    for candidate in candidates:
+        resolved = _resolve_candidate_file(candidate)
+        if resolved is not None:
+            return resolved
+
+    storage_root = _geo_storage_root()
+    if document.file_name and storage_root.exists():
+        for match in storage_root.rglob(document.file_name):
+            resolved = _resolve_candidate_file(match)
+            if resolved is not None:
+                return resolved
+    return None
+
+
+def _geo_storage_root() -> Path:
+    root = Path(settings.geo_rag_storage_root).expanduser()
+    if not root.is_absolute():
+        root = PROJECT_ROOT / root
+    return root.resolve(strict=False)
+
+
+def _resolve_candidate_file(path: Path) -> Path | None:
+    candidate = path.expanduser()
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    resolved = candidate.resolve(strict=False)
+    return resolved if resolved.is_file() else None
+
+
 def _resolve_source_path(raw_path: str) -> Path:
     if not raw_path:
         raise ValueError("filePath is required")
@@ -258,6 +456,20 @@ def _resolve_source_path(raw_path: str) -> Path:
         )
     if not resolved.is_file():
         raise ValueError(f"Document path is not a regular file: {resolved}")
+    return resolved
+
+
+def _resolve_batch_directory(raw_path: str) -> Path:
+    if not raw_path:
+        raise ValueError("directoryPath is required")
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    resolved = candidate.expanduser().resolve()
+    if not resolved.exists():
+        raise ValueError(f"Batch directory does not exist: {resolved}")
+    if not resolved.is_dir():
+        raise ValueError(f"Batch path is not a directory: {resolved}")
     return resolved
 
 
@@ -379,38 +591,60 @@ def _chunk_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     buffer: list[str] = []
     start_page: int | None = None
     section = ""
+    section_role = ""
+    evidence_role = ""
     quality: dict[str, Any] = {}
 
-    def flush() -> None:
-        nonlocal buffer, start_page, section, quality
+    def flush(*, keep_tail: bool = False) -> str:
+        nonlocal buffer, start_page, section, section_role, evidence_role, quality
+        current_text = " ".join(buffer)
         text = WHITESPACE_RE.sub(" ", " ".join(buffer)).strip()
         if text:
+            chunk_section_role = section_role or _section_role(section, text)
+            chunk_evidence_role = evidence_role or _evidence_role(chunk_section_role)
             chunks.append(
                 {
                     "page": start_page or 1,
                     "text": text,
                     "section": section,
+                    "section_role": chunk_section_role,
+                    "evidence_role": chunk_evidence_role,
                     "language": _detect_language(text),
-                    "text_quality": {**_text_quality(text), **quality},
+                    "text_quality": {
+                        **_text_quality(text),
+                        **quality,
+                        "sectionRole": chunk_section_role,
+                        "evidenceRole": chunk_evidence_role,
+                    },
                 }
             )
+        tail = current_text[-overlap:].strip() if keep_tail and overlap > 0 else ""
         buffer = []
         start_page = None
         section = ""
+        section_role = ""
+        evidence_role = ""
         quality = {}
+        return tail
 
     for segment in segments:
+        segment_section = segment.get("section", "")
+        segment_section_role = segment.get("section_role") or _section_role(segment_section, segment["text"])
+        segment_evidence_role = segment.get("evidence_role") or _evidence_role(segment_section_role)
         for piece in _split_long_text(segment["text"], chunk_chars):
+            if buffer and not _roles_can_overlap(evidence_role, segment_evidence_role):
+                flush(keep_tail=False)
             current_text = " ".join(buffer)
             if buffer and len(current_text) + len(piece) > chunk_chars:
-                tail = current_text[-overlap:].strip()
-                flush()
+                tail = flush(keep_tail=_roles_can_overlap(evidence_role, segment_evidence_role))
                 if tail:
                     buffer.append(tail)
             if start_page is None:
                 start_page = segment["page"]
-            if segment.get("section"):
-                section = segment["section"]
+            if segment_section:
+                section = segment_section
+            section_role = segment_section_role
+            evidence_role = segment_evidence_role
             quality = segment.get("quality", {})
             buffer.append(piece)
     flush()
@@ -511,12 +745,20 @@ def _page_segments(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 continue
             if _looks_like_references_heading(text):
                 current_section = "References"
+            section_role = _section_role(current_section, text)
+            evidence_role = _evidence_role(section_role)
             segments.append(
                 {
                     "page": page["page"],
                     "text": text,
                     "section": current_section,
-                    "quality": page.get("quality", {}),
+                    "section_role": section_role,
+                    "evidence_role": evidence_role,
+                    "quality": {
+                        **(page.get("quality", {}) or {}),
+                        "sectionRole": section_role,
+                        "evidenceRole": evidence_role,
+                    },
                 }
             )
     return segments
@@ -528,7 +770,10 @@ def _looks_like_heading(text: str) -> bool:
     if re.match(r"^\d+(\.\d+)*\s+[A-Z\u4e00-\u9fff]", text):
         return True
     heading_words = {
+        "acknowledgement",
+        "acknowledgements",
         "abstract",
+        "appendix",
         "introduction",
         "methods",
         "methodology",
@@ -536,20 +781,56 @@ def _looks_like_heading(text: str) -> bool:
         "discussion",
         "conclusion",
         "conclusions",
+        "funding",
         "references",
+        "supplementary material",
         "摘要",
+        "致谢",
         "引言",
         "方法",
         "结果",
         "讨论",
         "结论",
+        "基金",
         "参考文献",
+        "附录",
     }
     return text.lower() in heading_words
 
 
 def _looks_like_references_heading(text: str) -> bool:
     return text.lower() in {"references", "bibliography", "参考文献"}
+
+
+def _section_role(section: str, text: str = "") -> str:
+    normalized = WHITESPACE_RE.sub(" ", f"{section}\n{text[:220]}".lower()).strip()
+    if re.search(r"\b(references|bibliography|works cited|literature cited)\b|参考文献", normalized):
+        return "references"
+    if re.search(r"\backnowledg(e)?ments?\b|致谢", normalized):
+        return "acknowledgement"
+    if re.search(r"\bfunding\b|基金", normalized):
+        return "funding"
+    if re.search(r"\bappendix\b|supplementary material|附录", normalized):
+        return "appendix"
+    if re.search(r"\babstract\b|摘要", normalized):
+        return "abstract"
+    return "body"
+
+
+def _evidence_role(section_role: str) -> str:
+    if section_role in {"references", "acknowledgement", "funding"}:
+        return "low-evidence"
+    if section_role in {"appendix", "abstract"}:
+        return "context"
+    return "primary"
+
+
+def _roles_can_overlap(current_role: str, next_role: str) -> bool:
+    if not current_role or not next_role:
+        return True
+    if "low-evidence" in {current_role, next_role}:
+        return current_role == next_role
+    return True
 
 
 def _split_long_text(text: str, max_chars: int) -> list[str]:
@@ -655,6 +936,8 @@ def _unit_payload(
     text: str,
     page: int | None,
     section: str,
+    section_role: str,
+    evidence_role: str,
     language: str,
     text_quality: dict[str, Any],
     tags: dict[str, Any],
@@ -673,6 +956,8 @@ def _unit_payload(
         "text": text,
         "page": page,
         "section": section,
+        "section_role": section_role,
+        "evidence_role": evidence_role,
         "language": language,
         "text_quality": text_quality,
         "regions": tags.get("regions", []),
@@ -768,6 +1053,10 @@ def _hit_from_unit(unit: KnowledgeUnit, score: float) -> dict[str, Any]:
             "faults": unit.faults_json or [],
             "topics": unit.topics_json or [],
             "section": unit.section,
+            "sectionRole": metadata.get("sectionRole") or _section_role(unit.section or "", unit.text),
+            "evidenceRole": metadata.get("evidenceRole") or _evidence_role(
+                metadata.get("sectionRole") or _section_role(unit.section or "", unit.text)
+            ),
             "language": metadata.get("language", "unknown"),
             "textQuality": metadata.get("textQuality", {}),
         },
@@ -800,7 +1089,9 @@ def _merge_and_rerank_results(
     candidates: list[dict[str, Any]] = []
     for item in combined.values():
         metadata_boost = _metadata_boost(query_terms, item)
-        final_score = 0.62 * item["_dense"] + 0.30 * item["_keyword"] + 0.08 * metadata_boost
+        evidence_weight = _evidence_weight(item)
+        base_score = 0.62 * item["_dense"] + 0.30 * item["_keyword"] + 0.08 * metadata_boost
+        final_score = base_score * evidence_weight
         item["score"] = round(final_score, 6)
         item["metadata"] = {
             **(item.get("metadata") or {}),
@@ -808,6 +1099,7 @@ def _merge_and_rerank_results(
                 "dense": round(item["_dense"], 4),
                 "keyword": round(item["_keyword"], 4),
                 "metadata": round(metadata_boost, 4),
+                "evidenceWeight": round(evidence_weight, 4),
                 "final": round(final_score, 4),
             },
         }
@@ -873,6 +1165,12 @@ def _retrieval_diagnostics(
         quality_flags.append("top_results_concentrated_in_one_document")
     if any((item.get("metadata") or {}).get("textQuality", {}).get("lineJoinRisk", 0) > 0.5 for item in selected):
         quality_flags.append("possible_pdf_text_joining_noise")
+    low_evidence_candidates = sum(1 for item in candidates if _is_low_evidence(item))
+    low_evidence_selected = sum(1 for item in selected if _is_low_evidence(item))
+    if low_evidence_candidates:
+        quality_flags.append("low_evidence_sections_downweighted")
+    if low_evidence_selected:
+        quality_flags.append("low_evidence_sections_in_selected_results")
 
     return {
         "retrievalStrategy": "dense+keyword+metadata+diversity",
@@ -883,9 +1181,11 @@ def _retrieval_diagnostics(
         "denseCandidateCount": len(dense_results),
         "keywordCandidateCount": len(keyword_results),
         "selectedCount": len(selected),
+        "lowEvidenceCandidateCount": low_evidence_candidates,
+        "lowEvidenceSelectedCount": low_evidence_selected,
         "topDocumentShare": round(top_doc_share, 4),
         "qualityFlags": quality_flags,
-        "scoreMeaning": "final = 0.62*dense + 0.30*keyword + 0.08*metadata, then diversity selection",
+        "scoreMeaning": "final = (0.62*dense + 0.30*keyword + 0.08*metadata) * evidenceWeight, then diversity selection",
     }
 
 
@@ -931,7 +1231,14 @@ def _keyword_score(*, query_terms: list[str], text: str, unit: KnowledgeUnit) ->
     ).lower()
     metadata_hits = sum(1 for term in query_terms if term.lower() in metadata_text)
     coverage = matched / max(len(query_terms), 1)
-    return coverage * 0.7 + min(1.0, weighted / 12) * 0.2 + min(1.0, metadata_hits / 4) * 0.1
+    score = coverage * 0.7 + min(1.0, weighted / 12) * 0.2 + min(1.0, metadata_hits / 4) * 0.1
+    metadata = unit.metadata_json or {}
+    evidence_role = metadata.get("evidenceRole") or _evidence_role(metadata.get("sectionRole") or _section_role(unit.section or "", unit.text))
+    if evidence_role == "low-evidence":
+        score *= 0.25
+    elif evidence_role == "context":
+        score *= 0.75
+    return score
 
 
 def _query_terms(query: str) -> list[str]:
@@ -974,7 +1281,23 @@ def _hit_from_vector_result(hit: dict[str, Any]) -> dict[str, Any]:
             "faults": payload.get("faults", []),
             "topics": payload.get("topics", []),
             "section": payload.get("section", ""),
+            "sectionRole": payload.get("section_role") or _section_role(payload.get("section", ""), payload.get("text", "")),
+            "evidenceRole": payload.get("evidence_role")
+            or _evidence_role(_section_role(payload.get("section", ""), payload.get("text", ""))),
             "language": payload.get("language", "unknown"),
             "textQuality": payload.get("text_quality", {}),
         },
     }
+
+
+def _evidence_weight(item: dict[str, Any]) -> float:
+    role = (item.get("metadata") or {}).get("evidenceRole", "primary")
+    if role == "low-evidence":
+        return 0.25
+    if role == "context":
+        return 0.75
+    return 1.0
+
+
+def _is_low_evidence(item: dict[str, Any]) -> bool:
+    return (item.get("metadata") or {}).get("evidenceRole") == "low-evidence"

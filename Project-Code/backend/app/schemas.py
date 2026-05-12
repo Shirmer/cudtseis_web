@@ -278,6 +278,30 @@ class KnowledgeSearchOut(BaseModel):
     storeStats: dict[str, int]
 
 
+class KnowledgeContextItemOut(BaseModel):
+    unitId: str
+    documentId: str
+    paperId: str
+    title: str
+    contentType: str
+    text: str
+    page: int | None = None
+    unitIndex: int
+    position: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class KnowledgeContextOut(BaseModel):
+    unitId: str
+    documentId: str
+    paperId: str
+    title: str
+    page: int | None = None
+    fileName: str = ""
+    sourceAvailable: bool = False
+    items: list[KnowledgeContextItemOut]
+
+
 class DocumentIngestRequest(BaseModel):
     filePath: str = Field(..., min_length=1, max_length=1000)
     paperId: str | None = Field(default=None, max_length=200)
@@ -303,6 +327,39 @@ class DocumentIngestOut(BaseModel):
     vectorStore: dict[str, Any]
     embeddingBackend: str
     message: str
+
+
+class DocumentBatchIngestRequest(BaseModel):
+    directoryPath: str = Field(..., min_length=1, max_length=1000)
+    recursive: bool = False
+    force: bool = False
+    limit: int = Field(default=100, ge=1, le=1000)
+    extensions: list[str] = Field(default_factory=lambda: [".pdf", ".txt", ".md"])
+
+
+class DocumentBatchIngestItemOut(BaseModel):
+    filePath: str
+    status: str
+    documentId: str = ""
+    paperId: str = ""
+    title: str = ""
+    pages: int = 0
+    units: int = 0
+    embeddingBackend: str = ""
+    message: str = ""
+    error: str = ""
+
+
+class DocumentBatchIngestOut(BaseModel):
+    directoryPath: str
+    recursive: bool
+    limit: int
+    total: int
+    succeeded: int
+    skipped: int
+    failed: int
+    items: list[DocumentBatchIngestItemOut]
+    generatedAt: str
 
 
 class DocumentStatusOut(BaseModel):
