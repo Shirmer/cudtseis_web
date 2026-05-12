@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, nextTick, onMounted, computed } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 import { NDropdown, NConfigProvider, type GlobalThemeOverrides } from 'naive-ui'
+import { useRoute } from 'vue-router'
 import { apiUrl } from '../config/api'
 
 type ChatMessage = {
@@ -20,44 +21,28 @@ type RagContext = {
 type RagResponse = {
   answer: string
   question?: string
-  event?: {
-    id?: string
-    place?: string
-    mag?: number
-  }
   retrievedContexts?: RagContext[]
   suggestedQuestions?: string[]
-}
-
-type EventOption = {
-  id: string
-  place: string | null
-  mag: number | null
+  retrievalMode?: string
+  evidencePack?: {
+    confidence?: string
+  }
 }
 
 // --- 逻辑部分 (保持不变) ---
+const route = useRoute()
 const chatHistory = ref<ChatMessage[]>([
-  { id: 1, role: 'ai', content: '你好，我是 Terra。准备好开始深地探索了吗？' }
+  { id: 1, role: 'ai', content: '你好，我是 Terra 文献 RAG。你可以直接问地质、地震、构造和文献证据相关的问题。' }
 ])
 
 const userInput = ref('')
 const isSending = ref(false)
-const currentModel = ref('Terra 4.0 (Seismo)')
-const availableEvents = ref<EventOption[]>([])
-const selectedEventId = ref('')
-
-const selectedEventLabel = computed(() => {
-  const found = availableEvents.value.find((item) => item.id === selectedEventId.value)
-  if (!found) return '自动选择最新事件'
-  const place = found.place || '未知位置'
-  const mag = typeof found.mag === 'number' ? `M${found.mag.toFixed(1)}` : 'M?'
-  return `${place} · ${mag}`
-})
+const currentModel = ref('Geo RAG')
 
 const modelOptions = [
-  { label: 'Terra 4.0 (Seismo)', key: 'Terra 4.0 (Seismo)' },
-  { label: 'Gemini 3 Pro', key: 'Gemini 3 Pro' },
-  { label: 'GPT-4o', key: 'GPT-4o' }
+  { label: 'Geo RAG', key: 'Geo RAG' },
+  { label: '文献证据问答', key: '文献证据问答' },
+  { label: '地震科研分析', key: '地震科研分析' }
 ]
 
 // --- 样式定制：纯白 Dropdown ---
@@ -77,22 +62,14 @@ const dropdownTheme: GlobalThemeOverrides = {
 }
 
 const formatRagReply = (payload: RagResponse): string => {
-  const event = payload.event
-  const eventLine = event?.place
-    ? `关联事件：${event.place}${typeof event.mag === 'number' ? `，M${event.mag.toFixed(1)}` : ''}`
-    : ''
-  const sources = (payload.retrievedContexts ?? [])
-    .slice(0, 3)
-    .map((item) => `- ${item.title} (${item.sourceType}${typeof item.score === 'number' ? ` · ${item.score.toFixed(2)}` : ''})`)
-    .join('\n')
-  const suggestions = (payload.suggestedQuestions ?? [])
-    .slice(0, 3)
-    .map((item) => `- ${item}`)
-    .join('\n')
+  const meta = [
+    payload.retrievalMode ? `检索模式：${payload.retrievalMode}` : '',
+    payload.evidencePack?.confidence ? `可信度：${payload.evidencePack.confidence}` : ''
+  ].filter(Boolean).join('；')
 
   return [
     payload.answer,
-    eventLine
+    meta
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -107,12 +84,12 @@ const handleSend = async () => {
   isSending.value = true
 
   try {
-    const response = await fetch(apiUrl('/rag/query'), {
+    const response = await fetch(apiUrl('/rag/papers/query'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question,
-        eventId: selectedEventId.value || undefined,
+        topK: 8
       })
     })
 
@@ -142,18 +119,7 @@ const handleSend = async () => {
 }
 
 const resetChat = () => {
-  chatHistory.value = [{ id: 1, role: 'ai', content: '你好，我是 Terra。准备好开始深地探索了吗？' }]
-}
-
-const loadRecentEvents = async () => {
-  try {
-    const response = await fetch(apiUrl('/events/search?hours=24&minMag=3.0&limit=20&offset=0'))
-    if (!response.ok) return
-    const payload = await response.json() as { items?: EventOption[] }
-    availableEvents.value = payload.items ?? []
-  } catch {
-    availableEvents.value = []
-  }
+  chatHistory.value = [{ id: 1, role: 'ai', content: '你好，我是 Terra 文献 RAG。你可以直接问地质、地震、构造和文献证据相关的问题。' }]
 }
 
 const chatContainer = ref<HTMLElement | null>(null)
@@ -164,7 +130,8 @@ const scrollToBottom = () => {
 }
 
 onMounted(() => {
-  void loadRecentEvents()
+  const initialQuestion = String(route.query.q ?? '').trim()
+  if (initialQuestion) userInput.value = initialQuestion
 })
 </script>
 
@@ -221,22 +188,13 @@ onMounted(() => {
               </button>
             </n-dropdown>
           </n-config-provider>
-          <label class="event-context">
-            <span>事件上下文</span>
-            <select v-model="selectedEventId" class="context-select">
-              <option value="">自动选择最新事件</option>
-              <option v-for="event in availableEvents" :key="event.id" :value="event.id">
-                {{ (event.place || '未知位置') + (typeof event.mag === 'number' ? ` · M${event.mag.toFixed(1)}` : '') }}
-              </option>
-            </select>
-          </label>
           </div>
 
           <div class="header-tools">
             <button class="icon-btn" title="History">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
             </button>
-            <button class="new-chat-btn" @click="resetChat" :title="`当前上下文：${selectedEventLabel}`">
+            <button class="new-chat-btn" @click="resetChat" title="新建 RAG 问答">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
           </div>
@@ -247,7 +205,7 @@ onMounted(() => {
           <textarea 
             v-model="userInput"
             @keydown.enter.prevent="handleSend"
-            placeholder="问任何问题，@ 模型，/ 提示" 
+            placeholder="问文献证据、地震构造、断层破裂、危险性分析等问题"
             class="chat-textarea"
           ></textarea>
 
@@ -382,23 +340,6 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
-.event-context {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #6b7280;
-  font-size: 12px;
-}
-
-.context-select {
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 8px 10px;
-  color: #374151;
-  background: #ffffff;
-  min-width: 220px;
-}
-
 /* 模型胶囊按钮 (浅色版) */
 .model-pill {
   display: flex; align-items: center; gap: 8px;
@@ -475,8 +416,5 @@ onMounted(() => {
     gap: 12px;
   }
 
-  .context-select {
-    min-width: 100%;
-  }
 }
 </style>

@@ -24,19 +24,25 @@ class EmbeddingResult:
 def embed_texts(texts: list[str]) -> EmbeddingResult:
     cleaned = [text or "" for text in texts]
     provider = settings.geo_rag_embedding_provider.lower().strip()
+    if provider in {"http", "tei"} and settings.geo_rag_embedding_url:
+        try:
+            return _embed_with_http(cleaned)
+        except Exception as exc:
+            if not settings.geo_rag_embedding_allow_fallback:
+                raise RuntimeError("HTTP embedding service failed and fallback is disabled") from exc
+            return _fallback_embeddings(cleaned, "http-fallback")
+
     if provider in {"vikingdb", "auto"} and _vikingdb_configured():
         try:
             return _embed_with_vikingdb(cleaned)
         except Exception:
-            vectors = [_hash_embedding(text, settings.geo_rag_embedding_dim) for text in cleaned]
-            return EmbeddingResult(vectors=vectors, backend="vikingdb-fallback", model="local-hash")
+            return _fallback_embeddings(cleaned, "vikingdb-fallback")
 
     if provider in {"openai", "auto"} and settings.openai_api_key and settings.openai_embedding_model:
         try:
             return _embed_with_openai(cleaned)
         except Exception:
-            vectors = [_hash_embedding(text, settings.geo_rag_embedding_dim) for text in cleaned]
-            return EmbeddingResult(vectors=vectors, backend="hashing-fallback", model="local-hash")
+            return _fallback_embeddings(cleaned, "hashing-fallback")
 
     vectors = [_hash_embedding(text, settings.geo_rag_embedding_dim) for text in cleaned]
     return EmbeddingResult(vectors=vectors, backend="hashing", model="local-hash")
@@ -68,6 +74,54 @@ def _embed_with_openai(texts: list[str]) -> EmbeddingResult:
     if len(vectors) != len(texts):
         raise RuntimeError("Embedding API returned an unexpected number of vectors")
     return EmbeddingResult(vectors=vectors, backend="openai-compatible", model=settings.openai_embedding_model)
+
+
+def _fallback_embeddings(texts: list[str], backend: str) -> EmbeddingResult:
+    vectors = [_hash_embedding(text, settings.geo_rag_embedding_dim) for text in texts]
+    return EmbeddingResult(vectors=vectors, backend=backend, model="local-hash")
+
+
+def _embed_with_http(texts: list[str]) -> EmbeddingResult:
+    model = settings.geo_rag_embedding_model or "text-embeddings-inference"
+    headers = {"Content-Type": "application/json"}
+    if settings.geo_rag_embedding_api_key:
+        headers["Authorization"] = f"Bearer {settings.geo_rag_embedding_api_key}"
+        headers["api-key"] = settings.geo_rag_embedding_api_key
+
+    response = requests.post(
+        settings.geo_rag_embedding_url,
+        headers=headers,
+        json={
+            "model": model,
+            "input": texts,
+        },
+        timeout=120,
+    )
+    response.raise_for_status()
+    data = response.json()
+    vectors = _extract_http_vectors(data)
+    if len(vectors) != len(texts):
+        raise RuntimeError("HTTP embedding service returned an unexpected number of vectors")
+    return EmbeddingResult(vectors=vectors, backend="http", model=model)
+
+
+def _extract_http_vectors(data: Any) -> list[list[float]]:
+    if isinstance(data, dict) and isinstance(data.get("data"), list):
+        ordered = sorted(data["data"], key=lambda item: item.get("index", 0) if isinstance(item, dict) else 0)
+        vectors = [
+            item.get("embedding")
+            for item in ordered
+            if isinstance(item, dict) and isinstance(item.get("embedding"), list)
+        ]
+        if vectors:
+            return [[float(value) for value in vector] for vector in vectors]
+
+    if isinstance(data, dict) and isinstance(data.get("embeddings"), list):
+        embeddings = data["embeddings"]
+        if embeddings and isinstance(embeddings[0], list):
+            return [[float(value) for value in vector] for vector in embeddings]
+
+    raise RuntimeError("Unable to extract vectors from HTTP embedding response")
 
 
 def _vikingdb_configured() -> bool:

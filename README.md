@@ -174,6 +174,54 @@ py dev.py setup
 
 依赖文件没有变化时，`python dev.py` 会跳过重复安装。只有首次安装、依赖清单变化，或显式设置 `FORCE_INSTALL=1` 时才会重新安装。
 
+### 团队共享云端测试配置
+
+如果团队希望所有成员先共用阿里云上的 PostgreSQL/PostGIS 和 Qdrant 测试库，不需要每个人本机都安装数据库。先复制团队配置模板：
+
+macOS / Linux：
+
+```bash
+cp Project-Code/backend/.env.team.example Project-Code/backend/.env.local
+cp Project-Code/Frontend/quakes-frontend/.env.team.example Project-Code/Frontend/quakes-frontend/.env.local
+```
+
+Windows PowerShell：
+
+```powershell
+Copy-Item Project-Code/backend/.env.team.example Project-Code/backend/.env.local
+Copy-Item Project-Code/Frontend/quakes-frontend/.env.team.example Project-Code/Frontend/quakes-frontend/.env.local
+```
+
+然后编辑 `Project-Code/backend/.env.local`，把这些占位符换成团队实际值：
+
+```env
+REPLACE_WITH_POSTGRES_PASSWORD
+REPLACE_WITH_QDRANT_API_KEY
+REPLACE_WITH_DOUBAO_API_KEY
+```
+
+这套配置的运行链路是：
+
+```text
+本机浏览器 -> 本机前端 5173 -> 本机后端 8001 -> 云端 PostgreSQL/Qdrant
+```
+
+填好后运行：
+
+```bash
+python dev.py setup-qdrant
+python dev.py
+```
+
+Windows：
+
+```powershell
+py dev.py setup-qdrant
+py dev.py
+```
+
+说明：`.env.team.example` 可以提交给团队共享，里面只放连接方式和占位符；`.env.local` 是每个人本机实际配置，已经被 `.gitignore` 忽略。
+
 ### pip 镜像源说明
 
 国内网络、校园网或公司网经常会在安装 Python 依赖时出现类似错误：
@@ -256,38 +304,67 @@ GEO_RAG_CHAT_MODEL=doubao-seed-2-0-lite-260215
 OPENAI_EMBEDDING_MODEL=
 ```
 
-这样系统会继续用本地 hash embedding 做 MVP 检索，同时用配置的大模型生成回答。API key 只放在本机 `.env`，不要写入 `.env.example`、README 或源码。
+现在推荐使用下方独立 TEI embedding 服务；`OPENAI_EMBEDDING_MODEL` 只在同一个服务也提供 OpenAI-compatible embeddings 时才填写。API key 只放在本机 `.env`，不要写入 `.env.example`、README 或源码。
 
-### Embedding 与 Qdrant 本地模式
+### Embedding 与 Qdrant
 
-Geo RAG v2 推荐使用火山 VikingDB 的 `bge-m3` 做中英混合文献 embedding，使用 Qdrant 本地持久化模式做向量存储。先安装可选依赖：
+Geo RAG 的向量检索由两部分组成：
+
+```text
+embedding 模型：把文本转成向量
+Qdrant：保存向量并做相似度检索
+```
+
+VikingDB 不是必须项。团队当前默认不使用 VikingDB；`setup-qdrant` 只安装 Qdrant 客户端和 PDF 解析依赖：
 
 ```bash
 python dev.py setup-qdrant
 ```
 
-这会把 `qdrant-client`、`vikingdb-python-sdk`、`PyMuPDF` 安装到 `Project-Code/backend/.venv`，不会安装系统服务，也不会写到项目目录外。
+这会把 `qdrant-client`、`PyMuPDF` 安装到 `Project-Code/backend/.venv`，不会安装系统服务，也不会写到项目目录外。
 
-本机配置示例：
+团队共享 Qdrant 配置示例：
 
 ```env
-VIKINGDB_AK=你的火山AK
-VIKINGDB_SK=你的火山SK
-VIKINGDB_HOST=api-vikingdb.volces.com
-VIKINGDB_REGION=cn-beijing
+QDRANT_USE_LOCAL=false
+QDRANT_URL=http://8.137.179.31:6333
+QDRANT_API_KEY=你的 Qdrant API Key
+QDRANT_COLLECTION=geo_knowledge_bge_m3_v1
 
-GEO_RAG_EMBEDDING_PROVIDER=vikingdb
-GEO_RAG_EMBEDDING_MODEL=bge-m3
+GEO_RAG_EMBEDDING_PROVIDER=http
+GEO_RAG_EMBEDDING_URL=http://127.0.0.1:8080/v1/embeddings
+GEO_RAG_EMBEDDING_API_KEY=
+GEO_RAG_EMBEDDING_ALLOW_FALLBACK=false
+GEO_RAG_EMBEDDING_MODEL=BAAI/bge-m3
 GEO_RAG_EMBEDDING_DIM=1024
 GEO_RAG_EMBEDDING_BATCH_SIZE=32
-GEO_RAG_INDEX_VERSION=geo-rag-v2
-
-QDRANT_USE_LOCAL=true
-QDRANT_LOCAL_PATH=./.data/qdrant-local
-QDRANT_COLLECTION=geo_knowledge_v2
+GEO_RAG_INDEX_VERSION=geo-rag-bge-m3-v1
 ```
 
-如果 VikingDB 权限未开通，后端会自动降级为 `vikingdb-fallback`，使用本地 hash 向量保持项目可运行。火山返回 `check user strategy failed` 时，通常需要在控制台确认 VikingDB/向量化模型权限、IAM 策略或服务开通状态。
+`GEO_RAG_EMBEDDING_ALLOW_FALLBACK=false` 用来防止正式导入时污染向量库：如果 TEI 没启动，入库会直接失败，而不是悄悄写入 hash 向量。正式导入文献前应先启动 `BAAI/bge-m3`，并使用新的 Qdrant collection，例如 `geo_knowledge_bge_m3_v1`，不要和旧 hash 向量混在一起。
+
+### 文献入库不变量
+
+Geo RAG 入库必须遵守文献边界不变量：
+
+```text
+每个入库任务只处理一篇文献。
+每个 chunk 只能属于一个 document_id。
+overlap 只允许发生在同一篇文献内部。
+批量入库只是逐篇调用单篇入库流程，不能把两篇文献拼接后再切块。
+```
+
+当前 chunking 采用 role-aware overlap：正文、方法、结果等 `primary/context` 内容之间保留 overlap；一旦进入 `References`、`Acknowledgement`、`Funding` 等低证据区域，会强制断开，不把正文尾部混入参考文献 chunk，也不让参考文献内容作为正文证据抢占排序。检索诊断会返回 `lowEvidenceCandidateCount`、`lowEvidenceSelectedCount` 和相关 `qualityFlags`，用于判断参考文献/致谢内容是否仍然影响结果。
+
+批量导入目录中的 PDF/TXT/MD：
+
+```bash
+curl -s -X POST http://127.0.0.1:8001/api/documents/batch-ingest \
+  -H 'Content-Type: application/json' \
+  -d '{"directoryPath":"Project-Code/backend/.data/geo_rag_documents","limit":3,"force":true}'
+```
+
+建议先用 `limit=3` 或 `limit=5` 小批量验证检索质量，再扩大到完整文献库。
 
 ### RAG-Anything / 高级 RAG 说明
 

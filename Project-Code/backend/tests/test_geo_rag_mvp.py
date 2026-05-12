@@ -3,9 +3,12 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from app.embedding_service import embed_texts
 from app.evidence_service import build_evidence_pack
+from app.geo_ingest_service import _chunk_pages, _merge_and_rerank_results, _section_role
 from app.geo_ids import document_id_from_file, paper_id_from_metadata, point_id_from_unit_id, unit_id_from_parts
 from app.qdrant_service import search_vectors, upsert_vectors
 from app.settings import settings
@@ -42,6 +45,58 @@ class GeoRagMvpTests(unittest.TestCase):
         self.assertEqual(result.backend, "hashing")
         self.assertEqual(len(result.vectors), 1)
         self.assertEqual(len(result.vectors[0]), settings.geo_rag_embedding_dim)
+
+    def test_http_embeddings_parse_openai_compatible_response(self):
+        old_provider = settings.geo_rag_embedding_provider
+        old_url = settings.geo_rag_embedding_url
+        old_model = settings.geo_rag_embedding_model
+        old_dim = settings.geo_rag_embedding_dim
+        old_allow_fallback = settings.geo_rag_embedding_allow_fallback
+        settings.geo_rag_embedding_provider = "http"
+        settings.geo_rag_embedding_url = "http://127.0.0.1:8080/v1/embeddings"
+        settings.geo_rag_embedding_model = "BAAI/bge-m3"
+        settings.geo_rag_embedding_dim = 3
+        settings.geo_rag_embedding_allow_fallback = False
+
+        fake_response = SimpleNamespace()
+        fake_response.raise_for_status = lambda: None
+        fake_response.json = lambda: {
+            "data": [
+                {"index": 0, "embedding": [0.1, 0.2, 0.3]},
+                {"index": 1, "embedding": [0.4, 0.5, 0.6]},
+            ]
+        }
+
+        try:
+            with patch("app.embedding_service.requests.post", return_value=fake_response) as mock_post:
+                result = embed_texts(["fault", "rupture"])
+        finally:
+            settings.geo_rag_embedding_provider = old_provider
+            settings.geo_rag_embedding_url = old_url
+            settings.geo_rag_embedding_model = old_model
+            settings.geo_rag_embedding_dim = old_dim
+            settings.geo_rag_embedding_allow_fallback = old_allow_fallback
+
+        self.assertEqual(result.backend, "http")
+        self.assertEqual(result.model, "BAAI/bge-m3")
+        self.assertEqual(result.vectors, [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
+        self.assertEqual(mock_post.call_args.kwargs["json"]["model"], "BAAI/bge-m3")
+
+    def test_http_embeddings_can_disable_hash_fallback(self):
+        old_provider = settings.geo_rag_embedding_provider
+        old_url = settings.geo_rag_embedding_url
+        old_allow_fallback = settings.geo_rag_embedding_allow_fallback
+        settings.geo_rag_embedding_provider = "http"
+        settings.geo_rag_embedding_url = "http://127.0.0.1:8080/v1/embeddings"
+        settings.geo_rag_embedding_allow_fallback = False
+        try:
+            with patch("app.embedding_service.requests.post", side_effect=RuntimeError("down")):
+                with self.assertRaises(RuntimeError):
+                    embed_texts(["fault"])
+        finally:
+            settings.geo_rag_embedding_provider = old_provider
+            settings.geo_rag_embedding_url = old_url
+            settings.geo_rag_embedding_allow_fallback = old_allow_fallback
 
     def test_local_vector_fallback_can_retrieve_indexed_payload(self):
         old_path = settings.geo_rag_fallback_store_path
@@ -82,6 +137,78 @@ class GeoRagMvpTests(unittest.TestCase):
         pack = build_evidence_pack(question="What is the tectonic setting?", results=[], purpose="test")
         self.assertEqual(pack["confidence"], "low")
         self.assertTrue(pack["limitations"])
+
+    def test_section_role_identifies_low_evidence_sections(self):
+        self.assertEqual(_section_role("References", "[1] Fault rupture study"), "references")
+        self.assertEqual(_section_role("Acknowledgements", "This work was supported by..."), "acknowledgement")
+        self.assertEqual(_section_role("Discussion", "Fault rupture propagated along the segment."), "body")
+
+    def test_low_evidence_chunks_are_downweighted_during_rerank(self):
+        body = {
+            "unitId": "body-unit",
+            "documentId": "doc-1",
+            "paperId": "paper-1",
+            "title": "Body evidence",
+            "contentType": "text",
+            "text": "Fault rupture propagated along the East Anatolian Fault.",
+            "page": 2,
+            "score": 0.9,
+            "citation": {},
+            "metadata": {"sectionRole": "body", "evidenceRole": "primary"},
+        }
+        references = {
+            "unitId": "references-unit",
+            "documentId": "doc-1",
+            "paperId": "paper-1",
+            "title": "Reference list",
+            "contentType": "text",
+            "text": "References: supershear rupture and dynamic fault papers.",
+            "page": 9,
+            "score": 1.0,
+            "citation": {},
+            "metadata": {"sectionRole": "references", "evidenceRole": "low-evidence"},
+        }
+
+        selected, diagnostics = _merge_and_rerank_results(
+            query="fault rupture",
+            dense_results=[references, body],
+            keyword_results=[],
+            top_k=1,
+            vector_backend="qdrant",
+            embedding_backend="http",
+        )
+
+        self.assertEqual(selected[0]["unitId"], "body-unit")
+        self.assertEqual(diagnostics["lowEvidenceCandidateCount"], 1)
+        self.assertIn("low_evidence_sections_downweighted", diagnostics["qualityFlags"])
+
+    def test_chunking_does_not_overlap_body_into_references(self):
+        old_chunk_chars = settings.geo_rag_chunk_chars
+        old_overlap = settings.geo_rag_chunk_overlap
+        settings.geo_rag_chunk_chars = 140
+        settings.geo_rag_chunk_overlap = 60
+        try:
+            chunks = _chunk_pages(
+                [
+                    {
+                        "page": 1,
+                        "paragraphs": [
+                            "Discussion",
+                            "Fault rupture propagated along the main segment and produced strong near-field shaking.",
+                            "References",
+                            "[1] A reference about dynamic rupture. [2] Another reference about tectonic setting.",
+                        ],
+                        "quality": {"status": "ok"},
+                    }
+                ]
+            )
+        finally:
+            settings.geo_rag_chunk_chars = old_chunk_chars
+            settings.geo_rag_chunk_overlap = old_overlap
+
+        self.assertEqual([chunk["evidence_role"] for chunk in chunks], ["primary", "low-evidence"])
+        self.assertNotIn("References", chunks[0]["text"])
+        self.assertNotIn("near-field shaking", chunks[1]["text"])
 
 
 if __name__ == "__main__":
