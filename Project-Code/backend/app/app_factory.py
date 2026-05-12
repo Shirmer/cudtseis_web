@@ -4,9 +4,9 @@ import asyncio
 import json
 from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -18,7 +18,8 @@ from .geo_ingest_service import (
     ingest_geo_document,
     ingest_geo_document_batch,
     initialize_geo_knowledge,
-    resolve_geo_document_file,
+    resolve_geo_document_source,
+    save_uploaded_geo_document,
     search_geo_knowledge,
 )
 from .geo_rag_service import answer_event_geo_analysis, answer_paper_question
@@ -441,12 +442,27 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
     def get_knowledge_context(unit_id: str, window: int = Query(default=1, ge=1, le=3), db: Session = Depends(get_db)):
         return get_knowledge_unit_context(db, unit_id, window=window)
 
+    @app.post("/api/documents/upload")
+    async def upload_document_file(request: Request, filename: str = Query(..., min_length=1, max_length=500)):
+        try:
+            return await save_uploaded_geo_document(request.stream(), filename)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Document upload failed: {exc}") from exc
+
     @app.post("/api/documents/ingest", response_model=DocumentIngestOut)
     def ingest_document(payload: DocumentIngestRequest, db: Session = Depends(get_db)):
         try:
             return ingest_geo_document(db, payload.model_dump())
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except (RuntimeError, SQLAlchemyError) as exc:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Document ingest failed: {exc}") from exc
+        except Exception as exc:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Document ingest failed unexpectedly: {exc}") from exc
 
     @app.post("/api/documents/batch-ingest", response_model=DocumentBatchIngestOut)
     def batch_ingest_documents(payload: DocumentBatchIngestRequest, db: Session = Depends(get_db)):
@@ -461,7 +477,11 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
 
     @app.get("/api/documents/{document_id}/file")
     def get_document_file(document_id: str, db: Session = Depends(get_db)):
-        source_path = resolve_geo_document_file(db, document_id)
+        source = resolve_geo_document_source(db, document_id)
+        if source["kind"] == "url":
+            return RedirectResponse(source["url"])
+
+        source_path = source["path"]
         suffix = source_path.suffix.lower()
         media_type = {
             ".pdf": "application/pdf",

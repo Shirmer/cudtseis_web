@@ -4,7 +4,10 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 import re
-from typing import Any
+import shutil
+import subprocess
+import uuid
+from typing import Any, AsyncIterator
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -31,8 +34,49 @@ def initialize_geo_knowledge(db: Session) -> dict[str, Any]:
         "documents": db.query(GeoDocument).count(),
         "units": db.query(KnowledgeUnit).count(),
         "indexVersion": settings.geo_rag_index_version,
+        "storageBackend": _storage_backend(),
         "generatedAt": datetime.now(timezone.utc).isoformat(),
     }
+
+
+async def save_uploaded_geo_document(chunks: AsyncIterator[bytes], filename: str) -> dict[str, Any]:
+    safe_name = _safe_upload_filename(filename)
+    suffix = Path(safe_name).suffix.lower()
+    if suffix not in SUPPORTED_DOCUMENT_SUFFIXES:
+        raise ValueError("Only PDF, TXT, and Markdown files can be uploaded.")
+
+    stage_root = _geo_upload_stage_root()
+    stage_root.mkdir(parents=True, exist_ok=True)
+    temp_path = stage_root / f".upload-{uuid.uuid4().hex}{suffix}"
+    size_bytes = 0
+    try:
+        with temp_path.open("wb") as stream:
+            async for chunk in chunks:
+                if not chunk:
+                    continue
+                size_bytes += len(chunk)
+                stream.write(chunk)
+        if size_bytes == 0:
+            raise ValueError("Uploaded file is empty.")
+
+        digest = file_sha256(temp_path)
+        final_path = stage_root / f"upload-{digest[:12]}-{safe_name}"
+        if final_path.exists():
+            temp_path.unlink(missing_ok=True)
+        else:
+            temp_path.replace(final_path)
+        return {
+            "filePath": str(final_path),
+            "fileName": final_path.name,
+            "storageUri": _storage_uri(final_path),
+            "storageBackend": _storage_backend(),
+            "fileSha256": digest,
+            "sizeBytes": size_bytes,
+            "message": "File uploaded to the local ingest staging directory.",
+        }
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
 
 
 def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
@@ -40,7 +84,6 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
     digest = file_sha256(source_path)
 
     metadata = _metadata_from_payload(payload)
-    metadata["sourcePath"] = str(source_path)
     paper_id = str(payload.get("paperId") or "").strip()
     if paper_id:
         _merge_known_paper_metadata(metadata, paper_id)
@@ -48,8 +91,23 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
         paper_id = paper_id_from_metadata(metadata)
 
     document_id = str(payload.get("documentId") or "").strip() or document_id_from_file(paper_id, digest)
+    stored_file = _store_document_file(source_path, document_id=document_id)
+    stored_path = Path(stored_file["localPath"])
+    stored_file_name = Path(stored_file["storagePath"]).name
+    metadata.update(
+        {
+            "sourcePath": str(stored_path) if stored_file["backend"] == "local" else "",
+            "storagePath": stored_file["storagePath"],
+            "storageUri": stored_file["storageUri"],
+            "storageBackend": stored_file["backend"],
+            "publicUrl": stored_file.get("publicUrl", ""),
+            "originalSourcePath": str(source_path),
+            "originalFileName": source_path.name,
+        }
+    )
     existing = db.get(GeoDocument, document_id)
     if existing is not None and not payload.get("force", False):
+        _cleanup_upload_stage_file(source_path, stored_path)
         return {
             **document_status(existing),
             "vectorStore": init_knowledge_store(),
@@ -57,9 +115,9 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
             "message": "Document already exists. Set force=true to rebuild its knowledge units.",
         }
 
-    pages = _extract_pages(source_path)
-    chunks = _chunk_pages(pages)
-    if not chunks:
+    pages = _extract_pages(stored_path)
+    units = _build_knowledge_units(pages)
+    if not units:
         raise ValueError("No extractable text was found in the document.")
 
     title = metadata.get("title") or source_path.stem
@@ -67,7 +125,7 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
     year = metadata.get("year")
     doi = metadata.get("doi") or ""
     source_url = metadata.get("sourceUrl") or metadata.get("source_url") or ""
-    parser = payload.get("parser") or ("pymupdf-blocks" if source_path.suffix.lower() == ".pdf" else "plain-text")
+    parser = payload.get("parser") or ("pymupdf-multimodal-lite" if stored_path.suffix.lower() == ".pdf" else "plain-text")
 
     document = existing or GeoDocument(id=document_id)
     document.paper_id = paper_id
@@ -76,25 +134,27 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
     document.year = year
     document.doi = doi
     document.source_url = source_url
-    document.file_name = source_path.name
+    document.file_name = stored_file_name
     document.file_sha256 = digest
     document.parser = parser
-    document.parser_version = "mvp-text-v1"
+    document.parser_version = "geo-parser-v3"
     document.status = "indexing"
     document.page_count = len(pages)
-    document.unit_count = len(chunks)
+    document.unit_count = len(units)
     document.metadata_json = metadata
     db.merge(document)
     db.query(KnowledgeUnit).filter(KnowledgeUnit.document_id == document_id).delete(synchronize_session=False)
     db.flush()
 
-    embedding_result = embed_texts([chunk["text"] for chunk in chunks])
+    embedding_result = embed_texts([unit_data["text"] for unit_data in units])
     vector_items: list[dict[str, Any]] = []
-    for index, (chunk, vector) in enumerate(zip(chunks, embedding_result.vectors), start=1):
-        unit_id = unit_id_from_parts(document_id, index, "text")
+    unit_type_counts = Counter(str(unit_data.get("content_type", "text")) for unit_data in units)
+    for index, (unit_data, vector) in enumerate(zip(units, embedding_result.vectors), start=1):
+        content_type = str(unit_data.get("content_type") or "text")
+        unit_id = unit_id_from_parts(document_id, index, content_type)
         point_id = point_id_from_unit_id(unit_id)
-        tags = _extract_geo_tags(f"{title}\n{chunk['text']}")
-        text_quality = chunk.get("text_quality", {})
+        tags = _extract_geo_tags(f"{title}\n{unit_data['text']}")
+        text_quality = unit_data.get("text_quality", {})
         citation = {
             "paperId": paper_id,
             "documentId": document_id,
@@ -102,36 +162,38 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
             "authors": authors,
             "year": year,
             "doi": doi,
-            "page": chunk["page"],
+            "page": unit_data["page"],
             "sourceUrl": source_url,
+            "storageUri": metadata["storageUri"],
         }
         unit = KnowledgeUnit(
             id=unit_id,
             document_id=document_id,
             paper_id=paper_id,
             unit_index=index,
-            content_type="text",
-            text=chunk["text"],
-            page=chunk["page"],
-            section=chunk.get("section", ""),
-            bbox_json={},
+            content_type=content_type,
+            text=unit_data["text"],
+            page=unit_data["page"],
+            section=unit_data.get("section", ""),
+            bbox_json=unit_data.get("bbox", {}),
             regions_json=tags["regions"],
             faults_json=tags["faults"],
             topics_json=tags["topics"],
             geo_entities_json=tags,
-            modality_json={"parser": parser, "contentType": "text"},
+            modality_json=unit_data.get("modality", {"parser": parser, "contentType": content_type}),
             citation_json=citation,
             embedding_backend=embedding_result.backend,
             index_version=settings.geo_rag_index_version,
             qdrant_point_id=point_id,
             metadata_json={
                 "fileSha256": digest,
-                "chunkChars": len(chunk["text"]),
-                "language": chunk.get("language", "unknown"),
+                "chunkChars": len(unit_data["text"]),
+                "language": unit_data.get("language", "unknown"),
                 "textQuality": text_quality,
-                "sectionRole": chunk.get("section_role", "body"),
-                "evidenceRole": chunk.get("evidence_role", "primary"),
-                "parserVersion": "geo-parser-v2",
+                "sectionRole": unit_data.get("section_role", "body"),
+                "evidenceRole": unit_data.get("evidence_role", "primary"),
+                "parserVersion": "geo-parser-v3",
+                "storageUri": metadata["storageUri"],
             },
         )
         db.add(unit)
@@ -148,13 +210,16 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
                     year=year,
                     doi=doi,
                     source_url=source_url,
-                    text=chunk["text"],
-                    page=chunk["page"],
-                    section=chunk.get("section", ""),
-                    section_role=chunk.get("section_role", "body"),
-                    evidence_role=chunk.get("evidence_role", "primary"),
-                    language=chunk.get("language", "unknown"),
+                    content_type=content_type,
+                    text=unit_data["text"],
+                    page=unit_data["page"],
+                    section=unit_data.get("section", ""),
+                    section_role=unit_data.get("section_role", "body"),
+                    evidence_role=unit_data.get("evidence_role", "primary"),
+                    language=unit_data.get("language", "unknown"),
                     text_quality=text_quality,
+                    bbox=unit_data.get("bbox", {}),
+                    modality=unit_data.get("modality", {"parser": parser, "contentType": content_type}),
                     tags=tags,
                     citation=citation,
                 ),
@@ -166,6 +231,7 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
     document.updated_at = datetime.now(timezone.utc)
     db.merge(document)
     db.commit()
+    _cleanup_upload_stage_file(source_path, stored_path)
 
     return {
         "documentId": document_id,
@@ -174,7 +240,9 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
         "status": "indexed",
         "parser": parser,
         "pages": len(pages),
-        "units": len(chunks),
+        "units": len(units),
+        "multimodalUnits": sum(count for item_type, count in unit_type_counts.items() if item_type != "text"),
+        "storageUri": metadata["storageUri"],
         "fileSha256": digest,
         "vectorStore": vector_store,
         "embeddingBackend": embedding_result.backend,
@@ -219,6 +287,8 @@ def ingest_geo_document_batch(db: Session, payload: dict[str, Any]) -> dict[str,
                     "title": result.get("title", path.stem),
                     "pages": result.get("pages", 0),
                     "units": result.get("units", 0),
+                    "multimodalUnits": result.get("multimodalUnits", 0),
+                    "storageUri": result.get("storageUri", ""),
                     "embeddingBackend": result.get("embeddingBackend", ""),
                     "message": result.get("message", ""),
                     "error": "",
@@ -235,6 +305,8 @@ def ingest_geo_document_batch(db: Session, payload: dict[str, Any]) -> dict[str,
                     "title": path.stem,
                     "pages": 0,
                     "units": 0,
+                    "multimodalUnits": 0,
+                    "storageUri": "",
                     "embeddingBackend": "",
                     "message": "",
                     "error": str(exc),
@@ -282,7 +354,7 @@ def get_knowledge_unit_context(db: Session, unit_id: str, window: int = 1) -> di
         .order_by(KnowledgeUnit.unit_index.asc(), KnowledgeUnit.content_type.asc())
         .all()
     )
-    source_path = _find_document_file(document) if document is not None else None
+    source_available = _document_source_available(document) if document is not None else False
 
     return {
         "unitId": unit.id,
@@ -291,7 +363,7 @@ def get_knowledge_unit_context(db: Session, unit_id: str, window: int = 1) -> di
         "title": title,
         "page": unit.page,
         "fileName": document.file_name if document is not None else "",
-        "sourceAvailable": source_path is not None,
+        "sourceAvailable": source_available,
         "items": [_context_item(item, unit, title) for item in neighbors],
     }
 
@@ -305,6 +377,22 @@ def resolve_geo_document_file(db: Session, document_id: str) -> Path:
     if source_path is None:
         raise HTTPException(status_code=404, detail="Original document file was not found on this machine")
     return source_path
+
+
+def resolve_geo_document_source(db: Session, document_id: str) -> dict[str, Any]:
+    document = db.get(GeoDocument, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    public_url = _document_public_url(document)
+    if public_url:
+        return {"kind": "url", "url": public_url, "fileName": document.file_name}
+
+    source_path = _find_document_file(document)
+    if source_path is not None:
+        return {"kind": "file", "path": source_path, "fileName": source_path.name}
+
+    raise HTTPException(status_code=404, detail="Original document file was not found in local or cloud storage")
 
 
 def search_geo_knowledge(
@@ -363,6 +451,160 @@ def document_status(document: GeoDocument) -> dict[str, Any]:
     }
 
 
+def _store_document_file(source_path: Path, *, document_id: str) -> dict[str, Any]:
+    backend = _storage_backend()
+    if backend == "ssh":
+        return _store_document_file_via_ssh(source_path, document_id=document_id)
+    return _store_document_file_locally(source_path, document_id=document_id)
+
+
+def _store_document_file_locally(source_path: Path, *, document_id: str) -> dict[str, Any]:
+    storage_root = _geo_storage_root()
+    storage_root.mkdir(parents=True, exist_ok=True)
+    suffix = source_path.suffix.lower()
+    target_path = storage_root / f"{document_id}{suffix}"
+
+    source_resolved = source_path.expanduser().resolve(strict=False)
+    target_resolved = target_path.expanduser().resolve(strict=False)
+    if source_resolved == target_resolved:
+        return _stored_file_record(
+            backend="local",
+            local_path=target_resolved,
+            storage_path=str(target_resolved),
+            storage_uri=_storage_uri(target_resolved),
+        )
+
+    if not target_resolved.exists() or file_sha256(target_resolved) != file_sha256(source_resolved):
+        shutil.copy2(source_resolved, target_resolved)
+    return _stored_file_record(
+        backend="local",
+        local_path=target_resolved,
+        storage_path=str(target_resolved),
+        storage_uri=_storage_uri(target_resolved),
+        public_url=_public_url_for_file(target_resolved.name),
+    )
+
+
+def _store_document_file_via_ssh(source_path: Path, *, document_id: str) -> dict[str, Any]:
+    host = settings.geo_rag_storage_ssh_host.strip()
+    user = settings.geo_rag_storage_ssh_user.strip() or "root"
+    if not host:
+        raise RuntimeError("GEO_RAG_STORAGE_BACKEND=ssh requires GEO_RAG_STORAGE_SSH_HOST.")
+
+    suffix = source_path.suffix.lower()
+    remote_root = settings.geo_rag_storage_remote_root.rstrip("/")
+    remote_path = f"{remote_root}/{document_id}{suffix}"
+    target = f"{user}@{host}:{remote_path}"
+
+    _run_storage_command([*_ssh_command_prefix(), f"{user}@{host}", "mkdir", "-p", remote_root])
+    _run_storage_command([*_scp_command_prefix(), str(source_path), target])
+
+    return _stored_file_record(
+        backend="ssh",
+        local_path=source_path.expanduser().resolve(strict=False),
+        storage_path=remote_path,
+        storage_uri=f"ssh://{user}@{host}{remote_path}",
+        public_url=_public_url_for_file(f"{document_id}{suffix}"),
+    )
+
+
+def _stored_file_record(
+    *,
+    backend: str,
+    local_path: Path,
+    storage_path: str,
+    storage_uri: str,
+    public_url: str = "",
+) -> dict[str, Any]:
+    return {
+        "backend": backend,
+        "localPath": str(local_path),
+        "storagePath": storage_path,
+        "storageUri": storage_uri,
+        "publicUrl": public_url,
+    }
+
+
+def _storage_uri(path: Path) -> str:
+    storage_root = _geo_storage_root()
+    resolved = path.expanduser().resolve(strict=False)
+    try:
+        relative = resolved.relative_to(storage_root)
+        return f"local://{relative.as_posix()}"
+    except ValueError:
+        return str(resolved)
+
+
+def _storage_backend() -> str:
+    backend = settings.geo_rag_storage_backend.strip().lower()
+    if backend in {"", "filesystem"}:
+        return "local"
+    if backend in {"local", "ssh"}:
+        return backend
+    raise RuntimeError(f"Unsupported GEO_RAG_STORAGE_BACKEND: {settings.geo_rag_storage_backend}")
+
+
+def _geo_upload_stage_root() -> Path:
+    root = Path(settings.geo_rag_upload_stage_root).expanduser()
+    if not root.is_absolute():
+        root = PROJECT_ROOT / root
+    return root.resolve(strict=False)
+
+
+def _cleanup_upload_stage_file(source_path: Path, stored_path: Path) -> None:
+    stage_root = _geo_upload_stage_root()
+    source_resolved = source_path.expanduser().resolve(strict=False)
+    stored_resolved = stored_path.expanduser().resolve(strict=False)
+    try:
+        source_resolved.relative_to(stage_root)
+    except ValueError:
+        return
+    if source_resolved.name.startswith("upload-") and (
+        source_resolved != stored_resolved or _storage_backend() == "ssh"
+    ):
+        source_resolved.unlink(missing_ok=True)
+
+
+def _ssh_command_prefix() -> list[str]:
+    args = ["ssh", "-p", str(settings.geo_rag_storage_ssh_port)]
+    key_path = settings.geo_rag_storage_ssh_key_path.strip()
+    if key_path:
+        args.extend(["-i", str(Path(key_path).expanduser())])
+    return args
+
+
+def _scp_command_prefix() -> list[str]:
+    args = ["scp", "-P", str(settings.geo_rag_storage_ssh_port)]
+    key_path = settings.geo_rag_storage_ssh_key_path.strip()
+    if key_path:
+        args.extend(["-i", str(Path(key_path).expanduser())])
+    return args
+
+
+def _run_storage_command(command: list[str]) -> None:
+    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "unknown error").strip()
+        raise RuntimeError(f"Cloud document storage command failed: {detail}")
+
+
+def _public_url_for_file(file_name: str) -> str:
+    base_url = settings.geo_rag_storage_public_base_url.strip().rstrip("/")
+    if not base_url:
+        return ""
+    return f"{base_url}/{file_name}"
+
+
+def _safe_upload_filename(filename: str) -> str:
+    raw = Path(filename or "document.pdf").name.strip()
+    if not raw:
+        raw = "document.pdf"
+    stem = re.sub(r"[^A-Za-z0-9._\-\u4e00-\u9fff]+", "-", Path(raw).stem).strip(".-")
+    suffix = Path(raw).suffix.lower()
+    stem = stem[:120] or "document"
+    return f"{stem}{suffix}"
+
+
 def _context_item(unit: KnowledgeUnit, anchor: KnowledgeUnit, fallback_title: str) -> dict[str, Any]:
     citation = unit.citation_json or {}
     metadata = unit.metadata_json or {}
@@ -387,6 +629,8 @@ def _context_item(unit: KnowledgeUnit, anchor: KnowledgeUnit, fallback_title: st
         "position": position,
         "metadata": {
             "section": unit.section,
+            "bbox": unit.bbox_json or {},
+            "modality": unit.modality_json or {},
             "sectionRole": metadata.get("sectionRole") or _section_role(unit.section or "", unit.text),
             "evidenceRole": metadata.get("evidenceRole") or _evidence_role(
                 metadata.get("sectionRole") or _section_role(unit.section or "", unit.text)
@@ -400,10 +644,13 @@ def _find_document_file(document: GeoDocument) -> Path | None:
     metadata = document.metadata_json or {}
     candidates: list[Path] = []
 
-    for key in ("sourcePath", "filePath"):
+    for key in ("storagePath", "sourcePath", "filePath"):
         value = metadata.get(key)
         if isinstance(value, str) and value.strip():
             candidates.append(Path(value.strip()))
+    storage_uri = metadata.get("storageUri")
+    if isinstance(storage_uri, str) and storage_uri.startswith("local://"):
+        candidates.append(_geo_storage_root() / storage_uri.removeprefix("local://"))
 
     if document.file_name:
         candidates.append(_geo_storage_root() / document.file_name)
@@ -420,6 +667,26 @@ def _find_document_file(document: GeoDocument) -> Path | None:
             if resolved is not None:
                 return resolved
     return None
+
+
+def _document_source_available(document: GeoDocument) -> bool:
+    return bool(_document_public_url(document) or _find_document_file(document))
+
+
+def _document_public_url(document: GeoDocument) -> str:
+    metadata = document.metadata_json or {}
+    public_url = metadata.get("publicUrl")
+    if isinstance(public_url, str) and public_url.strip():
+        return public_url.strip()
+
+    storage_uri = metadata.get("storageUri")
+    if isinstance(storage_uri, str) and storage_uri.startswith(("http://", "https://")):
+        return storage_uri
+
+    if metadata.get("storageBackend") == "ssh" and document.file_name:
+        return _public_url_for_file(document.file_name)
+
+    return ""
 
 
 def _geo_storage_root() -> Path:
@@ -441,7 +708,7 @@ def _resolve_source_path(raw_path: str) -> Path:
     if not raw_path:
         raise ValueError("filePath is required")
     if raw_path.startswith("local://"):
-        candidate = Path(settings.geo_rag_storage_root) / raw_path.removeprefix("local://")
+        candidate = _geo_storage_root() / raw_path.removeprefix("local://")
     else:
         candidate = Path(raw_path)
         if not candidate.is_absolute():
@@ -525,7 +792,15 @@ def _extract_pdf_pages_with_pypdf(path: Path) -> list[dict[str, Any]]:
     pages: list[dict[str, Any]] = []
     for index, page in enumerate(reader.pages, start=1):
         text = _normalize_extracted_text(page.extract_text() or "")
-        pages.append({"page": index, "text": text, "paragraphs": [text] if text else [], "quality": _text_quality(text)})
+        pages.append(
+            {
+                "page": index,
+                "text": text,
+                "paragraphs": [text] if text else [],
+                "elements": [],
+                "quality": _text_quality(text),
+            }
+        )
     return pages
 
 
@@ -540,9 +815,22 @@ def _extract_pdf_pages_with_pymupdf_blocks(path: Path) -> list[dict[str, Any]]:
             page_width = float(page.rect.width)
             mid_x = page_width / 2
             for block in raw_blocks:
-                if len(block) >= 7 and block[6] != 0:
-                    continue
                 x0, y0, x1, y1 = [float(value) for value in block[:4]]
+                if len(block) >= 7 and block[6] != 0:
+                    if block[6] == 1:
+                        blocks.append(
+                            {
+                                "x0": x0,
+                                "y0": y0,
+                                "x1": x1,
+                                "y1": y1,
+                                "column": -1,
+                                "text": "",
+                                "content_type": "figure",
+                                "bbox": _bbox(x0, y0, x1, y1),
+                            }
+                        )
+                    continue
                 text = _normalize_extracted_text(str(block[4] or ""))
                 if not text or _looks_like_page_marker(text):
                     continue
@@ -553,16 +841,35 @@ def _extract_pdf_pages_with_pymupdf_blocks(path: Path) -> list[dict[str, Any]]:
                     column = 0
                 else:
                     column = 1
-                blocks.append({"x0": x0, "y0": y0, "column": column, "text": text})
+                content_type = "text"
+                if _looks_like_equation(text):
+                    content_type = "equation"
+                elif _looks_like_table_text(text):
+                    content_type = "table"
+                blocks.append(
+                    {
+                        "x0": x0,
+                        "y0": y0,
+                        "x1": x1,
+                        "y1": y1,
+                        "column": column,
+                        "text": text,
+                        "content_type": content_type,
+                        "bbox": _bbox(x0, y0, x1, y1),
+                    }
+                )
 
             ordered = _order_page_blocks(blocks)
-            paragraphs = [item["text"] for item in ordered]
+            paragraphs = [item["text"] for item in ordered if item.get("text")]
             text = "\n\n".join(paragraphs)
+            elements = _layout_elements_from_blocks(page_index, ordered, paragraphs)
+            elements.extend(_extract_page_table_elements(page, page_index, paragraphs))
             pages.append(
                 {
                     "page": page_index,
                     "text": text,
                     "paragraphs": paragraphs,
+                    "elements": elements,
                     "quality": _text_quality(text),
                 }
             )
@@ -579,7 +886,15 @@ def _extract_pdf_pages_with_pymupdf(path: Path) -> list[dict[str, Any]]:
     with fitz.open(path) as document:
         for index, page in enumerate(document, start=1):
             text = _normalize_extracted_text(page.get_text("text"))
-            pages.append({"page": index, "text": text, "paragraphs": [text] if text else [], "quality": _text_quality(text)})
+            pages.append(
+                {
+                    "page": index,
+                    "text": text,
+                    "paragraphs": [text] if text else [],
+                    "elements": [],
+                    "quality": _text_quality(text),
+                }
+            )
     return pages
 
 
@@ -649,6 +964,199 @@ def _chunk_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
             buffer.append(piece)
     flush()
     return chunks
+
+
+def _build_knowledge_units(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    text_units = _chunk_pages(pages)
+    multimodal_units = _extract_multimodal_units(pages)
+    for index, unit in enumerate(text_units, start=1):
+        unit.setdefault("content_type", "text")
+        unit.setdefault("bbox", {})
+        unit.setdefault("modality", {"contentType": "text", "parser": "pymupdf-multimodal-lite"})
+        unit["_sort"] = (int(unit.get("page") or 1), index * 10, 0)
+    for index, unit in enumerate(multimodal_units, start=1):
+        unit["_sort"] = (int(unit.get("page") or 1), int(unit.get("order") or index * 10), 1)
+
+    ordered = sorted([*text_units, *multimodal_units], key=lambda item: item.get("_sort", (0, 0, 0)))
+    for item in ordered:
+        item.pop("_sort", None)
+    return ordered
+
+
+def _extract_multimodal_units(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    units: list[dict[str, Any]] = []
+    for page in pages:
+        paragraphs = [str(item) for item in page.get("paragraphs") or []]
+        for element_index, element in enumerate(page.get("elements") or [], start=1):
+            content_type = str(element.get("content_type") or "figure")
+            if content_type not in {"figure", "table", "equation"}:
+                continue
+            description = _multimodal_description(content_type, page["page"], element, paragraphs)
+            if not description:
+                continue
+            units.append(
+                {
+                    "content_type": content_type,
+                    "page": page["page"],
+                    "text": description,
+                    "section": element.get("section", ""),
+                    "section_role": "body",
+                    "evidence_role": "context" if content_type in {"figure", "table"} else "primary",
+                    "language": _detect_language(description),
+                    "text_quality": {
+                        "status": "structured-multimodal-lite",
+                        "source": "pymupdf-layout",
+                        "contentType": content_type,
+                    },
+                    "bbox": element.get("bbox", {}),
+                    "order": int(element.get("order") or element_index * 10),
+                    "modality": {
+                        "parser": "pymupdf-multimodal-lite",
+                        "contentType": content_type,
+                        "kind": element.get("kind", content_type),
+                        "caption": element.get("caption", ""),
+                    },
+                }
+            )
+    return units
+
+
+def _layout_elements_from_blocks(
+    page_number: int,
+    blocks: list[dict[str, Any]],
+    paragraphs: list[str],
+) -> list[dict[str, Any]]:
+    elements: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for index, block in enumerate(blocks, start=1):
+        content_type = str(block.get("content_type") or "text")
+        if content_type == "text":
+            continue
+        text = str(block.get("text") or "").strip()
+        caption = _nearest_caption(content_type, text, paragraphs)
+        key = (content_type, text[:160] or str(block.get("bbox", {})))
+        if key in seen:
+            continue
+        seen.add(key)
+        elements.append(
+            {
+                "content_type": content_type,
+                "kind": "layout-block",
+                "page": page_number,
+                "text": text,
+                "caption": caption,
+                "bbox": block.get("bbox", {}),
+                "order": index * 10,
+            }
+        )
+    return elements
+
+
+def _extract_page_table_elements(page: Any, page_number: int, paragraphs: list[str]) -> list[dict[str, Any]]:
+    if not hasattr(page, "find_tables"):
+        return []
+    try:
+        result = page.find_tables()
+    except Exception:
+        return []
+
+    elements: list[dict[str, Any]] = []
+    for index, table in enumerate(getattr(result, "tables", []) or [], start=1):
+        bbox = getattr(table, "bbox", None)
+        text = ""
+        try:
+            rows = table.extract()
+            text = _table_rows_preview(rows)
+        except Exception:
+            rows = []
+        caption = _nearest_caption("table", text, paragraphs)
+        elements.append(
+            {
+                "content_type": "table",
+                "kind": "detected-table",
+                "page": page_number,
+                "text": text,
+                "caption": caption,
+                "bbox": _bbox(*bbox) if bbox else {},
+                "order": index * 10 + 5,
+                "rows": len(rows or []),
+            }
+        )
+    return elements
+
+
+def _multimodal_description(
+    content_type: str,
+    page_number: int,
+    element: dict[str, Any],
+    paragraphs: list[str],
+) -> str:
+    label = {"figure": "Figure/image", "table": "Table", "equation": "Equation"}[content_type]
+    text = WHITESPACE_RE.sub(" ", str(element.get("text") or "")).strip()
+    caption = str(element.get("caption") or _nearest_caption(content_type, text, paragraphs)).strip()
+    pieces = [f"{label} candidate on page {page_number}."]
+    if caption:
+        pieces.append(f"Caption or nearby label: {caption}")
+    if text:
+        pieces.append(f"Extracted content: {text}")
+    if not caption and not text and content_type != "figure":
+        return ""
+    if content_type == "figure" and not caption and not text:
+        pieces.append("Visual content detected; use the original PDF for inspection.")
+    return " ".join(pieces)
+
+
+def _table_rows_preview(rows: list[list[Any]], max_rows: int = 6) -> str:
+    lines: list[str] = []
+    for row in (rows or [])[:max_rows]:
+        cells = [WHITESPACE_RE.sub(" ", str(cell or "")).strip() for cell in row]
+        cells = [cell for cell in cells if cell]
+        if cells:
+            lines.append(" | ".join(cells))
+    return "\n".join(lines)
+
+
+def _nearest_caption(content_type: str, text: str, paragraphs: list[str]) -> str:
+    patterns = {
+        "figure": r"^(fig\.?|figure|图)\s*[\dA-Za-z一二三四五六七八九十]+",
+        "table": r"^(table|表)\s*[\dA-Za-z一二三四五六七八九十]+",
+        "equation": r"^(equation|eq\.?|公式)\s*[\dA-Za-z一二三四五六七八九十]+",
+    }
+    pattern = patterns.get(content_type, "")
+    for paragraph in paragraphs:
+        normalized = WHITESPACE_RE.sub(" ", paragraph).strip()
+        if pattern and re.search(pattern, normalized, re.IGNORECASE):
+            return normalized[:500]
+    if content_type in {"table", "equation"} and text:
+        return text[:240]
+    return ""
+
+
+def _looks_like_equation(text: str) -> bool:
+    normalized = WHITESPACE_RE.sub(" ", text).strip()
+    if len(normalized) > 260:
+        return False
+    if re.search(r"[=∑∫√≈≤≥±×÷α-ωΑ-Ω]", normalized) and re.search(r"[A-Za-z0-9]", normalized):
+        return True
+    return bool(re.search(r"\([0-9]{1,3}\)\s*$", normalized) and re.search(r"[=+\-*/]", normalized))
+
+
+def _looks_like_table_text(text: str) -> bool:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return False
+    numeric_lines = sum(1 for line in lines if len(re.findall(r"[-+]?\d+(?:\.\d+)?", line)) >= 3)
+    delimiter_lines = sum(1 for line in lines if "\t" in line or " | " in line)
+    return numeric_lines >= 2 or delimiter_lines >= 2
+
+
+def _bbox(x0: float, y0: float, x1: float, y1: float) -> dict[str, float]:
+    return {
+        "x0": round(float(x0), 2),
+        "y0": round(float(y0), 2),
+        "x1": round(float(x1), 2),
+        "y1": round(float(y1), 2),
+    }
 
 
 def _order_page_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -933,6 +1441,7 @@ def _unit_payload(
     year: int | None,
     doi: str,
     source_url: str,
+    content_type: str,
     text: str,
     page: int | None,
     section: str,
@@ -940,6 +1449,8 @@ def _unit_payload(
     evidence_role: str,
     language: str,
     text_quality: dict[str, Any],
+    bbox: dict[str, Any],
+    modality: dict[str, Any],
     tags: dict[str, Any],
     citation: dict[str, Any],
 ) -> dict[str, Any]:
@@ -952,7 +1463,7 @@ def _unit_payload(
         "year": year,
         "doi": doi,
         "source_url": source_url,
-        "content_type": "text",
+        "content_type": content_type,
         "text": text,
         "page": page,
         "section": section,
@@ -960,6 +1471,8 @@ def _unit_payload(
         "evidence_role": evidence_role,
         "language": language,
         "text_quality": text_quality,
+        "bbox": bbox,
+        "modality": modality,
         "regions": tags.get("regions", []),
         "faults": tags.get("faults", []),
         "topics": tags.get("topics", []),
@@ -1281,6 +1794,8 @@ def _hit_from_vector_result(hit: dict[str, Any]) -> dict[str, Any]:
             "faults": payload.get("faults", []),
             "topics": payload.get("topics", []),
             "section": payload.get("section", ""),
+            "bbox": payload.get("bbox", {}),
+            "modality": payload.get("modality", {}),
             "sectionRole": payload.get("section_role") or _section_role(payload.get("section", ""), payload.get("text", "")),
             "evidenceRole": payload.get("evidence_role")
             or _evidence_role(_section_role(payload.get("section", ""), payload.get("text", ""))),

@@ -9,6 +9,7 @@ type KnowledgeInit = {
   documents: number
   units: number
   indexVersion: string
+  storageBackend?: string
   warning?: string
 }
 
@@ -20,7 +21,18 @@ type DocumentIngest = {
   parser: string
   pages: number
   units: number
+  multimodalUnits?: number
+  storageUri?: string
   embeddingBackend: string
+  message: string
+}
+
+type DocumentUpload = {
+  filePath: string
+  fileName: string
+  storageUri: string
+  fileSha256: string
+  sizeBytes: number
   message: string
 }
 
@@ -35,6 +47,8 @@ type DocumentBatchIngest = {
     title: string
     pages: number
     units: number
+    multimodalUnits?: number
+    storageUri?: string
     error: string
   }>
 }
@@ -47,8 +61,10 @@ const ingestLoading = ref(false)
 const batchLoading = ref(false)
 const error = ref('')
 const mode = ref<'single' | 'batch'>('single')
+const sourceMode = ref<'upload' | 'path'>('upload')
 const ingestResult = ref<DocumentIngest | null>(null)
 const batchResult = ref<DocumentBatchIngest | null>(null)
+const selectedFile = ref<File | null>(null)
 
 const singleForm = ref({
   filePath: '',
@@ -70,11 +86,13 @@ const batchForm = ref({
 const stats = computed(() => ({
   documents: initState.value?.documents ?? 0,
   units: initState.value?.units ?? 0,
-  backend: initState.value?.backend ?? '-'
+  backend: initState.value?.backend ?? '-',
+  storageBackend: initState.value?.storageBackend ?? '-'
 }))
 
 const batchItems = computed(() => (batchResult.value?.items ?? []).slice(0, 10))
 const allowedDocumentPattern = /\.(pdf|txt|md)$/i
+const selectedFileLabel = computed(() => selectedFile.value?.name ?? '选择 PDF/TXT/MD 文件')
 
 const readError = async (response: Response, fallback: string) => {
   const detail = await response.json().catch(() => null)
@@ -108,20 +126,53 @@ const initKnowledge = async () => {
   }
 }
 
+const onFileSelected = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  selectedFile.value = target.files?.[0] ?? null
+}
+
+const uploadSelectedFile = async (file: File): Promise<DocumentUpload> => {
+  const response = await fetch(apiUrl(`/documents/upload?filename=${encodeURIComponent(file.name)}`), {
+    method: 'POST',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: file
+  })
+  if (!response.ok) throw new Error(await readError(response, '上传失败'))
+  return await response.json() as DocumentUpload
+}
+
 const ingestSingle = async () => {
-  const filePath = singleForm.value.filePath.trim()
-  if (!filePath) {
-    error.value = '请填写 PDF/TXT/MD 文件路径'
-    return
-  }
-  if (!allowedDocumentPattern.test(filePath)) {
-    error.value = '单篇导入要填写具体文件，不是文件夹；文件夹请用批量导入。'
-    return
+  let filePath = singleForm.value.filePath.trim()
+  if (sourceMode.value === 'upload') {
+    if (!selectedFile.value) {
+      error.value = '请选择要上传到服务器的 PDF/TXT/MD 文件'
+      return
+    }
+    if (!allowedDocumentPattern.test(selectedFile.value.name)) {
+      error.value = '只支持 PDF、TXT 或 Markdown 文献。'
+      return
+    }
+  } else {
+    if (!filePath) {
+      error.value = '请填写服务器上的 PDF/TXT/MD 文件路径'
+      return
+    }
+    if (!allowedDocumentPattern.test(filePath)) {
+      error.value = '单篇导入要填写具体文件，不是文件夹；文件夹请用批量导入。'
+      return
+    }
   }
 
   ingestLoading.value = true
   error.value = ''
   try {
+    if (sourceMode.value === 'upload' && selectedFile.value) {
+      const upload = await uploadSelectedFile(selectedFile.value)
+      filePath = upload.filePath
+      if (!singleForm.value.title.trim()) {
+        singleForm.value.title = selectedFile.value.name.replace(/\.(pdf|txt|md)$/i, '')
+      }
+    }
     const payload = {
       filePath,
       title: singleForm.value.title.trim() || undefined,
@@ -203,6 +254,7 @@ onMounted(() => {
         <div><strong>{{ stats.documents }}</strong><span>文献</span></div>
         <div><strong>{{ stats.units }}</strong><span>知识单元</span></div>
         <div><strong>{{ stats.backend }}</strong><span>向量库</span></div>
+        <div><strong>{{ stats.storageBackend }}</strong><span>原文存储</span></div>
       </div>
     </section>
 
@@ -227,9 +279,21 @@ onMounted(() => {
         </div>
 
         <template v-if="mode === 'single'">
-          <label>
-            <span>文件路径</span>
-            <input v-model="singleForm.filePath" placeholder="Project-Code/backend/.data/geo_rag_documents/example.pdf" />
+          <div class="source-switch">
+            <button :class="{ active: sourceMode === 'upload' }" @click="sourceMode = 'upload'">上传到服务器</button>
+            <button :class="{ active: sourceMode === 'path' }" @click="sourceMode = 'path'">服务器已有文件</button>
+          </div>
+
+          <label v-if="sourceMode === 'upload'" class="file-picker">
+            <span>文献文件</span>
+            <input type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" @change="onFileSelected" />
+            <strong>{{ selectedFileLabel }}</strong>
+            <small>上传后会先保存到后端配置的文献存储目录，再进行解析和索引。</small>
+          </label>
+
+          <label v-else>
+            <span>服务器文件路径</span>
+            <input v-model="singleForm.filePath" placeholder="/opt/cudtseis_web/storage/geo_rag_documents/example.pdf" />
           </label>
 
           <div class="form-grid">
@@ -305,7 +369,9 @@ onMounted(() => {
           <div><strong>{{ ingestResult.status }}</strong><span>{{ ingestResult.parser }}</span></div>
           <div><strong>{{ ingestResult.pages }}</strong><span>页</span></div>
           <div><strong>{{ ingestResult.units }}</strong><span>知识单元</span></div>
+          <div><strong>{{ ingestResult.multimodalUnits ?? 0 }}</strong><span>图表/公式单元</span></div>
           <button class="ghost-button" @click="router.push('/papers')">去检索</button>
+          <p v-if="ingestResult.storageUri" class="storage-note">{{ ingestResult.storageUri }}</p>
         </div>
 
         <div v-else-if="mode === 'batch' && batchResult" class="batch-result">
@@ -316,8 +382,9 @@ onMounted(() => {
           </div>
           <article v-for="item in batchItems" :key="item.filePath" class="batch-item">
             <strong>{{ item.title || item.filePath }}</strong>
-            <span>{{ item.status }} · {{ item.pages }} 页 · {{ item.units }} 单元</span>
-            <small v-if="item.error">{{ item.error }}</small>
+            <span>{{ item.status }} · {{ item.pages }} 页 · {{ item.units }} 单元 · {{ item.multimodalUnits ?? 0 }} 多模态</span>
+            <small v-if="item.storageUri" class="storage-note">{{ item.storageUri }}</small>
+            <small v-if="item.error" class="batch-error">{{ item.error }}</small>
           </article>
           <button class="ghost-button" @click="router.push('/papers')">去检索</button>
         </div>
@@ -466,11 +533,16 @@ h2 {
   margin-bottom: 18px;
 }
 
-.mode-switch {
+.mode-switch,
+.source-switch {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 16px;
+}
+
+.source-switch {
+  margin-bottom: 14px;
 }
 
 label {
@@ -499,6 +571,31 @@ input:focus {
   outline: none;
   border-color: #2f5da8;
   box-shadow: 0 0 0 3px rgba(47, 93, 168, 0.12);
+}
+
+.file-picker {
+  border: 1px dashed #b7c8df;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfdff;
+}
+
+.file-picker input {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.file-picker strong {
+  color: #172033;
+  overflow-wrap: anywhere;
+}
+
+.file-picker small,
+.storage-note {
+  color: #64748b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .form-grid {
@@ -545,13 +642,15 @@ button:disabled {
 }
 
 .ghost-button,
-.mode-switch button {
+.mode-switch button,
+.source-switch button {
   border: 1px solid #cbd5e1;
   background: #ffffff;
   color: #334155;
 }
 
-.mode-switch button.active {
+.mode-switch button.active,
+.source-switch button.active {
   border-color: #2f5da8;
   background: #eef4ff;
   color: #1f4f99;
@@ -584,7 +683,7 @@ button:disabled {
   font-size: 12px;
 }
 
-.batch-item small {
+.batch-item .batch-error {
   color: #a8071a;
 }
 

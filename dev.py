@@ -549,6 +549,12 @@ def setup(*, extras: set[str] | None = None) -> int:
     return 0 if ensure_database() else 1
 
 
+def setup_backend(*, extras: set[str] | None = None) -> int:
+    ensure_backend_env()
+    ensure_backend_venv(extras=extras or {"qdrant"})
+    return 0 if ensure_database() else 1
+
+
 def is_port_available(host: str, port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(0.2)
@@ -695,6 +701,15 @@ def up() -> int:
         return 0
 
 
+def backend() -> int:
+    setup_result = setup_backend()
+    if setup_result != 0:
+        return setup_result
+    backend_cmd = [backend_python(), "start.py"]
+    log(command_text(backend_cmd))
+    return subprocess.call([str(part) for part in backend_cmd], cwd=str(BACKEND_DIR), env=os.environ.copy())
+
+
 def test() -> int:
     setup_result = setup()
     if setup_result != 0:
@@ -733,8 +748,10 @@ def print_help() -> None:
     print(
         """Usage:
   python dev.py             setup dependencies and start backend/frontend
+  python dev.py backend     setup and start backend only, useful on a cloud server
   python dev.py check       inspect local tools without installing
   python dev.py setup       create .env, install dependencies, prepare database
+  python dev.py setup-backend       install backend dependencies only
   python dev.py setup-qdrant       install base dependencies plus Qdrant client
   python dev.py setup-raganything  install base dependencies plus optional RAGAnything stack
   python dev.py up          same as default
@@ -769,6 +786,8 @@ def main() -> int:
         return check_environment()
     if command == "setup":
         return setup()
+    if command == "setup-backend":
+        return setup_backend()
     if command == "setup-qdrant":
         return setup(extras={"qdrant"})
     if command == "setup-raganything":
@@ -777,6 +796,8 @@ def main() -> int:
         return setup(extras={"qdrant", "raganything"})
     if command == "up":
         return up()
+    if command == "backend":
+        return backend()
     if command == "test":
         return test()
     if command == "clean":

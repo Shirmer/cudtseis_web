@@ -323,11 +323,17 @@ python dev.py setup-qdrant
 
 这会把 `qdrant-client`、`PyMuPDF` 安装到 `Project-Code/backend/.venv`，不会安装系统服务，也不会写到项目目录外。
 
-团队共享 Qdrant 配置示例：
+服务器后端推荐配置示例：
 
 ```env
+BACKEND_HOST=0.0.0.0
+BACKEND_PORT=8001
+CORS_ORIGINS=http://127.0.0.1:5173,http://localhost:5173,http://8.137.179.31,http://8.137.179.31:5173
+
+DATABASE_URL=postgresql+psycopg://cudtseis:你的密码@127.0.0.1:5432/quakes
+
 QDRANT_USE_LOCAL=false
-QDRANT_URL=http://8.137.179.31:6333
+QDRANT_URL=http://127.0.0.1:6333
 QDRANT_API_KEY=你的 Qdrant API Key
 QDRANT_COLLECTION=geo_knowledge_bge_m3_v1
 
@@ -339,9 +345,40 @@ GEO_RAG_EMBEDDING_MODEL=BAAI/bge-m3
 GEO_RAG_EMBEDDING_DIM=1024
 GEO_RAG_EMBEDDING_BATCH_SIZE=32
 GEO_RAG_INDEX_VERSION=geo-rag-bge-m3-v1
+
+# 文献原文件存储。
+# 服务器后端模式下，local 指云服务器本机目录。
+GEO_RAG_STORAGE_BACKEND=local
+GEO_RAG_STORAGE_ROOT=/opt/cudtseis_web/storage/geo_rag_documents
+GEO_RAG_UPLOAD_STAGE_ROOT=/opt/cudtseis_web/storage/geo_rag_upload_stage
+GEO_RAG_STORAGE_REMOTE_ROOT=/opt/cudtseis_web/storage/geo_rag_documents
+GEO_RAG_STORAGE_PUBLIC_BASE_URL=http://8.137.179.31/files/geo_rag_documents
+GEO_RAG_STORAGE_SSH_HOST=
+GEO_RAG_STORAGE_SSH_USER=root
+GEO_RAG_STORAGE_SSH_PORT=22
+GEO_RAG_STORAGE_SSH_KEY_PATH=
 ```
 
 `GEO_RAG_EMBEDDING_ALLOW_FALLBACK=false` 用来防止正式导入时污染向量库：如果 TEI 没启动，入库会直接失败，而不是悄悄写入 hash 向量。正式导入文献前应先启动 `BAAI/bge-m3`，并使用新的 Qdrant collection，例如 `geo_knowledge_bge_m3_v1`，不要和旧 hash 向量混在一起。
+
+从现在的导入页上传文献时，文件会先写入后端配置的暂存目录，再解析、切块、向量化并写入 PostgreSQL/Qdrant。我们当前推荐“服务器跑后端”：后端在云服务器上，所以 `GEO_RAG_STORAGE_BACKEND=local` 表示文件保存到云服务器目录，不再需要本机 SSH 密钥来上传 PDF。
+
+如果只在个人电脑跑前端，把前端 `.env.local` 配成：
+
+```env
+VITE_API_BASE=http://8.137.179.31:8001/api
+```
+
+其中 PostgreSQL 存地震目录、文献元数据、chunk 元数据和问答记录；Qdrant 存向量索引；PDF 原文存云服务器目录；embedding 在服务器上先跑 TEI，后续可以迁到云 GPU 或统一 embedding 服务。
+
+服务器只启动后端时，在仓库根目录运行：
+
+```bash
+python3 dev.py setup-backend
+python3 dev.py backend
+```
+
+当前 PDF 解析采用 `pymupdf-multimodal-lite`：正文仍按文献边界独立切 chunk，同时会额外抽取图片/图件候选、表格候选和公式候选，分别写成 `figure`、`table`、`equation` 类型的知识单元。这是向 RAGAnything 多模态结构化靠拢的轻量实现；后续可以继续接入更强的版面还原、图表 OCR、公式 LaTeX 化和跨模态关系图谱。
 
 ### 文献入库不变量
 
@@ -628,6 +665,12 @@ py dev.py
 - `QDRANT_URL`，MVP 地质文献知识库的 Qdrant 地址，默认 `http://127.0.0.1:6333`
 - `QDRANT_COLLECTION`，MVP 地质文献知识库集合名，默认 `geo_knowledge_v1`
 - `GEO_RAG_INDEX_VERSION`，知识库索引版本，默认 `geo-rag-v1`
+- `GEO_RAG_STORAGE_BACKEND`，PDF/TXT/MD 原文存储方式；服务器后端模式推荐 `local`
+- `GEO_RAG_STORAGE_ROOT`，原文目录；服务器后端模式建议 `/opt/cudtseis_web/storage/geo_rag_documents`
+- `GEO_RAG_UPLOAD_STAGE_ROOT`，上传暂存目录；服务器后端模式建议 `/opt/cudtseis_web/storage/geo_rag_upload_stage`
+- `GEO_RAG_STORAGE_REMOTE_ROOT`，云服务器原文目录；`ssh` 模式使用
+- `GEO_RAG_STORAGE_PUBLIC_BASE_URL`，原文公开访问前缀，用于“打开原文”
+- `GEO_RAG_STORAGE_SSH_HOST` / `GEO_RAG_STORAGE_SSH_USER` / `GEO_RAG_STORAGE_SSH_KEY_PATH`，仅在个人电脑后端通过 SSH 上传原文时使用
 - `SKIP_DB_SETUP=1`，跳过数据库自动初始化
 - `FORCE_INSTALL=1`，强制重新安装后端和前端依赖
 
