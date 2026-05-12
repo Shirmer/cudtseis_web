@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://127.0.0.1:5432/quakes"
     sql_echo: bool = False
     cors_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
+    backend_host: str = "127.0.0.1"
+    backend_port: int = 8001
     usgs_base: str = "https://earthquake.usgs.gov/fdsnws/event/1/query"
     poll_seconds: int = 60
     min_magnitude: float = 3.0
@@ -58,7 +60,15 @@ class Settings(BaseSettings):
     geo_rag_embedding_batch_size: int = 32
     geo_rag_chunk_chars: int = 1200
     geo_rag_chunk_overlap: int = 180
+    geo_rag_storage_backend: str = "local"
     geo_rag_storage_root: str = str(DATA_DIR / "geo_rag_documents")
+    geo_rag_upload_stage_root: str = str(DATA_DIR / "geo_rag_upload_stage")
+    geo_rag_storage_remote_root: str = "/opt/cudtseis_web/storage/geo_rag_documents"
+    geo_rag_storage_public_base_url: str = ""
+    geo_rag_storage_ssh_host: str = ""
+    geo_rag_storage_ssh_user: str = "root"
+    geo_rag_storage_ssh_port: int = 22
+    geo_rag_storage_ssh_key_path: str = ""
     geo_rag_fallback_store_path: str = str(DATA_DIR / "geo_rag_vector_fallback.json")
     vikingdb_ak: str = ""
     vikingdb_sk: str = ""

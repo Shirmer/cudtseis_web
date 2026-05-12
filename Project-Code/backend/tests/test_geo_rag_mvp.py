@@ -8,7 +8,15 @@ from unittest.mock import patch
 
 from app.embedding_service import embed_texts
 from app.evidence_service import build_evidence_pack
-from app.geo_ingest_service import _chunk_pages, _merge_and_rerank_results, _section_role
+from app.geo_ingest_service import (
+    _build_knowledge_units,
+    _chunk_pages,
+    _document_public_url,
+    _merge_and_rerank_results,
+    _section_role,
+    _storage_uri,
+    _store_document_file,
+)
 from app.geo_ids import document_id_from_file, paper_id_from_metadata, point_id_from_unit_id, unit_id_from_parts
 from app.qdrant_service import search_vectors, upsert_vectors
 from app.settings import settings
@@ -209,6 +217,108 @@ class GeoRagMvpTests(unittest.TestCase):
         self.assertEqual([chunk["evidence_role"] for chunk in chunks], ["primary", "low-evidence"])
         self.assertNotIn("References", chunks[0]["text"])
         self.assertNotIn("near-field shaking", chunks[1]["text"])
+
+    def test_document_file_is_copied_into_storage_root(self):
+        old_storage_root = settings.geo_rag_storage_root
+        old_storage_backend = settings.geo_rag_storage_backend
+        old_public_base_url = settings.geo_rag_storage_public_base_url
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as storage_dir:
+            settings.geo_rag_storage_backend = "local"
+            settings.geo_rag_storage_root = storage_dir
+            settings.geo_rag_storage_public_base_url = "https://example.com/files"
+            try:
+                source_path = Path(source_dir) / "source.pdf"
+                source_path.write_bytes(b"%PDF-1.4\n% test\n")
+                stored_file = _store_document_file(source_path, document_id="doc-test")
+                stored_path = Path(stored_file["localPath"])
+                storage_uri = _storage_uri(stored_path)
+            finally:
+                settings.geo_rag_storage_root = old_storage_root
+                settings.geo_rag_storage_backend = old_storage_backend
+                settings.geo_rag_storage_public_base_url = old_public_base_url
+
+            self.assertTrue(stored_path.exists())
+            self.assertNotEqual(source_path, stored_path)
+            self.assertEqual(stored_file["backend"], "local")
+            self.assertEqual(stored_file["publicUrl"], "https://example.com/files/doc-test.pdf")
+            self.assertEqual(stored_path.name, "doc-test.pdf")
+            self.assertEqual(storage_uri, "local://doc-test.pdf")
+
+    def test_ssh_document_storage_records_cloud_location(self):
+        old_backend = settings.geo_rag_storage_backend
+        old_host = settings.geo_rag_storage_ssh_host
+        old_user = settings.geo_rag_storage_ssh_user
+        old_port = settings.geo_rag_storage_ssh_port
+        old_remote_root = settings.geo_rag_storage_remote_root
+        old_public_base_url = settings.geo_rag_storage_public_base_url
+        try:
+            settings.geo_rag_storage_backend = "ssh"
+            settings.geo_rag_storage_ssh_host = "8.137.179.31"
+            settings.geo_rag_storage_ssh_user = "root"
+            settings.geo_rag_storage_ssh_port = 22
+            settings.geo_rag_storage_remote_root = "/opt/cudtseis_web/storage/geo_rag_documents"
+            settings.geo_rag_storage_public_base_url = "https://example.com/geo"
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                source_path = Path(tmpdir) / "source.pdf"
+                source_path.write_bytes(b"%PDF-1.4\n% test\n")
+                fake_run = SimpleNamespace(returncode=0, stdout="", stderr="")
+                with patch("app.geo_ingest_service.subprocess.run", return_value=fake_run) as run:
+                    stored_file = _store_document_file(source_path, document_id="doc-test")
+        finally:
+            settings.geo_rag_storage_backend = old_backend
+            settings.geo_rag_storage_ssh_host = old_host
+            settings.geo_rag_storage_ssh_user = old_user
+            settings.geo_rag_storage_ssh_port = old_port
+            settings.geo_rag_storage_remote_root = old_remote_root
+            settings.geo_rag_storage_public_base_url = old_public_base_url
+
+        self.assertEqual(stored_file["backend"], "ssh")
+        self.assertEqual(stored_file["storageUri"], "ssh://root@8.137.179.31/opt/cudtseis_web/storage/geo_rag_documents/doc-test.pdf")
+        self.assertEqual(stored_file["publicUrl"], "https://example.com/geo/doc-test.pdf")
+        document = SimpleNamespace(metadata_json={"publicUrl": stored_file["publicUrl"]}, file_name="doc-test.pdf")
+        self.assertEqual(_document_public_url(document), "https://example.com/geo/doc-test.pdf")
+        self.assertEqual(run.call_count, 2)
+
+    def test_multimodal_units_are_added_as_structured_units(self):
+        units = _build_knowledge_units(
+            [
+                {
+                    "page": 2,
+                    "paragraphs": [
+                        "Methods",
+                        "Fault rupture propagated along the segment.",
+                        "Figure 1. Map of the East Anatolian Fault zone.",
+                        "E = mc^2",
+                    ],
+                    "elements": [
+                        {
+                            "content_type": "figure",
+                            "page": 2,
+                            "caption": "Figure 1. Map of the East Anatolian Fault zone.",
+                            "bbox": {"x0": 10, "y0": 20, "x1": 200, "y1": 180},
+                            "order": 20,
+                        },
+                        {
+                            "content_type": "equation",
+                            "page": 2,
+                            "text": "E = mc^2",
+                            "bbox": {"x0": 20, "y0": 210, "x1": 180, "y1": 240},
+                            "order": 30,
+                        },
+                    ],
+                    "quality": {"status": "ok"},
+                }
+            ]
+        )
+
+        content_types = {unit["content_type"] for unit in units}
+        self.assertIn("text", content_types)
+        self.assertIn("figure", content_types)
+        self.assertIn("equation", content_types)
+        figure = next(unit for unit in units if unit["content_type"] == "figure")
+        self.assertIn("Figure/image candidate", figure["text"])
+        self.assertEqual(figure["bbox"]["x0"], 10)
 
 
 if __name__ == "__main__":

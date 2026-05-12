@@ -235,6 +235,7 @@ class KnowledgeInitOut(BaseModel):
     documents: int
     units: int
     indexVersion: str
+    storageBackend: str = "local"
     message: str
     warning: str = ""
     generatedAt: str
@@ -323,6 +324,8 @@ class DocumentIngestOut(BaseModel):
     parser: str
     pages: int
     units: int
+    multimodalUnits: int = 0
+    storageUri: str = ""
     fileSha256: str
     vectorStore: dict[str, Any]
     embeddingBackend: str
@@ -345,6 +348,8 @@ class DocumentBatchIngestItemOut(BaseModel):
     title: str = ""
     pages: int = 0
     units: int = 0
+    multimodalUnits: int = 0
+    storageUri: str = ""
     embeddingBackend: str = ""
     message: str = ""
     error: str = ""
