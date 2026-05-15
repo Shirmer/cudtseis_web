@@ -60,10 +60,8 @@ class Settings(BaseSettings):
     geo_rag_storage_ssh_user: str = "root"
     geo_rag_storage_ssh_port: int = 22
     geo_rag_storage_ssh_key_path: str = ""
-    vikingdb_ak: str = ""
-    vikingdb_sk: str = ""
-    vikingdb_host: str = "vikingdb.cn-beijing.volcengineapi.com"
-    vikingdb_region: str = "cn-beijing"
+    geo_rag_import_worker_enabled: bool = True
+    geo_rag_import_worker_poll_seconds: float = 2.0
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     openai_embedding_model: str = "text-embedding-3-small"

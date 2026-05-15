@@ -216,6 +216,7 @@ def pip_install(
             "-r",
             requirements,
         ],
+        cwd=BACKEND_DIR,
         env=pip_install_env(),
     )
     stamp.parent.mkdir(parents=True, exist_ok=True)
@@ -784,9 +785,6 @@ def main() -> int:
         return setup()
     if command == "setup-backend":
         return setup_backend()
-    if command == "setup-qdrant":
-        warn("Qdrant setup has been removed; installing the RAGAnything stack instead.")
-        return setup(extras={"raganything"})
     if command == "setup-raganything":
         return setup(extras={"raganything"})
     if command == "setup-all":

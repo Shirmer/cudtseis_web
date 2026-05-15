@@ -30,19 +30,13 @@ class GeoRagAnythingTests(unittest.TestCase):
     def test_hash_embeddings_still_work_as_local_dev_fallback(self):
         old_key = settings.openai_api_key
         old_provider = settings.geo_rag_embedding_provider
-        old_vikingdb_ak = settings.vikingdb_ak
-        old_vikingdb_sk = settings.vikingdb_sk
         settings.openai_api_key = ""
         settings.geo_rag_embedding_provider = "hashing"
-        settings.vikingdb_ak = ""
-        settings.vikingdb_sk = ""
         try:
             result = embed_texts(["fault rupture tectonic stress"])
         finally:
             settings.openai_api_key = old_key
             settings.geo_rag_embedding_provider = old_provider
-            settings.vikingdb_ak = old_vikingdb_ak
-            settings.vikingdb_sk = old_vikingdb_sk
 
         self.assertEqual(result.backend, "hashing")
         self.assertEqual(len(result.vectors), 1)

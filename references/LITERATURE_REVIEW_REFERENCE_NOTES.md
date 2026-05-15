@@ -10,7 +10,7 @@
 - `scripts/search_databases.py`: Simple reference implementation for deduplicating paper records by DOI/title, filtering by year, ranking by citations/year/relevance, and producing summaries.
 - `scripts/verify_citations.py`: Reference implementation for DOI extraction, DOI resolution, CrossRef metadata lookup, and citation report generation.
 - `scripts/generate_pdf.py`: Optional reference for rendering Markdown review outputs to PDF with Pandoc.
-- `scripts/generate_schematic*.py`: Optional reference for scientific diagram generation and AI-based quality review. This is not part of the MVP runtime.
+- `scripts/generate_schematic*.py`: Optional reference for scientific diagram generation and AI-based quality review. This is not part of the runtime.
 
 ## How It Maps To Our RAG System
 

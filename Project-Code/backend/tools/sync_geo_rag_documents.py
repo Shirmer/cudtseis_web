@@ -41,7 +41,8 @@ def main() -> int:
         candidates = candidates[: args.limit]
 
     print(f"[sync] database={_redact_url(settings.database_url)}")
-    print(f"[sync] qdrant={settings.qdrant_url} collection={settings.qdrant_collection}")
+    print(f"[sync] ragEngine=raganything workingDir={settings.raganything_working_dir}")
+    print(f"[sync] ragOutput={settings.raganything_output_dir}")
     print(f"[sync] storageBackend={settings.geo_rag_storage_backend}")
     print(f"[sync] embedding={settings.geo_rag_embedding_provider} {settings.geo_rag_embedding_model}")
     print(f"[sync] directory={directory}")

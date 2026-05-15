@@ -18,7 +18,7 @@
 不再采用“双写”：
 
 ```text
-文献 -> 自研 Qdrant chunk 索引
+文献 -> 旧自研 chunk 索引
      -> RAGAnything 镜像索引
 ```
 
@@ -101,7 +101,7 @@ GEO_RAG_STORAGE_PUBLIC_BASE_URL=http://服务器公网IP/files/geo_rag_documents
 - TEI embedding 服务
 - RAGAnything/MinerU 依赖
 
-Qdrant 后续不是文献 RAG 主链路必需项，可以保留给旧的 builtin fallback 或其他实验索引，但最终文献问答不依赖它。
+旧自研向量索引已从文献 RAG 主链路移除。当前最终方向是只维护 RAGAnything/LightRAG 一套文献索引，避免同一篇文献在两套索引中状态不一致。
 
 ## 5. 开发原则
 

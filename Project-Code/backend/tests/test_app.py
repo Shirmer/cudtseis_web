@@ -30,6 +30,8 @@ class AppTests(unittest.TestCase):
         self.assertIn("/api/knowledge/init", paths)
         self.assertIn("/api/knowledge/search", paths)
         self.assertIn("/api/documents/ingest", paths)
+        self.assertIn("/api/documents/batch-ingest", paths)
+        self.assertIn("/api/documents/import-jobs/{job_id}", paths)
         self.assertIn("/api/raganything/status", paths)
         self.assertIn("/api/raganything/query", paths)
 

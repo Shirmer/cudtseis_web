@@ -32,12 +32,6 @@ def embed_texts(texts: list[str]) -> EmbeddingResult:
                 raise RuntimeError("HTTP embedding service failed and fallback is disabled") from exc
             return _fallback_embeddings(cleaned, "http-fallback")
 
-    if provider in {"vikingdb", "auto"} and _vikingdb_configured():
-        try:
-            return _embed_with_vikingdb(cleaned)
-        except Exception:
-            return _fallback_embeddings(cleaned, "vikingdb-fallback")
-
     if provider in {"openai", "auto"} and settings.openai_api_key and settings.openai_embedding_model:
         try:
             return _embed_with_openai(cleaned)
@@ -122,121 +116,6 @@ def _extract_http_vectors(data: Any) -> list[list[float]]:
             return [[float(value) for value in vector] for vector in embeddings]
 
     raise RuntimeError("Unable to extract vectors from HTTP embedding response")
-
-
-def _vikingdb_configured() -> bool:
-    return bool(
-        settings.vikingdb_ak
-        and settings.vikingdb_sk
-        and settings.vikingdb_host
-        and settings.vikingdb_region
-        and settings.geo_rag_embedding_model
-    )
-
-
-def _embed_with_vikingdb(texts: list[str]) -> EmbeddingResult:
-    try:
-        from volcengine.viking_db import EmbModel, RawData, VikingDBService
-    except Exception as exc:
-        raise RuntimeError("vikingdb-python-sdk is not installed") from exc
-
-    service = VikingDBService(
-        settings.vikingdb_host,
-        settings.vikingdb_region,
-        settings.vikingdb_ak,
-        settings.vikingdb_sk,
-    )
-    batch_size = max(1, min(settings.geo_rag_embedding_batch_size, 100))
-    vectors: list[list[float]] = []
-    model = EmbModel(
-        settings.geo_rag_embedding_model,
-        params={
-            "return_dense": True,
-            "return_sparse": False,
-            "return_token_usage": False,
-        },
-    )
-
-    for start in range(0, len(texts), batch_size):
-        batch = texts[start : start + batch_size]
-        raw_data = [RawData("text", text) for text in batch]
-        response = service.embedding_v2(model, raw_data)
-        vectors.extend(_extract_vikingdb_vectors(response))
-
-    if len(vectors) != len(texts):
-        raise RuntimeError("VikingDB embedding API returned an unexpected number of vectors")
-    return EmbeddingResult(
-        vectors=vectors,
-        backend="vikingdb",
-        model=settings.geo_rag_embedding_model,
-    )
-
-
-def _extract_vikingdb_vectors(response: Any) -> list[list[float]]:
-    payload = response
-    if hasattr(response, "dict"):
-        payload = response.dict()
-    elif hasattr(response, "__dict__") and not isinstance(response, dict):
-        payload = response.__dict__
-
-    if isinstance(payload, dict):
-        candidates = (
-            payload.get("data")
-            or payload.get("result")
-            or payload.get("items")
-            or payload.get("embedding")
-            or payload.get("embeddings")
-            or payload
-        )
-    else:
-        candidates = payload
-
-    if isinstance(candidates, dict):
-        vectors = _vectors_from_item(candidates)
-        if vectors:
-            return vectors
-        candidates = list(candidates.values())
-
-    if isinstance(candidates, list):
-        vectors: list[list[float]] = []
-        for item in candidates:
-            vectors.extend(_vectors_from_item(item))
-        if vectors:
-            return vectors
-
-    raise RuntimeError("Unable to extract dense vectors from VikingDB embedding response")
-
-
-def _vectors_from_item(item: Any) -> list[list[float]]:
-    if hasattr(item, "dict"):
-        item = item.dict()
-    elif hasattr(item, "__dict__") and not isinstance(item, dict):
-        item = item.__dict__
-
-    if isinstance(item, list) and item and all(isinstance(value, (int, float)) for value in item):
-        return [[float(value) for value in item]]
-
-    if not isinstance(item, dict):
-        return []
-
-    vector_keys = [
-        "sentence_dense_embedding",
-        "dense_embedding",
-        "text_dense_embedding",
-        "embedding",
-        "vector",
-    ]
-    for key in vector_keys:
-        value = item.get(key)
-        if isinstance(value, list) and value and all(isinstance(entry, (int, float)) for entry in value):
-            return [[float(entry) for entry in value]]
-        if isinstance(value, list) and value and isinstance(value[0], list):
-            return [[float(entry) for entry in vector] for vector in value]
-
-    nested_vectors: list[list[float]] = []
-    for value in item.values():
-        nested_vectors.extend(_vectors_from_item(value))
-    return nested_vectors
 
 
 def _hash_embedding(text: str, dimensions: int) -> list[float]:
