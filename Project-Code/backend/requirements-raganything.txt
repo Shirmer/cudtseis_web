@@ -1,10 +1,4 @@
 -r app/requirements.txt
 
-# Optional advanced RAG stack. Do not install this for ordinary development.
-# Install only when working on the RAGAnything/MinerU parser adapter.
-raganything[text]==1.2.10
-lightrag-hku==1.4.15
-mineru[core]==3.1.6
-configparser==7.2.0
-json-repair==0.59.5
-gradio==6.8.0
+# Primary RAG stack. The app imports the full local upstream source tree.
+-e ../../RAG-Anything-main[text]

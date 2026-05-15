@@ -25,7 +25,6 @@ from .geo_ingest_service import (
 from .geo_rag_service import answer_event_geo_analysis, answer_paper_question
 from .ingest import fetch_usgs_geojson, upsert_and_get_new
 from .paper_database import add_paper, get_paper_architecture, get_paper_detail, initialize_paper_database, search_papers
-from .rag import answer_event_question, prepare_event_vector_index
 from .raganything_service import (
     get_raganything_status,
     ingest_document_with_raganything,
@@ -284,7 +283,7 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
         }
 
     @app.post("/api/events/{event_id}/rag", response_model=RagResponseOut)
-    def ask_event_rag(
+    async def ask_event_rag(
         event_id: str,
         payload: EventRagRequest,
         db: Session = Depends(get_db),
@@ -298,21 +297,35 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
             paperLimit=payload.paperLimit,
             yearMin=payload.yearMin,
         )
-        rag_response = answer_event_question(
-            question=payload.question,
+        ingest_result = await ingest_event_bundle_with_raganything(
             event=bundle["event"],
             cohort_events=bundle["cohort_events"],
             papers=bundle["literature"]["papers"],
             synthesis=bundle["synthesis"],
-            top_k=payload.topK,
+            force=False,
         )
-        rag_response["event"] = bundle["event"]
-        rag_response["generatedAt"] = bundle["literature"]["generatedAt"]
-        rag_response["mode"] = "event-rag"
-        return rag_response
+        rag_result = await query_raganything_service(
+            question=payload.question,
+            mode=settings.raganything_query_mode,
+        )
+        return {
+            "question": payload.question,
+            "answer": rag_result.get("answer", ""),
+            "retrievedContexts": [],
+            "contextCount": 0,
+            "retrievalMode": f"{rag_result.get('retrievalMode', 'raganything')}:{ingest_result.get('mode', '')}",
+            "suggestedQuestions": [
+                "这次地震可能与哪些构造背景有关？",
+                "已有文献中哪些证据最支持当前判断？",
+                "这个结论还有哪些不确定性？",
+            ],
+            "event": bundle["event"],
+            "generatedAt": bundle["literature"]["generatedAt"],
+            "mode": "event-raganything",
+        }
 
     @app.post("/api/events/{event_id}/vector-index", response_model=VectorIndexOut)
-    def rebuild_event_vector_index(
+    async def rebuild_event_vector_index(
         event_id: str,
         force: bool = Query(True),
         db: Session = Depends(get_db),
@@ -331,13 +344,19 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
             paperLimit=paperLimit,
             yearMin=yearMin,
         )
-        return prepare_event_vector_index(
+        result = await ingest_event_bundle_with_raganything(
             event=bundle["event"],
             cohort_events=bundle["cohort_events"],
             papers=bundle["literature"]["papers"],
             synthesis=bundle["synthesis"],
-            force_rebuild=force,
+            force=force,
         )
+        return {
+            "eventId": str(bundle["event"].get("id", "")),
+            "documents": int(result.get("documents") or 0),
+            "retrievalMode": str(result.get("mode") or "raganything"),
+            "storePath": str(result.get("storePath") or settings.raganything_working_dir),
+        }
 
     @app.get("/api/raganything/status", response_model=RagAnythingStatusOut)
     def get_raganything_runtime_status():
@@ -380,15 +399,16 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
             question=payload.question,
             mode=payload.mode,
             vlm_enhanced=payload.vlmEnhanced,
+            only_need_prompt=payload.onlyNeedPrompt,
         )
 
     @app.post("/api/rag/query", response_model=RagResponseOut)
-    def query_rag(
+    async def query_rag(
         payload: RagQueryRequest,
         db: Session = Depends(get_db),
     ):
         if payload.eventId:
-            return ask_event_rag(payload.eventId, EventRagRequest(**payload.model_dump(exclude={"eventId"})), db)
+            return await ask_event_rag(payload.eventId, EventRagRequest(**payload.model_dump(exclude={"eventId"})), db)
 
         events = query_events_payload(db, minMag=payload.minMag, hours=payload.hours, limit=1)
         if not events:
@@ -405,18 +425,32 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
             paperLimit=payload.paperLimit,
             yearMin=payload.yearMin,
         )
-        rag_response = answer_event_question(
-            question=payload.question,
+        ingest_result = await ingest_event_bundle_with_raganything(
             event=bundle["event"],
             cohort_events=bundle["cohort_events"],
             papers=bundle["literature"]["papers"],
             synthesis=bundle["synthesis"],
-            top_k=payload.topK,
+            force=False,
         )
-        rag_response["event"] = bundle["event"]
-        rag_response["generatedAt"] = bundle["literature"]["generatedAt"]
-        rag_response["mode"] = "event-rag-latest-event"
-        return rag_response
+        rag_result = await query_raganything_service(
+            question=payload.question,
+            mode=settings.raganything_query_mode,
+        )
+        return {
+            "question": payload.question,
+            "answer": rag_result.get("answer", ""),
+            "retrievedContexts": [],
+            "contextCount": 0,
+            "retrievalMode": f"{rag_result.get('retrievalMode', 'raganything')}:{ingest_result.get('mode', '')}",
+            "suggestedQuestions": [
+                "这次地震可能与哪些构造背景有关？",
+                "已有文献中哪些证据最支持当前判断？",
+                "这个结论还有哪些不确定性？",
+            ],
+            "event": bundle["event"],
+            "generatedAt": bundle["literature"]["generatedAt"],
+            "mode": "event-raganything-latest-event",
+        }
 
     @app.post("/api/knowledge/init", response_model=KnowledgeInitOut)
     def initialize_knowledge_store(db: Session = Depends(get_db)):

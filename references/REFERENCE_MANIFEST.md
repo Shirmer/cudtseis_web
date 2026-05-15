@@ -2,6 +2,8 @@
 
 This folder keeps a lightweight reference snapshot from the imported `Agent-RAG` and `AutoResearchClaw` folders.
 
+Current runtime note: the application now prefers the complete upstream `RAG-Anything-main/` source tree in the project root. This `references/source-snapshots/` folder remains a design-reference archive, especially for legacy literature helpers and ResearchClaw-style analysis ideas.
+
 The original folders were useful for reading architecture and implementation ideas, but they also contained local virtual environments, Node dependencies, generated parsing output, sample PDFs, caches, and nested Git history. Those files are not required for this project to run and make collaboration painful.
 
 ## What Was Kept
@@ -29,7 +31,7 @@ After this snapshot is created, the original imported `Agent-RAG`, `AutoResearch
 
 ## How To Use This Snapshot
 
-Do not import this code directly into the running app. Treat it as design reference while implementing adapters in `Project-Code/backend/app`.
+Do not import this snapshot code directly into the running app. The running app imports `RAG-Anything-main/` first and falls back to the pip-installed package only if that complete source tree is absent. Treat this folder as design reference while implementing adapters in `Project-Code/backend/app`.
 
 For MVP collaboration, run only:
 

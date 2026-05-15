@@ -9,7 +9,6 @@ from fastapi import HTTPException
 
 from app.event_service import _build_usgs_query_params, query_events_page, validate_query_ranges
 from app.schemas import EventQueryParams
-from app.vector_retrieval import HashingVectorIndex
 
 
 class EventServiceTests(unittest.TestCase):
@@ -113,19 +112,6 @@ class EventServiceTests(unittest.TestCase):
         self.assertTrue(result["hasMore"])
         self.assertEqual(result["items"][0]["id"], "us-test-1")
         self.assertEqual(mock_usgs_get.call_count, 1)
-
-
-class VectorRetrievalTests(unittest.TestCase):
-    def test_vector_index_returns_relevant_document_first(self):
-        index = HashingVectorIndex(dimensions=128)
-        index.add_documents(
-            [
-                {"id": "1", "sourceType": "paper", "title": "Fault mechanics", "content": "fault rupture tectonic stress"},
-                {"id": "2", "sourceType": "paper", "title": "Ocean biology", "content": "fish coral reef marine life"},
-            ]
-        )
-        results = index.search("tectonic fault stress", top_k=1)
-        self.assertEqual(results[0]["id"], "1")
 
 
 if __name__ == "__main__":

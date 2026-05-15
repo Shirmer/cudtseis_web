@@ -234,8 +234,10 @@ class KnowledgeInitOut(BaseModel):
     vectorSize: int
     documents: int
     units: int
+    knowledgeCards: int = 0
     indexVersion: str
     storageBackend: str = "local"
+    ragEngine: dict[str, Any] = Field(default_factory=dict)
     message: str
     warning: str = ""
     generatedAt: str
@@ -329,6 +331,8 @@ class DocumentIngestOut(BaseModel):
     fileSha256: str
     vectorStore: dict[str, Any]
     embeddingBackend: str
+    ragEngine: dict[str, Any] = Field(default_factory=dict)
+    knowledgeCard: dict[str, Any] = Field(default_factory=dict)
     message: str
 
 
@@ -351,6 +355,7 @@ class DocumentBatchIngestItemOut(BaseModel):
     multimodalUnits: int = 0
     storageUri: str = ""
     embeddingBackend: str = ""
+    ragEngine: dict[str, Any] = Field(default_factory=dict)
     message: str = ""
     error: str = ""
 
@@ -400,6 +405,7 @@ class GeoRagResponseOut(BaseModel):
     mode: str
     event: dict[str, Any] | None = None
     evidencePack: dict[str, Any]
+    knowledgeCards: dict[str, Any] = Field(default_factory=dict)
     retrievedContexts: list[RetrievedContextOut]
     suggestedQuestions: list[str]
     generatedAt: str
@@ -427,18 +433,25 @@ class RagAnythingQueryRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     mode: str | None = Field(default=None, max_length=30)
     vlmEnhanced: bool | None = None
+    onlyNeedPrompt: bool = False
 
 
 class RagAnythingStatusOut(BaseModel):
     enabled: bool
     available: bool
+    ready: bool = False
     reason: str
+    engineMode: str = "raganything"
     workingDir: str
     outputDir: str
     documentDir: str
+    allowedDocumentRoots: list[str] = Field(default_factory=list)
     parser: str
     parseMethod: str
     queryMode: str
+    dependencies: dict[str, Any] = Field(default_factory=dict)
+    sourceSnapshot: dict[str, Any] = Field(default_factory=dict)
+    requiredActions: list[str] = Field(default_factory=list)
 
 
 class RagAnythingIngestOut(BaseModel):
@@ -446,13 +459,17 @@ class RagAnythingIngestOut(BaseModel):
     mode: str
     documents: int = 0
     storePath: str
+    outputDir: str = ""
+    contentStats: dict[str, Any] = Field(default_factory=dict)
     message: str
 
 
 class RagAnythingQueryOut(BaseModel):
+    status: str = "ready"
     question: str
     answer: str
     retrievalMode: str
+    queryMode: str = ""
     mode: str
 
 

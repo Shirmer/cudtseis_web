@@ -176,7 +176,7 @@ py dev.py setup
 
 ### 团队共享云端测试配置
 
-如果团队希望所有成员先共用阿里云上的 PostgreSQL/PostGIS 和 Qdrant 测试库，不需要每个人本机都安装数据库。先复制团队配置模板：
+如果团队希望所有成员先共用阿里云上的 PostgreSQL/PostGIS、RAGAnything 工作目录和服务器文献目录，不需要每个人本机都安装数据库和解析服务。先复制团队配置模板：
 
 macOS / Linux：
 
@@ -196,27 +196,26 @@ Copy-Item Project-Code/Frontend/quakes-frontend/.env.team.example Project-Code/F
 
 ```env
 REPLACE_WITH_POSTGRES_PASSWORD
-REPLACE_WITH_QDRANT_API_KEY
 REPLACE_WITH_DOUBAO_API_KEY
 ```
 
 这套配置的运行链路是：
 
 ```text
-本机浏览器 -> 本机前端 5173 -> 本机后端 8001 -> 云端 PostgreSQL/Qdrant
+本机浏览器 -> 本机前端 5173 -> 本机后端 8001 -> 云端 PostgreSQL + RAGAnything/LightRAG/MinerU
 ```
 
 填好后运行：
 
 ```bash
-python dev.py setup-qdrant
+python dev.py setup-raganything
 python dev.py
 ```
 
 Windows：
 
 ```powershell
-py dev.py setup-qdrant
+py dev.py setup-raganything
 py dev.py
 ```
 
@@ -306,22 +305,22 @@ OPENAI_EMBEDDING_MODEL=
 
 现在推荐使用下方独立 TEI embedding 服务；`OPENAI_EMBEDDING_MODEL` 只在同一个服务也提供 OpenAI-compatible embeddings 时才填写。API key 只放在本机 `.env`，不要写入 `.env.example`、README 或源码。
 
-### Embedding 与 Qdrant
+### Embedding 与 RAGAnything
 
-Geo RAG 的向量检索由两部分组成：
+最终文献 RAG 的检索主链路由 RAGAnything/LightRAG 负责。embedding 仍然由项目统一配置，RAGAnything 会复用 `GEO_RAG_EMBEDDING_*`：
 
 ```text
 embedding 模型：把文本转成向量
-Qdrant：保存向量并做相似度检索
+RAGAnything/LightRAG：保存文档索引、实体关系和检索工作目录
 ```
 
-VikingDB 不是必须项。团队当前默认不使用 VikingDB；`setup-qdrant` 只安装 Qdrant 客户端和 PDF 解析依赖：
+VikingDB 不是必须项。Qdrant 也不再是最终文献 RAG 主链路必需项；它只保留给旧的 builtin fallback 或其他实验索引。负责高级 RAG 的机器需要安装 RAGAnything 依赖：
 
 ```bash
-python dev.py setup-qdrant
+python dev.py setup-raganything
 ```
 
-这会把 `qdrant-client`、`PyMuPDF` 安装到 `Project-Code/backend/.venv`，不会安装系统服务，也不会写到项目目录外。
+这会把 RAGAnything、LightRAG、MinerU 等依赖安装到 `Project-Code/backend/.venv`，不会安装系统服务，也不会写到项目目录外。
 
 服务器后端推荐配置示例：
 
@@ -332,10 +331,14 @@ CORS_ORIGINS=http://127.0.0.1:5173,http://localhost:5173,http://8.137.179.31,htt
 
 DATABASE_URL=postgresql+psycopg://cudtseis:你的密码@127.0.0.1:5432/quakes
 
-QDRANT_USE_LOCAL=false
-QDRANT_URL=http://127.0.0.1:6333
-QDRANT_API_KEY=你的 Qdrant API Key
-QDRANT_COLLECTION=geo_knowledge_bge_m3_v1
+GEO_RAG_ENGINE=raganything
+RAGANYTHING_ENABLED=true
+RAGANYTHING_WORKING_DIR=/opt/cudtseis_web/storage/raganything
+RAGANYTHING_OUTPUT_DIR=/opt/cudtseis_web/storage/raganything_output
+RAGANYTHING_DOCUMENT_DIR=/opt/cudtseis_web/storage/geo_rag_documents
+RAGANYTHING_PARSER=mineru
+RAGANYTHING_PARSE_METHOD=auto
+RAGANYTHING_QUERY_MODE=hybrid
 
 GEO_RAG_EMBEDDING_PROVIDER=http
 GEO_RAG_EMBEDDING_URL=http://127.0.0.1:8080/v1/embeddings
@@ -359,9 +362,9 @@ GEO_RAG_STORAGE_SSH_PORT=22
 GEO_RAG_STORAGE_SSH_KEY_PATH=
 ```
 
-`GEO_RAG_EMBEDDING_ALLOW_FALLBACK=false` 用来防止正式导入时污染向量库：如果 TEI 没启动，入库会直接失败，而不是悄悄写入 hash 向量。正式导入文献前应先启动 `BAAI/bge-m3`，并使用新的 Qdrant collection，例如 `geo_knowledge_bge_m3_v1`，不要和旧 hash 向量混在一起。
+`GEO_RAG_EMBEDDING_ALLOW_FALLBACK=false` 用来防止正式导入时污染知识库：如果 TEI 没启动，入库会直接失败，而不是悄悄使用 hash embedding。
 
-从现在的导入页上传文献时，文件会先写入后端配置的暂存目录，再解析、切块、向量化并写入 PostgreSQL/Qdrant。我们当前推荐“服务器跑后端”：后端在云服务器上，所以 `GEO_RAG_STORAGE_BACKEND=local` 表示文件保存到云服务器目录，不再需要本机 SSH 密钥来上传 PDF。
+从导入页上传文献时，文件会先写入后端配置的暂存目录，再保存到服务器文献目录，并由 RAGAnything/MinerU/LightRAG 解析和入库。我们当前推荐“服务器跑后端”：后端在云服务器上，所以 `GEO_RAG_STORAGE_BACKEND=local` 表示文件保存到云服务器目录，不再需要本机 SSH 密钥来上传 PDF。
 
 如果只在个人电脑跑前端，把前端 `.env.local` 配成：
 
@@ -369,16 +372,16 @@ GEO_RAG_STORAGE_SSH_KEY_PATH=
 VITE_API_BASE=http://8.137.179.31:8001/api
 ```
 
-其中 PostgreSQL 存地震目录、文献元数据、chunk 元数据和问答记录；Qdrant 存向量索引；PDF 原文存云服务器目录；embedding 在服务器上先跑 TEI，后续可以迁到云 GPU 或统一 embedding 服务。
+其中 PostgreSQL 存地震目录、文献元数据、PDF 路径和问答记录；RAGAnything/LightRAG 存文献 RAG 索引；PDF 原文存云服务器目录；embedding 在服务器上先跑 TEI，后续可以迁到云 GPU 或统一 embedding 服务。
 
 服务器只启动后端时，在仓库根目录运行：
 
 ```bash
-python3 dev.py setup-backend
+python3 dev.py setup-raganything
 python3 dev.py backend
 ```
 
-当前 PDF 解析采用 `pymupdf-multimodal-lite`：正文仍按文献边界独立切 chunk，同时会额外抽取图片/图件候选、表格候选和公式候选，分别写成 `figure`、`table`、`equation` 类型的知识单元。这是向 RAGAnything 多模态结构化靠拢的轻量实现；后续可以继续接入更强的版面还原、图表 OCR、公式 LaTeX 化和跨模态关系图谱。
+当前最终文献 RAG 链路采用 `RAGAnything + MinerU + LightRAG`：MinerU 负责 PDF 版面和多模态解析，RAGAnything 负责把正文、图、表、公式等内容组织进 LightRAG 索引，LightRAG 负责混合检索、实体关系和上下文组织。项目自己的 PostgreSQL 不再重复保存每一个 LightRAG chunk，而是保存文献元数据、原文路径、解析统计、知识卡片和问答记录，方便前端展示、审查和云端迁移。
 
 ### 文献入库不变量
 
@@ -391,7 +394,7 @@ overlap 只允许发生在同一篇文献内部。
 批量入库只是逐篇调用单篇入库流程，不能把两篇文献拼接后再切块。
 ```
 
-当前 chunking 采用 role-aware overlap：正文、方法、结果等 `primary/context` 内容之间保留 overlap；一旦进入 `References`、`Acknowledgement`、`Funding` 等低证据区域，会强制断开，不把正文尾部混入参考文献 chunk，也不让参考文献内容作为正文证据抢占排序。检索诊断会返回 `lowEvidenceCandidateCount`、`lowEvidenceSelectedCount` 和相关 `qualityFlags`，用于判断参考文献/致谢内容是否仍然影响结果。
+在 RAGAnything 主引擎模式下，具体 chunk、实体和关系由 RAGAnything/LightRAG 管理；项目层仍然坚持上面的“每篇文献独立入库”不变量，保证一个文献任务不会把另一篇文献的内容混进同一个 `document_id`。旧的 builtin fallback 才会使用项目内置的 role-aware overlap 和 Qdrant chunk 索引。
 
 批量导入目录中的 PDF/TXT/MD：
 
@@ -405,9 +408,9 @@ curl -s -X POST http://127.0.0.1:8001/api/documents/batch-ingest \
 
 ### RAG-Anything / 高级 RAG 说明
 
-本项目后续目标会借鉴 RAG-Anything、ResearchClaw 等方案，但普通协作开发不默认安装这些重依赖。默认的 `python dev.py setup` 只安装项目运行和 MVP 文献知识库需要的轻量依赖。
+本项目最终文献 RAG 主链路已经切到 RAGAnything。只做前端、地震目录或普通页面开发时，可以先运行默认 `python dev.py setup`；只要你要导入文献、解析 PDF、检索文献或调试 RAG 问答，就必须安装完整 RAG 依赖。
 
-只有在你负责 RAGAnything/MinerU 解析适配时，才运行：
+安装完整 RAG 依赖：
 
 ```bash
 python dev.py setup-raganything
@@ -419,12 +422,37 @@ Windows：
 py dev.py setup-raganything
 ```
 
-要实际启用 RAG-Anything 运行时，还需要在 `Project-Code/backend/.env` 中配置：
+要实际启用 RAGAnything 运行时，还需要在 `Project-Code/backend/.env.local` 中配置：
 
 ```env
+GEO_RAG_ENGINE=raganything
 RAGANYTHING_ENABLED=true
+RAGANYTHING_SOURCE_DIR=/Users/teki/Downloads/my_project/cudtseis_web/RAG-Anything-main
 OPENAI_API_KEY=你的 API Key
+OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 ```
+
+当前代码已经把 RAGAnything 作为主 RAG 引擎层接入，而不是把它的源码拆散复制到业务代码里。最终目标是：RAGAnything/LightRAG/MinerU 负责通用多模态 RAG，项目自己的后端负责用户入口、文献元数据、PDF 文件管理、地震目录、问答记录和科研审查层。相关配置：
+
+```env
+# 正式方向：只使用 RAGAnything 作为文献 RAG 引擎。
+# builtin 只保留作本地轻量调试/遗留测试，不作为最终系统主链路。
+GEO_RAG_ENGINE=raganything
+
+RAGANYTHING_WORKING_DIR=Project-Code/backend/.data/raganything
+RAGANYTHING_OUTPUT_DIR=Project-Code/backend/.data/raganything_output
+RAGANYTHING_DOCUMENT_DIR=Project-Code/backend/.data/geo_rag_documents
+RAGANYTHING_SOURCE_DIR=RAG-Anything-main
+RAGANYTHING_PARSER=mineru
+RAGANYTHING_PARSE_METHOD=auto
+RAGANYTHING_QUERY_MODE=hybrid
+```
+
+`RAGANYTHING_SOURCE_DIR` 指向项目根目录下的完整上游源码 `RAG-Anything-main`。后端启动时会优先从这里导入 `raganything`，如果该目录不存在，才回退到虚拟环境里通过 pip 安装的包。这样团队可以直接跟随完整 RAGAnything 源码升级，而不是把核心 RAG 逻辑拆碎复制进业务代码。
+
+`GEO_RAG_ENGINE=raganything` 后，文献导入不再同时写入我们自研 Qdrant chunk 索引；PDF/TXT/MD 会先进入项目的文件存储目录，然后由 RAGAnything/MinerU/LightRAG 完成解析、入库和检索。PostgreSQL 仍然保存文献元数据、原文路径、地震目录和问答记录。
+
+RAGAnything 的 embedding 会复用项目里的 `GEO_RAG_EMBEDDING_*` 配置。因此服务器上可以统一启动 TEI / `BAAI/bge-m3`，不需要再给 RAGAnything 单独配置一套 embedding API。
 
 说明：`raganything[text]` 依赖 MinerU、Lightrag、OpenCV、ONNX、Gradio 等较大的包，首次安装会明显慢一些。如果遇到 `incomplete-download` 或网络中断，重新运行 `python dev.py setup-raganything`。
 
@@ -435,55 +463,33 @@ Cannot install mineru[core,pipeline]==3.1.6 and shapely==2.0.6
 ResolutionImpossible
 ```
 
-这不是业务代码错误，而是把高级解析实验依赖装进默认环境后触发了依赖冲突。普通开发不要安装 `setup-raganything`；确实要做解析适配时，使用项目提供的 `Project-Code/backend/requirements-raganything.txt`，其中只启用 `mineru[core]`，避免默认开发环境被 `pipeline` 依赖拖垮。
+这不是业务代码错误，而是解析依赖之间的版本约束冲突。请使用项目提供的 `Project-Code/backend/requirements-raganything.txt`，其中只启用 `mineru[core]`，避免默认开发环境被 `pipeline` 依赖拖垮。
 
 ### 外部方案参考快照
 
-项目根目录的 `references/source-snapshots/` 保存了从 RAGAnything / ResearchClaw / literature-review 里挑出的关键源码和文档，供后续设计高级 RAG 时参考。
+项目根目录的 `RAG-Anything-main/` 是当前优先使用的完整上游 RAGAnything 源码。`references/source-snapshots/` 仍作为旧方案和 ResearchClaw / literature-review 的技术参考，不再作为运行时主来源。
+
+可以通过这个接口检查当前环境是否真正就绪：
+
+```bash
+curl http://127.0.0.1:8001/api/raganything/status
+```
+
+如果返回 `ready=false`，优先看 `requiredActions` 和 `dependencies.missing`。如果要确认当前是否真的使用完整源码，看 `dependencies.raganythingOrigin`，它应该指向项目根目录下的 `RAG-Anything-main/raganything/__init__.py`。
 
 不要把完整的外部仓库、它们自己的 `.venv`、`node_modules`、解析输出、样例 PDF 或缓存提交进本项目。完整导入目录 `Agent-RAG/`、`AutoResearchClaw/`、`literature-review/` 已经加入 `.gitignore`；协作开发只需要保留 `references/` 里的轻量快照。
 
-### MVP 地质文献知识库说明
+### 地质文献知识库说明
 
-当前 MVP 已经提供“先本地建库，再基于库做问答/分析”的后端接口：
+当前已经提供“先建库，再基于库做问答/分析”的后端接口。最终文献 RAG 主引擎是 RAGAnything：
 
-- `POST /api/knowledge/init`：初始化知识库向量存储
+- `POST /api/knowledge/init`：查看知识库和 RAG 引擎状态
 - `POST /api/documents/ingest`：导入本地 PDF/TXT/Markdown 文献
-- `POST /api/knowledge/search`：检索知识单元
+- `POST /api/knowledge/search`：通过 RAGAnything/LightRAG 检索上下文
 - `POST /api/rag/papers/query`：论文/文献知识库问答
 - `POST /api/events/{event_id}/geo-analysis`：结合地震事件和文献证据做地质分析
 
-MVP 默认可自动 fallback。Geo RAG v2 推荐使用 Qdrant 本地持久化模式；没有 Qdrant 客户端时后端会自动使用本地 JSON fallback，适合少量文献调试。
-
-如果要对齐团队向量库环境，先安装可选 Qdrant 客户端：
-
-```bash
-python dev.py setup-qdrant
-```
-
-Windows：
-
-```powershell
-py dev.py setup-qdrant
-```
-
-默认推荐本地持久化模式，不需要 Docker：
-
-```env
-QDRANT_USE_LOCAL=true
-QDRANT_LOCAL_PATH=./.data/qdrant-local
-QDRANT_COLLECTION=geo_knowledge_v2
-```
-
-如果团队要连接远程 Qdrant Server，再改成：
-
-```env
-QDRANT_USE_LOCAL=false
-QDRANT_URL=http://127.0.0.1:6333
-QDRANT_COLLECTION=geo_knowledge_v2
-```
-
-如果同事电脑暂时没有 Qdrant 客户端，后端仍然可以启动，会自动退回到本地 JSON fallback 向量库，适合少量文献调试；正式协作和迁移云端时应使用 Qdrant。
+`builtin` 旧链路仍保留在代码里，主要用于本地轻量调试和测试；正式协作与服务器部署不再依赖 Qdrant 双写。
 
 导入一篇本地文献示例：
 
@@ -662,9 +668,12 @@ py dev.py
 - `PIP_INDEX_URL`，默认 `https://pypi.tuna.tsinghua.edu.cn/simple`
 - `PIP_TRUSTED_HOST`，默认 `pypi.tuna.tsinghua.edu.cn`
 - `PIP_CACHE_DIR`，默认 `Project-Code/backend/.data/pip-cache`
-- `QDRANT_URL`，MVP 地质文献知识库的 Qdrant 地址，默认 `http://127.0.0.1:6333`
-- `QDRANT_COLLECTION`，MVP 地质文献知识库集合名，默认 `geo_knowledge_v1`
-- `GEO_RAG_INDEX_VERSION`，知识库索引版本，默认 `geo-rag-v1`
+- `GEO_RAG_ENGINE`，文献 RAG 引擎；最终推荐 `raganything`
+- `RAGANYTHING_ENABLED`，是否启用 RAGAnything/LightRAG/MinerU
+- `RAGANYTHING_WORKING_DIR`，RAGAnything/LightRAG 工作目录
+- `RAGANYTHING_OUTPUT_DIR`，MinerU 解析输出目录
+- `RAGANYTHING_DOCUMENT_DIR`，RAGAnything 允许读取的文献目录
+- `QDRANT_URL` / `QDRANT_COLLECTION`，仅用于 legacy builtin fallback 或实验索引
 - `GEO_RAG_STORAGE_BACKEND`，PDF/TXT/MD 原文存储方式；服务器后端模式推荐 `local`
 - `GEO_RAG_STORAGE_ROOT`，原文目录；服务器后端模式建议 `/opt/cudtseis_web/storage/geo_rag_documents`
 - `GEO_RAG_UPLOAD_STAGE_ROOT`，上传暂存目录；服务器后端模式建议 `/opt/cudtseis_web/storage/geo_rag_upload_stage`

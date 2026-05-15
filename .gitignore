@@ -25,6 +25,7 @@ Project-Code/Frontend/quakes-frontend/.env
 Project-Code/Frontend/quakes-frontend/.env.local
 
 # Backend runtime data
+.data/
 Project-Code/backend/.data/
 
 # Imported external repositories are kept only as lightweight snapshots under references/.
