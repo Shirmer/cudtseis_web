@@ -89,9 +89,8 @@ class KnowledgeUnit(Base):
     geo_entities_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     modality_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     citation_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    embedding_backend: Mapped[str] = mapped_column(String(80), default="hashing")
+    embedding_backend: Mapped[str] = mapped_column(String(80), default="raganything")
     index_version: Mapped[str] = mapped_column(String(80), index=True)
-    qdrant_point_id: Mapped[str] = mapped_column(String(80), index=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -109,3 +108,48 @@ class DocumentKnowledgeCard(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+
+class DocumentImportJob(Base):
+    __tablename__ = "document_import_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    directory_path: Mapped[str] = mapped_column(String(1000), default="")
+    recursive: Mapped[bool] = mapped_column(default=False)
+    force: Mapped[bool] = mapped_column(default=False)
+    limit: Mapped[int] = mapped_column(Integer, default=100)
+    extensions_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(40), index=True, default="queued")
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    queued: Mapped[int] = mapped_column(Integer, default=0)
+    running: Mapped[int] = mapped_column(Integer, default=0)
+    succeeded: Mapped[int] = mapped_column(Integer, default=0)
+    skipped: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    message: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class DocumentImportItem(Base):
+    __tablename__ = "document_import_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(36), index=True)
+    file_path: Mapped[str] = mapped_column(String(1000))
+    status: Mapped[str] = mapped_column(String(40), index=True, default="queued")
+    document_id: Mapped[str] = mapped_column(String(160), default="")
+    paper_id: Mapped[str] = mapped_column(String(160), default="")
+    title: Mapped[str] = mapped_column(String(500), default="")
+    pages: Mapped[int] = mapped_column(Integer, default=0)
+    units: Mapped[int] = mapped_column(Integer, default=0)
+    multimodal_units: Mapped[int] = mapped_column(Integer, default=0)
+    storage_uri: Mapped[str] = mapped_column(String(1000), default="")
+    embedding_backend: Mapped[str] = mapped_column(String(80), default="")
+    message: Mapped[str] = mapped_column(Text, default="")
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -345,6 +345,7 @@ class DocumentBatchIngestRequest(BaseModel):
 
 
 class DocumentBatchIngestItemOut(BaseModel):
+    id: str = ""
     filePath: str
     status: str
     documentId: str = ""
@@ -358,17 +359,29 @@ class DocumentBatchIngestItemOut(BaseModel):
     ragEngine: dict[str, Any] = Field(default_factory=dict)
     message: str = ""
     error: str = ""
+    startedAt: str = ""
+    finishedAt: str = ""
 
 
 class DocumentBatchIngestOut(BaseModel):
+    jobId: str = ""
     directoryPath: str
     recursive: bool
+    force: bool = False
     limit: int
+    status: str = "queued"
+    progress: float = 0.0
     total: int
+    queued: int = 0
+    running: int = 0
     succeeded: int
     skipped: int
     failed: int
+    message: str = ""
     items: list[DocumentBatchIngestItemOut]
+    createdAt: str = ""
+    startedAt: str = ""
+    finishedAt: str = ""
     generatedAt: str
 
 

@@ -16,11 +16,16 @@ from .geo_ingest_service import (
     get_geo_document_status,
     get_knowledge_unit_context,
     ingest_geo_document,
-    ingest_geo_document_batch,
     initialize_geo_knowledge,
     resolve_geo_document_source,
     save_uploaded_geo_document,
     search_geo_knowledge,
+)
+from .document_import_jobs import (
+    create_document_import_job,
+    get_document_import_job,
+    import_worker_loop,
+    list_document_import_jobs,
 )
 from .ingest import fetch_usgs_geojson, upsert_and_get_new
 from .paper_database import add_paper, get_paper_architecture, get_paper_detail, initialize_paper_database, search_papers
@@ -110,6 +115,8 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
         @app.on_event("startup")
         async def startup():
             asyncio.create_task(poller())
+            if settings.geo_rag_import_worker_enabled:
+                asyncio.create_task(import_worker_loop())
 
     @app.get("/api/events", response_model=list[EventOut])
     def list_events(
@@ -497,9 +504,20 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
     @app.post("/api/documents/batch-ingest", response_model=DocumentBatchIngestOut)
     def batch_ingest_documents(payload: DocumentBatchIngestRequest, db: Session = Depends(get_db)):
         try:
-            return ingest_geo_document_batch(db, payload.model_dump())
+            return create_document_import_job(db, payload.model_dump())
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/documents/import-jobs", response_model=list[DocumentBatchIngestOut])
+    def list_import_jobs(limit: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db)):
+        return list_document_import_jobs(db, limit=limit)
+
+    @app.get("/api/documents/import-jobs/{job_id}", response_model=DocumentBatchIngestOut)
+    def get_import_job(job_id: str, db: Session = Depends(get_db)):
+        try:
+            return get_document_import_job(db, job_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/documents/{document_id}/status", response_model=DocumentStatusOut)
     def get_document_status(document_id: str, db: Session = Depends(get_db)):

@@ -33,7 +33,7 @@ def initialize_geo_knowledge(db: Session) -> dict[str, Any]:
         "backend": "raganything",
         "collection": settings.raganything_working_dir,
         "vectorSize": 0,
-        "message": "RAGAnything/LightRAG is the primary RAG index. Legacy Qdrant/hash indexing has been removed.",
+        "message": "RAGAnything/LightRAG is the primary RAG index. The legacy self-built vector index has been removed.",
         "warning": "" if ready else str(rag_status.get("reason") or "RAGAnything is not ready."),
     }
     return {
@@ -254,7 +254,7 @@ def _ingest_geo_document_with_raganything_engine(
         "vectorStore": {
             "status": "not-used",
             "backend": "raganything-lightrag",
-            "message": "RAGAnything/LightRAG is the primary index; Qdrant dual-write is disabled.",
+            "message": "RAGAnything/LightRAG is the primary index; legacy dual-write is disabled.",
         },
         "embeddingBackend": _engine_embedding_backend(),
         "ragEngine": {

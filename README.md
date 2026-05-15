@@ -314,7 +314,7 @@ embedding 模型：把文本转成向量
 RAGAnything/LightRAG：保存文档索引、实体关系和检索工作目录
 ```
 
-VikingDB 不是必须项。Qdrant 也不再是最终文献 RAG 主链路必需项；它只保留给旧的 builtin fallback 或其他实验索引。负责高级 RAG 的机器需要安装 RAGAnything 依赖：
+外部向量数据库不再是当前文献 RAG 主链路必需项。现在项目只维护一套 RAGAnything/LightRAG 文献索引，避免同一份文献在多套索引里状态不一致。负责高级 RAG 的机器需要安装 RAGAnything 依赖：
 
 ```bash
 python dev.py setup-raganything
@@ -394,7 +394,7 @@ overlap 只允许发生在同一篇文献内部。
 批量入库只是逐篇调用单篇入库流程，不能把两篇文献拼接后再切块。
 ```
 
-在 RAGAnything 主引擎模式下，具体 chunk、实体和关系由 RAGAnything/LightRAG 管理；项目层仍然坚持上面的“每篇文献独立入库”不变量，保证一个文献任务不会把另一篇文献的内容混进同一个 `document_id`。旧的 builtin fallback 才会使用项目内置的 role-aware overlap 和 Qdrant chunk 索引。
+在 RAGAnything 主引擎模式下，具体 chunk、实体和关系由 RAGAnything/LightRAG 管理；项目层仍然坚持上面的“每篇文献独立入库”不变量，保证一个文献任务不会把另一篇文献的内容混进同一个 `document_id`。
 
 批量导入目录中的 PDF/TXT/MD：
 
@@ -404,7 +404,13 @@ curl -s -X POST http://127.0.0.1:8001/api/documents/batch-ingest \
   -d '{"directoryPath":"Project-Code/backend/.data/geo_rag_documents","limit":3,"force":true}'
 ```
 
-建议先用 `limit=3` 或 `limit=5` 小批量验证检索质量，再扩大到完整文献库。
+这个接口现在只创建后台导入任务并立即返回 `jobId`；后端启动后会有一个单写入 worker 持续处理队列，避免多个任务同时写 RAGAnything/LightRAG 索引。查看进度：
+
+```bash
+curl -s http://127.0.0.1:8001/api/documents/import-jobs/<jobId>
+```
+
+建议先用 `limit=3` 或 `limit=5` 小批量验证检索质量，再扩大到完整文献库。服务器部署时可以把大量 PDF 放进服务器目录，再通过前端“批量导入”创建任务；浏览器关闭后，只要后端服务还在运行，worker 会继续入库。
 
 ### RAG-Anything / 高级 RAG 说明
 
@@ -436,7 +442,6 @@ OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 
 ```env
 # 正式方向：只使用 RAGAnything 作为文献 RAG 引擎。
-# builtin 只保留作本地轻量调试/遗留测试，不作为最终系统主链路。
 GEO_RAG_ENGINE=raganything
 
 RAGANYTHING_WORKING_DIR=Project-Code/backend/.data/raganything
@@ -450,7 +455,7 @@ RAGANYTHING_QUERY_MODE=hybrid
 
 `RAGANYTHING_SOURCE_DIR` 指向项目根目录下的完整上游源码 `RAG-Anything-main`。后端启动时会优先从这里导入 `raganything`，如果该目录不存在，才回退到虚拟环境里通过 pip 安装的包。这样团队可以直接跟随完整 RAGAnything 源码升级，而不是把核心 RAG 逻辑拆碎复制进业务代码。
 
-`GEO_RAG_ENGINE=raganything` 后，文献导入不再同时写入我们自研 Qdrant chunk 索引；PDF/TXT/MD 会先进入项目的文件存储目录，然后由 RAGAnything/MinerU/LightRAG 完成解析、入库和检索。PostgreSQL 仍然保存文献元数据、原文路径、地震目录和问答记录。
+`GEO_RAG_ENGINE=raganything` 后，文献导入不再同时写入旧的自研 chunk 索引；PDF/TXT/MD 会先进入项目的文件存储目录，然后由 RAGAnything/MinerU/LightRAG 完成解析、入库和检索。PostgreSQL 仍然保存文献元数据、原文路径、地震目录和问答记录。
 
 RAGAnything 的 embedding 会复用项目里的 `GEO_RAG_EMBEDDING_*` 配置。因此服务器上可以统一启动 TEI / `BAAI/bge-m3`，不需要再给 RAGAnything 单独配置一套 embedding API。
 
@@ -489,7 +494,7 @@ curl http://127.0.0.1:8001/api/raganything/status
 - `POST /api/raganything/query`：直接通过 RAGAnything/LightRAG 做文献知识库问答
 - `POST /api/raganything/events`：把地震事件研究包写入 RAGAnything 索引
 
-旧的 builtin/Qdrant 双写和 `/api/rag/papers/query` fallback 链路已经移除；正式协作与服务器部署只使用 RAGAnything 作为文献 RAG 引擎。
+旧的自研双写和 `/api/rag/papers/query` fallback 链路已经移除；正式协作与服务器部署只使用 RAGAnything 作为文献 RAG 引擎。
 
 导入一篇本地文献示例：
 
@@ -673,13 +678,15 @@ py dev.py
 - `RAGANYTHING_WORKING_DIR`，RAGAnything/LightRAG 工作目录
 - `RAGANYTHING_OUTPUT_DIR`，MinerU 解析输出目录
 - `RAGANYTHING_DOCUMENT_DIR`，RAGAnything 允许读取的文献目录
-- `QDRANT_URL` / `QDRANT_COLLECTION`，仅用于 legacy builtin fallback 或实验索引
+- `RAGANYTHING_SOURCE_DIR`，完整上游源码目录；本项目优先使用根目录的 `RAG-Anything-main`
 - `GEO_RAG_STORAGE_BACKEND`，PDF/TXT/MD 原文存储方式；服务器后端模式推荐 `local`
 - `GEO_RAG_STORAGE_ROOT`，原文目录；服务器后端模式建议 `/opt/cudtseis_web/storage/geo_rag_documents`
 - `GEO_RAG_UPLOAD_STAGE_ROOT`，上传暂存目录；服务器后端模式建议 `/opt/cudtseis_web/storage/geo_rag_upload_stage`
 - `GEO_RAG_STORAGE_REMOTE_ROOT`，云服务器原文目录；`ssh` 模式使用
 - `GEO_RAG_STORAGE_PUBLIC_BASE_URL`，原文公开访问前缀，用于“打开原文”
 - `GEO_RAG_STORAGE_SSH_HOST` / `GEO_RAG_STORAGE_SSH_USER` / `GEO_RAG_STORAGE_SSH_KEY_PATH`，仅在个人电脑后端通过 SSH 上传原文时使用
+- `GEO_RAG_IMPORT_WORKER_ENABLED`，是否随后端启动后台文献导入 worker，默认 `true`
+- `GEO_RAG_IMPORT_WORKER_POLL_SECONDS`，后台 worker 空闲时检查队列的间隔，默认 `2`
 - `SKIP_DB_SETUP=1`，跳过数据库自动初始化
 - `FORCE_INSTALL=1`，强制重新安装后端和前端依赖
 

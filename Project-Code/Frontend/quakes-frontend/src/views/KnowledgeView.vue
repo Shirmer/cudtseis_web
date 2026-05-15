@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { apiUrl } from '../config/api'
@@ -45,11 +45,18 @@ type DocumentUpload = {
 }
 
 type DocumentBatchIngest = {
+  jobId: string
+  status: string
+  progress: number
   total: number
+  queued: number
+  running: number
   succeeded: number
   skipped: number
   failed: number
+  message: string
   items: Array<{
+    id: string
     filePath: string
     status: string
     title: string
@@ -57,8 +64,12 @@ type DocumentBatchIngest = {
     units: number
     multimodalUnits?: number
     storageUri?: string
+    message?: string
     error: string
   }>
+  createdAt?: string
+  startedAt?: string
+  finishedAt?: string
 }
 
 const router = useRouter()
@@ -73,6 +84,8 @@ const sourceMode = ref<'upload' | 'path'>('upload')
 const ingestResult = ref<DocumentIngest | null>(null)
 const batchResult = ref<DocumentBatchIngest | null>(null)
 const selectedFile = ref<File | null>(null)
+const activeJobId = ref('')
+let batchPollTimer: number | undefined
 
 const singleForm = ref({
   filePath: '',
@@ -101,6 +114,11 @@ const stats = computed(() => ({
 }))
 
 const batchItems = computed(() => (batchResult.value?.items ?? []).slice(0, 10))
+const batchProgressPercent = computed(() => Math.round((batchResult.value?.progress ?? 0) * 100))
+const batchIsActive = computed(() => {
+  const status = batchResult.value?.status ?? ''
+  return status === 'queued' || status === 'running'
+})
 const allowedDocumentPattern = /\.(pdf|txt|md)$/i
 const selectedFileLabel = computed(() => selectedFile.value?.name ?? '选择 PDF/TXT/MD 文件')
 
@@ -134,6 +152,37 @@ const initKnowledge = async () => {
   } finally {
     initLoading.value = false
   }
+}
+
+const stopBatchPolling = () => {
+  if (batchPollTimer !== undefined) {
+    window.clearInterval(batchPollTimer)
+    batchPollTimer = undefined
+  }
+}
+
+const refreshBatchJob = async () => {
+  if (!activeJobId.value) return
+  try {
+    const response = await fetch(apiUrl(`/documents/import-jobs/${encodeURIComponent(activeJobId.value)}`))
+    if (!response.ok) throw new Error(await readError(response, '刷新批量任务失败'))
+    batchResult.value = await response.json() as DocumentBatchIngest
+    if (!batchIsActive.value) {
+      stopBatchPolling()
+      await initKnowledge()
+    }
+  } catch (err) {
+    stopBatchPolling()
+    setError(err, '刷新批量任务失败')
+  }
+}
+
+const startBatchPolling = () => {
+  stopBatchPolling()
+  if (!activeJobId.value || !batchIsActive.value) return
+  batchPollTimer = window.setInterval(() => {
+    void refreshBatchJob()
+  }, 2000)
 }
 
 const onFileSelected = (event: Event) => {
@@ -233,6 +282,8 @@ const ingestBatch = async () => {
     })
     if (!response.ok) throw new Error(await readError(response, '批量导入失败'))
     batchResult.value = await response.json() as DocumentBatchIngest
+    activeJobId.value = batchResult.value.jobId
+    startBatchPolling()
     await initKnowledge()
   } catch (err) {
     setError(err, '批量导入失败')
@@ -243,6 +294,10 @@ const ingestBatch = async () => {
 
 onMounted(() => {
   void initKnowledge()
+})
+
+onUnmounted(() => {
+  stopBatchPolling()
 })
 </script>
 
@@ -385,7 +440,21 @@ onMounted(() => {
         </div>
 
         <div v-else-if="mode === 'batch' && batchResult" class="batch-result">
+          <div class="job-head">
+            <div>
+              <strong>{{ batchResult.status }}</strong>
+              <span>{{ batchResult.message || '后台任务已创建，worker 会持续处理。' }}</span>
+            </div>
+            <button class="ghost-button" :disabled="!activeJobId" @click="refreshBatchJob">刷新进度</button>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" :style="{ width: `${batchProgressPercent}%` }"></div>
+          </div>
+          <p class="progress-text">已完成 {{ batchProgressPercent }}%。任务创建后可以关闭页面，服务器后端会继续处理。</p>
           <div class="result-summary">
+            <div><strong>{{ batchResult.total }}</strong><span>总数</span></div>
+            <div><strong>{{ batchResult.queued }}</strong><span>排队</span></div>
+            <div><strong>{{ batchResult.running }}</strong><span>处理中</span></div>
             <div><strong>{{ batchResult.succeeded }}</strong><span>成功</span></div>
             <div><strong>{{ batchResult.failed }}</strong><span>失败</span></div>
             <div><strong>{{ batchResult.skipped }}</strong><span>跳过</span></div>
@@ -775,6 +844,49 @@ button:disabled {
 .batch-result {
   display: grid;
   gap: 12px;
+}
+
+.job-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid rgba(38, 76, 68, 0.13);
+  border-radius: 16px;
+  background: rgba(255, 255, 251, 0.66);
+}
+
+.job-head strong {
+  display: block;
+  color: #14342e;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.job-head span,
+.progress-text {
+  color: #64756f;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.progress-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(38, 76, 68, 0.12);
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1d8f82, #b86535);
+  transition: width 0.25s ease;
+}
+
+.progress-text {
+  margin: -4px 0 2px;
 }
 
 .batch-item {
