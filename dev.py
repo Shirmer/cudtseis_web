@@ -22,7 +22,6 @@ BACKEND_VENV = BACKEND_DIR / ".venv"
 BACKEND_ENV = BACKEND_DIR / ".env"
 BACKEND_ENV_EXAMPLE = BACKEND_DIR / ".env.example"
 BACKEND_REQUIREMENTS = BACKEND_DIR / "requirements.txt"
-BACKEND_QDRANT_REQUIREMENTS = BACKEND_DIR / "requirements-qdrant.txt"
 BACKEND_RAGANYTHING_REQUIREMENTS = BACKEND_DIR / "requirements-raganything.txt"
 FRONTEND_LOCK = FRONTEND_DIR / "package-lock.json"
 DEFAULT_DATABASE_URL = "postgresql+psycopg:///quakes"
@@ -229,12 +228,10 @@ def ensure_backend_venv(*, extras: set[str] | None = None) -> None:
         log(f"Creating backend virtual environment at {BACKEND_VENV.relative_to(ROOT)}")
         run_checked([sys.executable, "-m", "venv", BACKEND_VENV])
 
-    selected_extras = extras or set()
+    selected_extras = extras or {"raganything"}
     pip_install(BACKEND_REQUIREMENTS, label="base backend")
-    if "qdrant" in selected_extras:
-        pip_install(BACKEND_QDRANT_REQUIREMENTS, label="optional qdrant")
     if "raganything" in selected_extras:
-        pip_install(BACKEND_RAGANYTHING_REQUIREMENTS, label="optional raganything")
+        pip_install(BACKEND_RAGANYTHING_REQUIREMENTS, label="raganything")
 
 
 def pip_index_url() -> str:
@@ -551,7 +548,7 @@ def setup(*, extras: set[str] | None = None) -> int:
 
 def setup_backend(*, extras: set[str] | None = None) -> int:
     ensure_backend_env()
-    ensure_backend_venv(extras=extras or {"qdrant"})
+    ensure_backend_venv(extras=extras or {"raganything"})
     return 0 if ensure_database() else 1
 
 
@@ -752,8 +749,7 @@ def print_help() -> None:
   python dev.py check       inspect local tools without installing
   python dev.py setup       create .env, install dependencies, prepare database
   python dev.py setup-backend       install backend dependencies only
-  python dev.py setup-qdrant       install base dependencies plus Qdrant client
-  python dev.py setup-raganything  install base dependencies plus optional RAGAnything stack
+  python dev.py setup-raganything  install base dependencies plus RAGAnything stack
   python dev.py up          same as default
   python dev.py test        run backend unit tests and frontend checks
   python dev.py clean       remove local dependency folders and caches
@@ -789,11 +785,12 @@ def main() -> int:
     if command == "setup-backend":
         return setup_backend()
     if command == "setup-qdrant":
-        return setup(extras={"qdrant"})
+        warn("Qdrant setup has been removed; installing the RAGAnything stack instead.")
+        return setup(extras={"raganything"})
     if command == "setup-raganything":
         return setup(extras={"raganything"})
     if command == "setup-all":
-        return setup(extras={"qdrant", "raganything"})
+        return setup(extras={"raganything"})
     if command == "up":
         return up()
     if command == "backend":

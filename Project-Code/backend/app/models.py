@@ -96,6 +96,20 @@ class KnowledgeUnit(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class DocumentKnowledgeCard(Base):
+    __tablename__ = "document_knowledge_cards"
+
+    id: Mapped[str] = mapped_column(String(180), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(160), index=True)
+    paper_id: Mapped[str] = mapped_column(String(160), index=True)
+    title: Mapped[str] = mapped_column(String(500), default="")
+    schema_version: Mapped[str] = mapped_column(String(80), default="knowledge-card-v1")
+    card_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    card_text: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class GeoRagRun(Base):
     __tablename__ = "geo_rag_runs"
 

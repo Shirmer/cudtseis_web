@@ -25,11 +25,8 @@ class Settings(BaseSettings):
     min_magnitude: float = 3.0
     semantic_scholar_api_key: str = ""
     openalex_email: str = ""
-    rag_top_k: int = 6
-    rag_vector_dimensions: int = 256
-    rag_vector_store_path: str = str(DATA_DIR / "vector_index.json")
-    rag_vector_store_dir: str = str(DATA_DIR / "vector_indexes")
     raganything_enabled: bool = False
+    raganything_source_dir: str = str(BACKEND_DIR.parents[1] / "RAG-Anything-main")
     raganything_working_dir: str = str(DATA_DIR / "raganything")
     raganything_output_dir: str = str(DATA_DIR / "raganything_output")
     raganything_document_dir: str = str(DATA_DIR / "documents")
@@ -44,11 +41,7 @@ class Settings(BaseSettings):
     raganything_enable_table_processing: bool = True
     raganything_enable_equation_processing: bool = True
     paper_database_path: str = str(DATA_DIR / "papers.sqlite")
-    qdrant_use_local: bool = False
-    qdrant_local_path: str = str(DATA_DIR / "qdrant-local")
-    qdrant_url: str = "http://127.0.0.1:6333"
-    qdrant_api_key: str = ""
-    qdrant_collection: str = "geo_knowledge_v1"
+    geo_rag_engine: str = "raganything"
     geo_rag_chat_model: str = "gpt-4o-mini"
     geo_rag_index_version: str = "geo-rag-v1"
     geo_rag_embedding_provider: str = "auto"
@@ -58,8 +51,6 @@ class Settings(BaseSettings):
     geo_rag_embedding_model: str = ""
     geo_rag_embedding_dim: int = 1536
     geo_rag_embedding_batch_size: int = 32
-    geo_rag_chunk_chars: int = 1200
-    geo_rag_chunk_overlap: int = 180
     geo_rag_storage_backend: str = "local"
     geo_rag_storage_root: str = str(DATA_DIR / "geo_rag_documents")
     geo_rag_upload_stage_root: str = str(DATA_DIR / "geo_rag_upload_stage")
@@ -69,7 +60,6 @@ class Settings(BaseSettings):
     geo_rag_storage_ssh_user: str = "root"
     geo_rag_storage_ssh_port: int = 22
     geo_rag_storage_ssh_key_path: str = ""
-    geo_rag_fallback_store_path: str = str(DATA_DIR / "geo_rag_vector_fallback.json")
     vikingdb_ak: str = ""
     vikingdb_sk: str = ""
     vikingdb_host: str = "vikingdb.cn-beijing.volcengineapi.com"
