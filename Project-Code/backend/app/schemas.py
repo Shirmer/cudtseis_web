@@ -386,32 +386,6 @@ class DocumentStatusOut(BaseModel):
     updatedAt: str
 
 
-class PaperRagQueryRequest(BaseModel):
-    question: str = Field(..., min_length=1, max_length=3000)
-    paperId: str | None = Field(default=None, max_length=200)
-    topK: int = Field(default=6, ge=1, le=20)
-    filters: dict[str, Any] = Field(default_factory=dict)
-
-
-class GeoAnalysisRequest(BaseModel):
-    question: str = Field(default="请结合地质学文献，对该地震事件给出谨慎的专业分析。", max_length=3000)
-    topK: int = Field(default=8, ge=1, le=20)
-
-
-class GeoRagResponseOut(BaseModel):
-    question: str
-    answer: str
-    retrievalMode: str
-    mode: str
-    event: dict[str, Any] | None = None
-    evidencePack: dict[str, Any]
-    knowledgeCards: dict[str, Any] = Field(default_factory=dict)
-    retrievedContexts: list[RetrievedContextOut]
-    suggestedQuestions: list[str]
-    generatedAt: str
-    diagnostics: dict[str, Any] = Field(default_factory=dict)
-
-
 class RagAnythingDocumentRequest(BaseModel):
     filePath: str = Field(..., min_length=1, max_length=1000)
     docId: str | None = Field(default=None, max_length=300)

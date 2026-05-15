@@ -109,15 +109,3 @@ class DocumentKnowledgeCard(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-
-class GeoRagRun(Base):
-    __tablename__ = "geo_rag_runs"
-
-    id: Mapped[str] = mapped_column(String(80), primary_key=True)
-    mode: Mapped[str] = mapped_column(String(80), index=True)
-    question: Mapped[str] = mapped_column(Text)
-    answer: Mapped[str] = mapped_column(Text)
-    retrieval_mode: Mapped[str] = mapped_column(String(120))
-    evidence_pack_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     min_magnitude: float = 3.0
     semantic_scholar_api_key: str = ""
     openalex_email: str = ""
-    raganything_enabled: bool = False
+    raganything_enabled: bool = True
     raganything_source_dir: str = str(BACKEND_DIR.parents[1] / "RAG-Anything-main")
     raganything_working_dir: str = str(DATA_DIR / "raganything")
     raganything_output_dir: str = str(DATA_DIR / "raganything_output")

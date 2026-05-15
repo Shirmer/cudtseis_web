@@ -91,6 +91,10 @@ const qualityFlags = computed(() => {
   return Array.isArray(flags) && flags.length ? flags.join('；') : '暂无明显风险'
 })
 
+const isRagAnythingHit = (hit: KnowledgeHit) => {
+  return hit.contentType === 'raganything-context' || hit.metadata?.engine === 'raganything'
+}
+
 const initKnowledge = async () => {
   initLoading.value = true
   try {
@@ -138,6 +142,7 @@ const closeContext = (unitId: string) => {
 }
 
 const toggleContext = async (hit: KnowledgeHit) => {
+  if (isRagAnythingHit(hit)) return
   if (contextByUnit.value[hit.unitId]) {
     closeContext(hit.unitId)
     return
@@ -164,6 +169,7 @@ const toggleContext = async (hit: KnowledgeHit) => {
 }
 
 const openOriginal = (hit: KnowledgeHit) => {
+  if (!hit.documentId) return
   const baseUrl = apiUrl(`/documents/${encodeURIComponent(hit.documentId)}/file`)
   const pageAnchor = hit.page ? `#page=${hit.page}` : ''
   window.open(`${baseUrl}${pageAnchor}`, '_blank', 'noopener,noreferrer')
@@ -210,7 +216,7 @@ onMounted(() => {
       </div>
       <div class="metrics">
         <div><strong>{{ stats.documents }}</strong><span>文献</span></div>
-        <div><strong>{{ stats.units }}</strong><span>知识单元</span></div>
+        <div><strong>{{ stats.units }}</strong><span>本地片段</span></div>
         <div><strong>{{ initState?.backend ?? '-' }}</strong><span>检索后端</span></div>
       </div>
     </section>
@@ -287,11 +293,17 @@ onMounted(() => {
           <span>{{ hit.paperId }}</span>
         </footer>
         <div class="card-actions">
-          <button class="inline-button" :disabled="contextLoading[hit.unitId]" @click="toggleContext(hit)">
+          <button
+            v-if="!isRagAnythingHit(hit)"
+            class="inline-button"
+            :disabled="contextLoading[hit.unitId]"
+            @click="toggleContext(hit)"
+          >
             <span v-if="contextLoading[hit.unitId]">加载中</span>
             <span v-else>{{ contextByUnit[hit.unitId] ? '收起上下文' : '查看上下文' }}</span>
           </button>
-          <button class="inline-button" @click="openOriginal(hit)">
+          <span v-else class="engine-badge">RAGAnything 片段</span>
+          <button class="inline-button" :disabled="!hit.documentId" @click="openOriginal(hit)">
             打开原文{{ hit.page ? ` p.${hit.page}` : '' }}
           </button>
         </div>
@@ -593,6 +605,19 @@ button:disabled {
   background: rgba(255, 255, 251, 0.8);
   color: #146b62;
   font-size: 13px;
+}
+
+.engine-badge {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(29, 143, 130, 0.22);
+  border-radius: 13px;
+  padding: 0 12px;
+  background: rgba(29, 143, 130, 0.08);
+  color: #146b62;
+  font-size: 13px;
+  font-weight: 900;
 }
 
 .example-strip,
