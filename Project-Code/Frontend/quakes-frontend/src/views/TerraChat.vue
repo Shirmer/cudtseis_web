@@ -39,17 +39,32 @@ type EvidenceItem = {
 }
 
 type RagResponse = {
+  status?: string
   answer: string
   question?: string
   retrievedContexts?: RagContext[]
   suggestedQuestions?: string[]
   retrievalMode?: string
+  queryMode?: string
+  mode?: string
   evidencePack?: {
     confidence?: string
     evidence?: EvidenceItem[]
     limitations?: string[]
   }
   diagnostics?: Record<string, unknown>
+}
+
+type RagAnythingStatus = {
+  enabled: boolean
+  available: boolean
+  ready: boolean
+  reason: string
+  queryMode: string
+  dependencies?: {
+    raganythingOrigin?: string
+  }
+  requiredActions?: string[]
 }
 
 type DocumentUpload = {
@@ -78,7 +93,7 @@ type DocumentIngest = {
 type ChatMode = {
   key: string
   label: string
-  topK: number
+  queryMode: string
   placeholder: string
   prefix?: string
 }
@@ -97,25 +112,27 @@ const userInput = ref('')
 const isSending = ref(false)
 const isUploading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
-const currentModel = ref('geo-rag')
+const currentModel = ref('hybrid')
+const ragStatus = ref<RagAnythingStatus | null>(null)
+const statusLoading = ref(false)
 
 const chatModes: ChatMode[] = [
   {
-    key: 'geo-rag',
-    label: 'Geo RAG',
-    topK: 8,
+    key: 'hybrid',
+    label: 'RAGAnything Hybrid',
+    queryMode: 'hybrid',
     placeholder: '问文献证据、地震构造、断层破裂、危险性分析等问题'
   },
   {
-    key: 'evidence',
-    label: '文献证据问答',
-    topK: 10,
-    placeholder: '输入需要用文献证据回答的问题'
+    key: 'local',
+    label: '局部证据',
+    queryMode: 'local',
+    placeholder: '聚焦已入库文献片段、图表和公式证据'
   },
   {
-    key: 'analysis',
-    label: '地震科研分析',
-    topK: 12,
+    key: 'global',
+    label: '全局关系',
+    queryMode: 'global',
     placeholder: '输入地震现象、区域、断层或构造背景，要求系统给出谨慎分析',
     prefix: '请用地震学和地质学科研分析口径回答，并严格区分文献证据、推断和不确定性。'
   }
@@ -125,6 +142,17 @@ const modelOptions = chatModes.map((mode) => ({ label: mode.label, key: mode.key
 const currentMode = computed(() => chatModes.find((mode) => mode.key === currentModel.value) ?? chatModes[0])
 const isBusy = computed(() => isSending.value || isUploading.value)
 const allowedDocumentPattern = /\.(pdf|txt|md)$/i
+const ragStatusLabel = computed(() => {
+  if (statusLoading.value) return 'RAGAnything 检查中'
+  if (!ragStatus.value) return 'RAGAnything 未检查'
+  if (ragStatus.value.ready) return `RAGAnything ready · ${ragStatus.value.queryMode}`
+  return 'RAGAnything not ready'
+})
+const ragStatusDetail = computed(() => {
+  if (!ragStatus.value) return '点击刷新 RAGAnything 状态'
+  const actions = ragStatus.value.requiredActions?.join('\n') || ''
+  return [ragStatus.value.reason, ragStatus.value.dependencies?.raganythingOrigin, actions].filter(Boolean).join('\n')
+})
 
 const dropdownTheme: GlobalThemeOverrides = {
   Dropdown: {
@@ -242,9 +270,9 @@ const handleDocumentSelected = async (event: Event) => {
     const ingest = await ingestUploadedDocument(upload, file)
     const lines = [
       `文献已入库：${ingest.title || file.name}`,
-      `状态：${ingest.status}；解析器：${ingest.parser}`,
-      `页数：${ingest.pages}；知识单元：${ingest.units}；图表/公式单元：${ingest.multimodalUnits ?? 0}`,
-      `Embedding：${ingest.embeddingBackend || '未返回'}`,
+      `状态：${ingest.status}；引擎：RAGAnything/LightRAG；解析器：${ingest.parser}`,
+      `页数：${ingest.pages}；解析块：${ingest.units}；图表/公式块：${ingest.multimodalUnits ?? 0}`,
+      `Embedding：${ingest.embeddingBackend || 'RAGAnything 配置'}`,
       ingest.storageUri ? `存储：${ingest.storageUri}` : ''
     ].filter(Boolean)
     chatHistory.value.push({
@@ -274,6 +302,18 @@ const handleDocumentSelected = async (event: Event) => {
   }
 }
 
+const loadRagStatus = async () => {
+  statusLoading.value = true
+  try {
+    const response = await fetch(apiUrl('/raganything/status'))
+    if (response.ok) {
+      ragStatus.value = await response.json() as RagAnythingStatus
+    }
+  } finally {
+    statusLoading.value = false
+  }
+}
+
 const handleSend = async () => {
   if (!userInput.value.trim() || isBusy.value) return
   const question = userInput.value.trim()
@@ -284,12 +324,12 @@ const handleSend = async () => {
   isSending.value = true
 
   try {
-    const response = await fetch(apiUrl('/rag/papers/query'), {
+    const response = await fetch(apiUrl('/raganything/query'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question: buildQuestion(question),
-        topK: mode.topK
+        mode: mode.queryMode
       })
     })
 
@@ -306,7 +346,7 @@ const handleSend = async () => {
       contexts: payload.retrievedContexts?.slice(0, 4) ?? [],
       evidences,
       suggestions: payload.suggestedQuestions?.slice(0, 3) ?? [],
-      retrievalMode: payload.retrievalMode,
+      retrievalMode: payload.retrievalMode || `raganything:${payload.queryMode || mode.queryMode}`,
       confidence: payload.evidencePack?.confidence,
       modeLabel: mode.label,
       status: 'normal'
@@ -316,7 +356,7 @@ const handleSend = async () => {
     chatHistory.value.push({
       id: Date.now() + 1,
       role: 'ai',
-      content: `RAG 调用失败：${detail}\n请确认后端服务、文献检索链路和 /api/rag/papers/query 接口已正常启动。`,
+      content: `RAGAnything 调用失败：${detail}\n请确认后端服务、RAG-Anything-main 依赖、LLM/embedding 配置和 /api/raganything/query 接口已正常启动。`,
       modeLabel: mode.label,
       status: 'error'
     })
@@ -345,6 +385,7 @@ const scrollToBottom = () => {
 }
 
 onMounted(() => {
+  void loadRagStatus()
   const initialQuestion = String(route.query.q ?? '').trim()
   if (initialQuestion) userInput.value = initialQuestion
 })
@@ -427,6 +468,15 @@ onMounted(() => {
               </button>
             </n-dropdown>
           </n-config-provider>
+          <button
+            class="status-pill"
+            :class="{ ready: ragStatus?.ready }"
+            :title="ragStatusDetail"
+            :disabled="statusLoading"
+            @click="loadRagStatus"
+          >
+            {{ ragStatusLabel }}
+          </button>
           </div>
 
           <div class="header-tools">
@@ -451,7 +501,7 @@ onMounted(() => {
           <div class="input-actions">
             <div class="left-actions">
               <span class="mode-chip">证据优先</span>
-              <span class="mode-chip">TopK {{ currentMode.topK }}</span>
+              <span class="mode-chip">Mode {{ currentMode.queryMode }}</span>
               <span v-if="isUploading" class="mode-chip active">文献入库中</span>
             </div>
 
@@ -774,6 +824,7 @@ onMounted(() => {
 }
 
 .model-pill,
+.status-pill,
 .icon-btn,
 .new-chat-btn,
 .icon-btn-small,
@@ -797,9 +848,36 @@ onMounted(() => {
   backdrop-filter: blur(14px);
 }
 
-.model-pill:hover {
+.model-pill:hover,
+.status-pill:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: rgba(29, 143, 130, 0.38);
+}
+
+.status-pill {
+  min-height: 34px;
+  border: 1px solid rgba(184, 101, 53, 0.26);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: rgba(255, 248, 231, 0.78);
+  color: #7a4b1f;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(22, 44, 40, 0.06);
+  backdrop-filter: blur(14px);
+}
+
+.status-pill.ready {
+  border-color: rgba(29, 143, 130, 0.34);
+  background: rgba(232, 247, 239, 0.82);
+  color: #146b62;
+}
+
+.status-pill:disabled {
+  cursor: progress;
+  opacity: 0.72;
 }
 
 .star-icon {

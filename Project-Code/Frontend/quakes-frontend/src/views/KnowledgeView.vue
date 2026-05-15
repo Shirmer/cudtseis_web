@@ -8,9 +8,17 @@ type KnowledgeInit = {
   backend: string
   documents: number
   units: number
+  knowledgeCards?: number
   indexVersion: string
   storageBackend?: string
   warning?: string
+  ragEngine?: {
+    selected?: string
+    raganything?: {
+      ready?: boolean
+      reason?: string
+    }
+  }
 }
 
 type DocumentIngest = {
@@ -86,8 +94,10 @@ const batchForm = ref({
 const stats = computed(() => ({
   documents: initState.value?.documents ?? 0,
   units: initState.value?.units ?? 0,
+  cards: initState.value?.knowledgeCards ?? 0,
   backend: initState.value?.backend ?? '-',
-  storageBackend: initState.value?.storageBackend ?? '-'
+  storageBackend: initState.value?.storageBackend ?? '-',
+  engine: initState.value?.ragEngine?.selected ?? initState.value?.backend ?? '-'
 }))
 
 const batchItems = computed(() => (batchResult.value?.items ?? []).slice(0, 10))
@@ -248,12 +258,12 @@ onMounted(() => {
       <div>
         <span class="eyebrow">Knowledge Ingest</span>
         <h1>导入文献</h1>
-        <p>把本地 PDF、TXT 或 Markdown 文献加入知识库。系统会按“每篇文献独立处理”的规则解析、切块、向量化并写入数据库。</p>
+        <p>把本地 PDF、TXT 或 Markdown 文献加入知识库。系统会按“每篇文献独立处理”的规则保存原文和元数据，并交给 RAGAnything/MinerU/LightRAG 完成解析、索引和检索。</p>
       </div>
       <div class="metrics">
         <div><strong>{{ stats.documents }}</strong><span>文献</span></div>
-        <div><strong>{{ stats.units }}</strong><span>知识单元</span></div>
-        <div><strong>{{ stats.backend }}</strong><span>向量库</span></div>
+        <div><strong>{{ stats.cards }}</strong><span>元数据卡片</span></div>
+        <div><strong>{{ stats.engine }}</strong><span>RAG 引擎</span></div>
         <div><strong>{{ stats.storageBackend }}</strong><span>原文存储</span></div>
       </div>
     </section>
@@ -288,7 +298,7 @@ onMounted(() => {
             <span>文献文件</span>
             <input type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" @change="onFileSelected" />
             <strong>{{ selectedFileLabel }}</strong>
-            <small>上传后会先保存到后端配置的文献存储目录，再进行解析和索引。</small>
+            <small>上传后会先保存到后端配置的文献存储目录，再由 RAGAnything-main 解析和索引。</small>
           </label>
 
           <label v-else>
@@ -368,8 +378,8 @@ onMounted(() => {
         <div v-if="mode === 'single' && ingestResult" class="result-summary">
           <div><strong>{{ ingestResult.status }}</strong><span>{{ ingestResult.parser }}</span></div>
           <div><strong>{{ ingestResult.pages }}</strong><span>页</span></div>
-          <div><strong>{{ ingestResult.units }}</strong><span>知识单元</span></div>
-          <div><strong>{{ ingestResult.multimodalUnits ?? 0 }}</strong><span>图表/公式单元</span></div>
+          <div><strong>{{ ingestResult.units }}</strong><span>RAG 块</span></div>
+          <div><strong>{{ ingestResult.multimodalUnits ?? 0 }}</strong><span>图表/公式块</span></div>
           <button class="ghost-button" @click="router.push('/papers')">去检索</button>
           <p v-if="ingestResult.storageUri" class="storage-note">{{ ingestResult.storageUri }}</p>
         </div>
@@ -382,7 +392,7 @@ onMounted(() => {
           </div>
           <article v-for="item in batchItems" :key="item.filePath" class="batch-item">
             <strong>{{ item.title || item.filePath }}</strong>
-            <span>{{ item.status }} · {{ item.pages }} 页 · {{ item.units }} 单元 · {{ item.multimodalUnits ?? 0 }} 多模态</span>
+            <span>{{ item.status }} · {{ item.pages }} 页 · {{ item.units }} RAG 块 · {{ item.multimodalUnits ?? 0 }} 多模态</span>
             <small v-if="item.storageUri" class="storage-note">{{ item.storageUri }}</small>
             <small v-if="item.error" class="batch-error">{{ item.error }}</small>
           </article>

@@ -465,9 +465,9 @@ ResolutionImpossible
 
 这不是业务代码错误，而是解析依赖之间的版本约束冲突。请使用项目提供的 `Project-Code/backend/requirements-raganything.txt`，其中只启用 `mineru[core]`，避免默认开发环境被 `pipeline` 依赖拖垮。
 
-### 外部方案参考快照
+### RAGAnything 主源码
 
-项目根目录的 `RAG-Anything-main/` 是当前优先使用的完整上游 RAGAnything 源码。`references/source-snapshots/` 仍作为旧方案和 ResearchClaw / literature-review 的技术参考，不再作为运行时主来源。
+项目根目录的 `RAG-Anything-main/` 是当前优先使用的完整上游 RAGAnything 源码。旧的 `references/source-snapshots/` 快照已经清理，不再作为代码或运行时参考；项目只保留 `references/` 中的轻量说明文档。
 
 可以通过这个接口检查当前环境是否真正就绪：
 
@@ -477,7 +477,7 @@ curl http://127.0.0.1:8001/api/raganything/status
 
 如果返回 `ready=false`，优先看 `requiredActions` 和 `dependencies.missing`。如果要确认当前是否真的使用完整源码，看 `dependencies.raganythingOrigin`，它应该指向项目根目录下的 `RAG-Anything-main/raganything/__init__.py`。
 
-不要把完整的外部仓库、它们自己的 `.venv`、`node_modules`、解析输出、样例 PDF 或缓存提交进本项目。完整导入目录 `Agent-RAG/`、`AutoResearchClaw/`、`literature-review/` 已经加入 `.gitignore`；协作开发只需要保留 `references/` 里的轻量快照。
+不要把完整的外部仓库、它们自己的 `.venv`、`node_modules`、解析输出、样例 PDF、缓存或前端 `dist/` 提交进本项目。协作开发只需要保留 `RAG-Anything-main/` 主源码和 `references/` 里的轻量说明文档。
 
 ### 地质文献知识库说明
 
@@ -486,10 +486,10 @@ curl http://127.0.0.1:8001/api/raganything/status
 - `POST /api/knowledge/init`：查看知识库和 RAG 引擎状态
 - `POST /api/documents/ingest`：导入本地 PDF/TXT/Markdown 文献
 - `POST /api/knowledge/search`：通过 RAGAnything/LightRAG 检索上下文
-- `POST /api/rag/papers/query`：论文/文献知识库问答
-- `POST /api/events/{event_id}/geo-analysis`：结合地震事件和文献证据做地质分析
+- `POST /api/raganything/query`：直接通过 RAGAnything/LightRAG 做文献知识库问答
+- `POST /api/raganything/events`：把地震事件研究包写入 RAGAnything 索引
 
-`builtin` 旧链路仍保留在代码里，主要用于本地轻量调试和测试；正式协作与服务器部署不再依赖 Qdrant 双写。
+旧的 builtin/Qdrant 双写和 `/api/rag/papers/query` fallback 链路已经移除；正式协作与服务器部署只使用 RAGAnything 作为文献 RAG 引擎。
 
 导入一篇本地文献示例：
 
@@ -514,9 +514,9 @@ curl -X POST http://127.0.0.1:8001/api/documents/ingest \
 检索/问答示例：
 
 ```bash
-curl -X POST http://127.0.0.1:8001/api/rag/papers/query \
+curl -X POST http://127.0.0.1:8001/api/raganything/query \
   -H "Content-Type: application/json" \
-  -d '{"question":"这批文献中关于断层破裂和构造背景有哪些证据？","topK":6}'
+  -d '{"question":"这批文献中关于断层破裂和构造背景有哪些证据？","mode":"hybrid"}'
 ```
 
 ### PostgreSQL 账号密码说明

@@ -30,8 +30,8 @@ class AppTests(unittest.TestCase):
         self.assertIn("/api/knowledge/init", paths)
         self.assertIn("/api/knowledge/search", paths)
         self.assertIn("/api/documents/ingest", paths)
-        self.assertIn("/api/rag/papers/query", paths)
-        self.assertIn("/api/events/{event_id}/geo-analysis", paths)
+        self.assertIn("/api/raganything/status", paths)
+        self.assertIn("/api/raganything/query", paths)
 
     def test_paper_database_search_returns_cer_items(self):
         app = create_app(create_tables=False, enable_poller=False)

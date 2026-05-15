@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .db import SessionLocal, engine, get_db
-from .event_service import get_event_payload, query_events_page, query_events_payload
+from .event_service import query_events_page, query_events_payload
 from .geo_ingest_service import (
     get_geo_document_status,
     get_knowledge_unit_context,
@@ -22,7 +22,6 @@ from .geo_ingest_service import (
     save_uploaded_geo_document,
     search_geo_knowledge,
 )
-from .geo_rag_service import answer_event_geo_analysis, answer_paper_question
 from .ingest import fetch_usgs_geojson, upsert_and_get_new
 from .paper_database import add_paper, get_paper_architecture, get_paper_detail, initialize_paper_database, search_papers
 from .raganything_service import (
@@ -42,8 +41,6 @@ from .schemas import (
     DocumentIngestOut,
     DocumentIngestRequest,
     DocumentStatusOut,
-    GeoAnalysisRequest,
-    GeoRagResponseOut,
     KnowledgeContextOut,
     KnowledgeInitOut,
     KnowledgeSearchOut,
@@ -52,7 +49,6 @@ from .schemas import (
     PaperCreateRequest,
     PaperDatabaseResponseOut,
     PaperDetailOut,
-    PaperRagQueryRequest,
     PaperStorageOut,
     RagAnythingDocumentRequest,
     RagAnythingEventIngestRequest,
@@ -527,32 +523,6 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
             source_path,
             media_type=media_type,
             headers={"Content-Disposition": f"inline; filename*=UTF-8''{filename}"},
-        )
-
-    @app.post("/api/rag/papers/query", response_model=GeoRagResponseOut)
-    def query_paper_rag(payload: PaperRagQueryRequest, db: Session = Depends(get_db)):
-        return answer_paper_question(
-            db,
-            question=payload.question,
-            paper_id=payload.paperId,
-            top_k=payload.topK,
-            filters=payload.filters,
-        )
-
-    @app.post("/api/events/{event_id}/geo-analysis", response_model=GeoRagResponseOut)
-    def analyze_event_with_geo_rag(
-        event_id: str,
-        payload: GeoAnalysisRequest,
-        db: Session = Depends(get_db),
-    ):
-        event = get_event_payload(db, event_id)
-        if event is None:
-            raise HTTPException(status_code=404, detail="Earthquake event not found")
-        return answer_event_geo_analysis(
-            db,
-            event=event,
-            question=payload.question,
-            top_k=payload.topK,
         )
 
     @app.get("/api/stream")
