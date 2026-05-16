@@ -339,6 +339,8 @@ RAGANYTHING_DOCUMENT_DIR=/opt/cudtseis_web/storage/geo_rag_documents
 RAGANYTHING_PARSER=mineru
 RAGANYTHING_PARSE_METHOD=auto
 RAGANYTHING_QUERY_MODE=hybrid
+RAGANYTHING_ALLOW_QUERY_FALLBACK=true
+RAGANYTHING_QUERY_FALLBACK_MODE=naive
 
 GEO_RAG_EMBEDDING_PROVIDER=http
 GEO_RAG_EMBEDDING_URL=http://127.0.0.1:8080/v1/embeddings
@@ -451,6 +453,8 @@ RAGANYTHING_SOURCE_DIR=RAG-Anything-main
 RAGANYTHING_PARSER=mineru
 RAGANYTHING_PARSE_METHOD=auto
 RAGANYTHING_QUERY_MODE=hybrid
+RAGANYTHING_ALLOW_QUERY_FALLBACK=true
+RAGANYTHING_QUERY_FALLBACK_MODE=naive
 ```
 
 `RAGANYTHING_SOURCE_DIR` 指向项目根目录下的完整上游源码 `RAG-Anything-main`。后端启动时会优先从这里导入 `raganything`，如果该目录不存在，才回退到虚拟环境里通过 pip 安装的包。这样团队可以直接跟随完整 RAGAnything 源码升级，而不是把核心 RAG 逻辑拆碎复制进业务代码。
@@ -458,6 +462,8 @@ RAGANYTHING_QUERY_MODE=hybrid
 `GEO_RAG_ENGINE=raganything` 后，文献导入不再同时写入旧的自研 chunk 索引；PDF/TXT/MD 会先进入项目的文件存储目录，然后由 RAGAnything/MinerU/LightRAG 完成解析、入库和检索。PostgreSQL 仍然保存文献元数据、原文路径、地震目录和问答记录。
 
 RAGAnything 的 embedding 会复用项目里的 `GEO_RAG_EMBEDDING_*` 配置。因此服务器上可以统一启动 TEI / `BAAI/bge-m3`，不需要再给 RAGAnything 单独配置一套 embedding API。
+
+查询默认仍使用 `hybrid`。如果当前 LLM 不支持 LightRAG 在混合检索中使用的结构化响应参数，或者 LightRAG 暂时返回空上下文，后端会先尝试 `RAGANYTHING_QUERY_FALLBACK_MODE=naive`；若仍无可用上下文，会退到项目层保存的文献知识卡片样本文本，并在 `/api/raganything/query` 的 `queryFallback` 字段里说明实际使用的模式和原因。
 
 说明：`raganything[text]` 依赖 MinerU、Lightrag、OpenCV、ONNX、Gradio 等较大的包，首次安装会明显慢一些。如果遇到 `incomplete-download` 或网络中断，重新运行 `python dev.py setup-raganything`。
 
