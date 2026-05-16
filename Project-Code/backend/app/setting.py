@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     raganything_parse_method: str = "auto"
     raganything_allow_parse_fallback: bool = True
     raganything_parse_fallback_method: str = "local-text"
+    raganything_enable_ocr_fallback: bool = True
+    raganything_ocr_language: str = "eng"
+    raganything_ocr_dpi: int = 180
+    raganything_ocr_max_pages: int = 120
+    raganything_ocr_tesseract_config: str = "--psm 3"
     raganything_query_mode: str = "hybrid"
     raganything_allow_query_fallback: bool = True
     raganything_query_fallback_mode: str = "naive"
