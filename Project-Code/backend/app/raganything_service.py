@@ -7,6 +7,7 @@ import math
 import os
 from pathlib import Path
 import sys
+import threading
 from typing import Any
 from dataclasses import fields
 
@@ -17,7 +18,12 @@ from .settings import settings
 
 
 _RAG_INSTANCE: Any | None = None
-_RAG_LOCK = asyncio.Lock()
+_RAG_LOCK = threading.RLock()
+_RAG_LOOP: asyncio.AbstractEventLoop | None = None
+_RAG_LOOP_THREAD: threading.Thread | None = None
+_RAG_LOOP_THREAD_ID: int | None = None
+_RAG_LOOP_LOCK = threading.Lock()
+_RAG_OPERATION_LOCK: asyncio.Lock | None = None
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RAGANYTHING_UPSTREAM_ROOT = PROJECT_ROOT / "RAG-Anything-main"
 RAGANYTHING_UPSTREAM_REQUIRED_FILES = [
@@ -252,6 +258,8 @@ def get_raganything_status() -> dict[str, Any]:
         "allowedDocumentRoots": [str(path) for path in _allowed_document_roots()],
         "parser": settings.raganything_parser,
         "parseMethod": settings.raganything_parse_method,
+        "allowParseFallback": settings.raganything_allow_parse_fallback,
+        "parseFallbackMethod": settings.raganything_parse_fallback_method,
         "queryMode": settings.raganything_query_mode,
         "dependencies": runtime,
         "sourceSnapshot": snapshot,
@@ -260,6 +268,27 @@ def get_raganything_status() -> dict[str, Any]:
 
 
 async def ingest_event_bundle_with_raganything(
+    *,
+    event: dict[str, Any],
+    cohort_events: list[dict[str, Any]],
+    papers: list[dict[str, Any]],
+    synthesis: dict[str, Any] | None = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    return await _run_on_rag_loop(
+        lambda: _with_rag_operation(
+            lambda: _ingest_event_bundle_with_raganything_impl(
+                event=event,
+                cohort_events=cohort_events,
+                papers=papers,
+                synthesis=synthesis,
+                force=force,
+            )
+        )
+    )
+
+
+async def _ingest_event_bundle_with_raganything_impl(
     *,
     event: dict[str, Any],
     cohort_events: list[dict[str, Any]],
@@ -317,31 +346,238 @@ async def ingest_document_with_raganything(
     parse_method: str | None = None,
     parser: str | None = None,
 ) -> dict[str, Any]:
+    return await _run_on_rag_loop(
+        lambda: _with_rag_operation(
+            lambda: _ingest_document_with_raganything_impl(
+                file_path=file_path,
+                doc_id=doc_id,
+                parse_method=parse_method,
+                parser=parser,
+            )
+        )
+    )
+
+
+async def _ingest_document_with_raganything_impl(
+    *,
+    file_path: str,
+    doc_id: str | None = None,
+    parse_method: str | None = None,
+    parser: str | None = None,
+) -> dict[str, Any]:
     rag = await _get_raganything()
     target = _resolve_document_path(file_path)
     output_dir = Path(settings.raganything_output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    await rag.process_document_complete(
-        file_path=str(target),
-        output_dir=str(output_dir),
-        parse_method=parse_method or settings.raganything_parse_method,
-        parser=parser or settings.raganything_parser,
-        doc_id=doc_id,
-    )
-    content_blocks = _load_latest_content_list(target, output_dir)
+    effective_parser = parser or settings.raganything_parser
+    requested_parse_method = _normalize_parse_method(parse_method or settings.raganything_parse_method)
+    used_parse_method = requested_parse_method
+    fallback_reason = ""
+    content_blocks: list[dict[str, Any]] = []
+    if effective_parser and hasattr(rag, "config"):
+        setattr(rag.config, "parser", effective_parser)
+    try:
+        await _process_document_with_raganything(
+            rag,
+            target=target,
+            output_dir=output_dir,
+            parse_method=requested_parse_method,
+            doc_id=doc_id,
+        )
+    except Exception as exc:
+        fallback_method = _normalize_parse_method(settings.raganything_parse_fallback_method)
+        if not _can_fallback_parse(
+            exc,
+            requested_parse_method=requested_parse_method,
+            fallback_method=fallback_method,
+        ):
+            raise
+        fallback_reason = _exception_detail(exc)
+        used_parse_method = fallback_method
+        content_blocks = await _insert_local_text_content_list_fallback(
+            rag,
+            target=target,
+            doc_id=doc_id,
+        )
+    if not content_blocks:
+        content_blocks = _load_latest_content_list(target, output_dir)
     content_stats = _content_list_stats(content_blocks)
+    content_stats.update(
+        {
+            "parser": effective_parser,
+            "requestedParseMethod": requested_parse_method,
+            "parseMethod": used_parse_method,
+            "parseFallback": bool(fallback_reason),
+        }
+    )
+    if fallback_reason:
+        content_stats["parseFallbackReason"] = fallback_reason[:2000]
     return {
         "status": "ready",
-        "mode": "raganything-document-parser",
+        "mode": "raganything-document-parser-fallback" if fallback_reason else "raganything-document-parser",
         "documents": 1,
         "storePath": settings.raganything_working_dir,
         "outputDir": str(output_dir),
         "contentStats": content_stats,
-        "message": f"Document parsed and inserted: {target.name}",
+        "message": (
+            f"Document parsed with fallback {used_parse_method} and inserted: {target.name}"
+            if fallback_reason
+            else f"Document parsed and inserted: {target.name}"
+        ),
     }
 
 
+async def _process_document_with_raganything(
+    rag: Any,
+    *,
+    target: Path,
+    output_dir: Path,
+    parse_method: str,
+    doc_id: str | None,
+) -> None:
+    if hasattr(rag, "config"):
+        setattr(rag.config, "parse_method", parse_method)
+    await rag.process_document_complete(
+        file_path=str(target),
+        output_dir=str(output_dir),
+        parse_method=parse_method,
+        doc_id=doc_id,
+    )
+
+
+async def _insert_local_text_content_list_fallback(
+    rag: Any,
+    *,
+    target: Path,
+    doc_id: str | None,
+) -> list[dict[str, Any]]:
+    content_blocks = await asyncio.to_thread(_build_local_text_content_list, target)
+    if not content_blocks:
+        raise RuntimeError(f"Local text fallback produced no content for {target}")
+    await rag.insert_content_list(
+        content_list=content_blocks,
+        file_path=str(target),
+        doc_id=doc_id,
+        display_stats=False,
+    )
+    return content_blocks
+
+
+def _build_local_text_content_list(target: Path) -> list[dict[str, Any]]:
+    suffix = target.suffix.lower()
+    if suffix == ".pdf":
+        return _build_pdf_text_content_list(target)
+    if suffix in {".txt", ".md"}:
+        text = target.read_text(encoding="utf-8", errors="ignore")
+        return _text_to_content_blocks(text, page_idx=0)
+    raise RuntimeError(f"Local text fallback does not support {suffix or 'unknown'} files")
+
+
+def _build_pdf_text_content_list(target: Path) -> list[dict[str, Any]]:
+    try:
+        from pypdf import PdfReader
+    except Exception as exc:
+        raise RuntimeError("Local PDF text fallback requires pypdf") from exc
+
+    reader = PdfReader(str(target))
+    blocks: list[dict[str, Any]] = []
+    for page_index, page in enumerate(reader.pages):
+        try:
+            text = page.extract_text() or ""
+        except Exception:
+            text = ""
+        blocks.extend(_text_to_content_blocks(text, page_idx=page_index))
+    return blocks
+
+
+def _text_to_content_blocks(text: str, *, page_idx: int) -> list[dict[str, Any]]:
+    cleaned = _clean_text(text)
+    if not cleaned:
+        return []
+    blocks: list[dict[str, Any]] = []
+    max_chars = 4000
+    overlap = 300
+    start = 0
+    while start < len(cleaned):
+        end = min(len(cleaned), start + max_chars)
+        segment = cleaned[start:end].strip()
+        if segment:
+            blocks.append({"type": "text", "text": segment, "page_idx": page_idx})
+        if end >= len(cleaned):
+            break
+        start = max(0, end - overlap)
+    return blocks
+
+
+def _normalize_parse_method(value: str | None) -> str:
+    cleaned = str(value or "").strip()
+    return cleaned or "auto"
+
+
+def _can_fallback_parse(
+    exc: Exception,
+    *,
+    requested_parse_method: str,
+    fallback_method: str,
+) -> bool:
+    if not settings.raganything_allow_parse_fallback:
+        return False
+    if not fallback_method or fallback_method == requested_parse_method:
+        return False
+    detail = _exception_detail(exc).lower()
+    if any(
+        marker in detail
+        for marker in (
+            "invalid token",
+            "unauthorized",
+            "authentication",
+            "api key",
+            "api_key",
+            "embedding service failed",
+            "document not found",
+            "not found:",
+        )
+    ):
+        return False
+    # These errors mean the complete MinerU/VLM route cannot run in the current
+    # environment, but a text-only RAGAnything parse can still keep the queue useful.
+    fallback_markers = (
+        "mineru",
+        "magic_pdf",
+        "hybrid",
+        "pipeline",
+        "parser",
+        "parse",
+        "torch",
+        "libgl",
+        "opencv",
+        "modelscope",
+        "dependency",
+        "received unexpected keyword",
+    )
+    return any(marker in detail for marker in fallback_markers)
+
+
 async def query_raganything(
+    *,
+    question: str,
+    mode: str | None = None,
+    vlm_enhanced: bool | None = None,
+    only_need_prompt: bool = False,
+) -> dict[str, Any]:
+    return await _run_on_rag_loop(
+        lambda: _with_rag_operation(
+            lambda: _query_raganything_impl(
+                question=question,
+                mode=mode,
+                vlm_enhanced=vlm_enhanced,
+                only_need_prompt=only_need_prompt,
+            )
+        )
+    )
+
+
+async def _query_raganything_impl(
     *,
     question: str,
     mode: str | None = None,
@@ -479,6 +715,45 @@ def query_raganything_sync(
         }
 
 
+async def _run_on_rag_loop(coro_factory):
+    if threading.get_ident() == _RAG_LOOP_THREAD_ID:
+        return await coro_factory()
+    future = asyncio.run_coroutine_threadsafe(coro_factory(), _ensure_rag_loop())
+    return await asyncio.wrap_future(future)
+
+
+async def _with_rag_operation(coro_factory):
+    global _RAG_OPERATION_LOCK
+    if _RAG_OPERATION_LOCK is None:
+        _RAG_OPERATION_LOCK = asyncio.Lock()
+    async with _RAG_OPERATION_LOCK:
+        return await coro_factory()
+
+
+def _ensure_rag_loop() -> asyncio.AbstractEventLoop:
+    global _RAG_LOOP, _RAG_LOOP_THREAD, _RAG_LOOP_THREAD_ID
+    with _RAG_LOOP_LOCK:
+        if _RAG_LOOP is not None and _RAG_LOOP.is_running():
+            return _RAG_LOOP
+
+        loop = asyncio.new_event_loop()
+        ready = threading.Event()
+
+        def run_loop() -> None:
+            global _RAG_LOOP_THREAD_ID
+            asyncio.set_event_loop(loop)
+            _RAG_LOOP_THREAD_ID = threading.get_ident()
+            ready.set()
+            loop.run_forever()
+
+        thread = threading.Thread(target=run_loop, name="raganything-loop", daemon=True)
+        thread.start()
+        ready.wait(timeout=10)
+        _RAG_LOOP = loop
+        _RAG_LOOP_THREAD = thread
+        return loop
+
+
 async def _get_raganything() -> Any:
     _ensure_backend_venv_bin_on_path()
     _ensure_raganything_source_on_path()
@@ -497,7 +772,7 @@ async def _get_raganything() -> Any:
         )
 
     global _RAG_INSTANCE
-    async with _RAG_LOCK:
+    with _RAG_LOCK:
         if _RAG_INSTANCE is not None:
             return _RAG_INSTANCE
 
@@ -789,6 +1064,7 @@ def _make_raganything_config(config_cls: Any, *, working_dir: str, output_dir: s
         "enable_image_processing": settings.raganything_enable_image_processing,
         "enable_table_processing": settings.raganything_enable_table_processing,
         "enable_equation_processing": settings.raganything_enable_equation_processing,
+        "max_concurrent_files": settings.raganything_max_concurrent_files,
     }
     if "parser_output_dir" in supported_fields:
         config_kwargs["parser_output_dir"] = output_dir

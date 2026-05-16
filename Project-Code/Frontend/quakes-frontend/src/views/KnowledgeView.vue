@@ -94,14 +94,14 @@ const singleForm = ref({
   year: new Date().getFullYear(),
   doi: '',
   sourceUrl: '',
-  force: true
+  force: false
 })
 
 const batchForm = ref({
   directoryPath: 'Project-Code/backend/.data/geo_rag_documents',
   recursive: false,
-  force: true,
-  limit: 50
+  force: false,
+  limit: 300
 })
 
 const stats = computed(() => ({
@@ -405,6 +405,7 @@ onUnmounted(() => {
             <label>
               <span>最多导入</span>
               <input v-model.number="batchForm.limit" type="number" min="1" max="1000" />
+              <small class="field-hint">队列最多可放 1000 篇；服务器后台会持续处理，关闭网页不影响任务。</small>
             </label>
             <label class="checkbox-line lower">
               <input v-model="batchForm.recursive" type="checkbox" />
@@ -747,6 +748,7 @@ input:focus {
 }
 
 .file-picker small,
+.field-hint,
 .storage-note {
   color: #64756f;
   font-size: 12px;

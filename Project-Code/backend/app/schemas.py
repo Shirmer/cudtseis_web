@@ -435,6 +435,8 @@ class RagAnythingStatusOut(BaseModel):
     allowedDocumentRoots: list[str] = Field(default_factory=list)
     parser: str
     parseMethod: str
+    allowParseFallback: bool = False
+    parseFallbackMethod: str = ""
     queryMode: str
     dependencies: dict[str, Any] = Field(default_factory=dict)
     sourceSnapshot: dict[str, Any] = Field(default_factory=dict)
