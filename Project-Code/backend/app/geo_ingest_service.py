@@ -90,6 +90,7 @@ async def save_uploaded_geo_document(chunks: AsyncIterator[bytes], filename: str
 def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
     source_path = _resolve_source_path(str(payload.get("filePath") or ""))
     digest = file_sha256(source_path)
+    force = bool(payload.get("force", False))
 
     metadata = _metadata_from_payload(payload)
     paper_id = str(payload.get("paperId") or "").strip()
@@ -99,6 +100,23 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
         paper_id = paper_id_from_metadata(metadata)
 
     document_id = str(payload.get("documentId") or "").strip() or document_id_from_file(paper_id, digest)
+    existing = _find_existing_document_for_ingest(db, document_id=document_id, digest=digest, doi=metadata.get("doi") or "")
+    if existing is not None and not force and _existing_document_is_complete(existing):
+        _cleanup_duplicate_upload_source(source_path, existing)
+        return {
+            **document_status(existing),
+            "vectorStore": {},
+            "embeddingBackend": _engine_embedding_backend(),
+            "ragEngine": {
+                "selected": settings.geo_rag_engine,
+                "index": "skipped-duplicate-document",
+            },
+            "message": (
+                "Document already exists; skipped duplicate import. "
+                "Set force=true only when you intentionally want to rebuild it."
+            ),
+        }
+
     stored_file = _store_document_file(source_path, document_id=document_id)
     stored_path = Path(stored_file["localPath"])
     stored_file_name = Path(stored_file["storagePath"]).name
@@ -113,20 +131,6 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
             "originalFileName": source_path.name,
         }
     )
-    existing = db.get(GeoDocument, document_id)
-    if existing is not None and not payload.get("force", False):
-        _cleanup_upload_stage_file(source_path, stored_path)
-        return {
-            **document_status(existing),
-            "vectorStore": {},
-            "embeddingBackend": _engine_embedding_backend(),
-            "ragEngine": {
-                "selected": settings.geo_rag_engine,
-                "index": "skipped-existing-document",
-            },
-            "message": "Document already exists. Set force=true to rebuild its knowledge units.",
-        }
-
     if normalized_geo_rag_engine() == "raganything":
         return _ingest_geo_document_with_raganything_engine(
             db=db,
@@ -146,6 +150,18 @@ def ingest_geo_document(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
         )
 
     raise RuntimeError("RAGAnything is the only supported literature RAG engine.")
+
+
+def _existing_document_is_complete(document: GeoDocument) -> bool:
+    # A failed import can leave metadata and the stored PDF behind before the
+    # RAGAnything/LightRAG index is written. Only a finished document with
+    # parsed blocks should be treated as a real duplicate.
+    if str(document.status or "").lower() != "indexed":
+        return False
+    if int(document.unit_count or 0) <= 0:
+        return False
+    metadata = document.metadata_json if isinstance(document.metadata_json, dict) else {}
+    return bool(metadata.get("raganythingContentStats"))
 
 def _ingest_geo_document_with_raganything_engine(
     *,
@@ -303,6 +319,15 @@ def _raganything_document_card(
         ]
         if item
     )
+    limitations = [
+        "详细 chunk 和关系图谱由 RAGAnything/LightRAG 存储，不在本地 KnowledgeUnit 表重复保存。",
+        "若页面数或类型统计为 0，通常表示解析输出未生成 content_list，需检查 MinerU/RAGAnything 日志。",
+    ]
+    if content_stats.get("parseFallback"):
+        limitations.insert(
+            0,
+            "当前文献使用了轻量降级解析；后续补齐 MinerU/VLM/系统依赖后，可重新解析为完整多模态结果。",
+        )
     return {
         "schemaVersion": "raganything-document-card-v1",
         "documentId": document_id,
@@ -319,8 +344,11 @@ def _raganything_document_card(
             "units": int(content_stats.get("blocks") or 0),
             "multimodalUnits": int(content_stats.get("multimodalBlocks") or 0),
             "typeCounts": type_counts,
-            "parser": settings.raganything_parser,
-            "parseMethod": settings.raganything_parse_method,
+            "parser": content_stats.get("parser") or settings.raganything_parser,
+            "requestedParseMethod": content_stats.get("requestedParseMethod") or settings.raganything_parse_method,
+            "parseMethod": content_stats.get("parseMethod") or settings.raganything_parse_method,
+            "parseFallback": bool(content_stats.get("parseFallback")),
+            "parseFallbackReason": content_stats.get("parseFallbackReason", ""),
             "engine": "RAGAnything/LightRAG",
         },
         "researchQuestions": [
@@ -333,10 +361,7 @@ def _raganything_document_card(
             "正文、图表、公式等多模态内容由 RAGAnything 负责组织与检索。",
             "本系统保留文献元数据、原文位置和解析统计，便于审查与迁移。",
         ],
-        "limitations": [
-            "详细 chunk 和关系图谱由 RAGAnything/LightRAG 存储，不在本地 KnowledgeUnit 表重复保存。",
-            "若页面数或类型统计为 0，通常表示解析输出未生成 content_list，需检查 MinerU/RAGAnything 日志。",
-        ],
+        "limitations": limitations,
         "engineResult": {
             key: value
             for key, value in engine_result.items()
@@ -675,6 +700,42 @@ def document_status(document: GeoDocument) -> dict[str, Any]:
         "createdAt": document.created_at.isoformat() if document.created_at else "",
         "updatedAt": document.updated_at.isoformat() if document.updated_at else "",
     }
+
+
+def _find_existing_document_for_ingest(
+    db: Session,
+    *,
+    document_id: str,
+    digest: str,
+    doi: str,
+) -> GeoDocument | None:
+    document = db.get(GeoDocument, document_id)
+    if document is not None:
+        return document
+
+    document = (
+        db.query(GeoDocument)
+        .filter(GeoDocument.file_sha256 == digest)
+        .order_by(GeoDocument.created_at.asc())
+        .first()
+    )
+    if document is not None:
+        return document
+
+    normalized_doi = str(doi or "").strip()
+    if normalized_doi:
+        return (
+            db.query(GeoDocument)
+            .filter(GeoDocument.doi == normalized_doi)
+            .order_by(GeoDocument.created_at.asc())
+            .first()
+        )
+    return None
+
+
+def _cleanup_duplicate_upload_source(source_path: Path, existing: GeoDocument) -> None:
+    existing_path = _find_document_file(existing)
+    _cleanup_upload_stage_file(source_path, existing_path or source_path)
 
 
 def _store_document_file(source_path: Path, *, document_id: str) -> dict[str, Any]:

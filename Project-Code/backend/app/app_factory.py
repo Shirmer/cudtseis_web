@@ -24,6 +24,7 @@ from .geo_ingest_service import (
 from .document_import_jobs import (
     create_document_import_job,
     get_document_import_job,
+    import_worker_count,
     import_worker_loop,
     list_document_import_jobs,
 )
@@ -116,7 +117,8 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
         async def startup():
             asyncio.create_task(poller())
             if settings.geo_rag_import_worker_enabled:
-                asyncio.create_task(import_worker_loop())
+                for worker_index in range(1, import_worker_count() + 1):
+                    asyncio.create_task(import_worker_loop(worker_index))
 
     @app.get("/api/events", response_model=list[EventOut])
     def list_events(

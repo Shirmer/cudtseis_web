@@ -32,11 +32,14 @@ class Settings(BaseSettings):
     raganything_document_dir: str = str(DATA_DIR / "documents")
     raganything_parser: str = "mineru"
     raganything_parse_method: str = "auto"
+    raganything_allow_parse_fallback: bool = True
+    raganything_parse_fallback_method: str = "local-text"
     raganything_query_mode: str = "hybrid"
     raganything_llm_model: str = "gpt-4o-mini"
     raganything_vision_model: str = "gpt-4o"
     raganything_embedding_dim: int = 1536
     raganything_max_token_size: int = 8192
+    raganything_max_concurrent_files: int = 1
     raganything_enable_image_processing: bool = True
     raganything_enable_table_processing: bool = True
     raganything_enable_equation_processing: bool = True
@@ -61,6 +64,7 @@ class Settings(BaseSettings):
     geo_rag_storage_ssh_port: int = 22
     geo_rag_storage_ssh_key_path: str = ""
     geo_rag_import_worker_enabled: bool = True
+    geo_rag_import_workers: int = 1
     geo_rag_import_worker_poll_seconds: float = 2.0
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"

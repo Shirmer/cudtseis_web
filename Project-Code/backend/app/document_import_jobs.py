@@ -16,7 +16,9 @@ from .settings import settings
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-_IMPORT_LOCK = threading.Lock()
+_CLAIM_LOCK = threading.Lock()
+_RECOVERY_LOCK = threading.Lock()
+_RECOVERY_DONE = False
 
 
 def create_document_import_job(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
@@ -80,12 +82,57 @@ def list_document_import_jobs(db: Session, limit: int = 20) -> list[dict[str, An
     return [_job_to_dict(db, job, item_limit=20) for job in jobs]
 
 
-def process_next_import_item() -> dict[str, Any]:
-    if not _IMPORT_LOCK.acquire(blocking=False):
-        return {"processed": False, "reason": "worker-busy"}
-    try:
+def process_next_import_item(worker_name: str = "worker") -> dict[str, Any]:
+    _recover_stale_running_items_once()
+    claim = _claim_next_import_item(worker_name)
+    if not claim.get("claimed"):
+        return claim
+
+    item_id = str(claim["itemId"])
+    job_id = str(claim["jobId"])
+    with SessionLocal() as db:
+        try:
+            result = ingest_geo_document(
+                db,
+                {
+                    "filePath": claim["filePath"],
+                    "title": claim["title"] or Path(str(claim["filePath"])).stem,
+                    "force": bool(claim["force"]),
+                },
+            )
+            skipped = "already exists" in str(result.get("message", "")).lower()
+            item = db.get(DocumentImportItem, item_id)
+            if item is not None:
+                item.status = "skipped" if skipped else str(result.get("status") or "indexed")
+                item.document_id = str(result.get("documentId") or "")
+                item.paper_id = str(result.get("paperId") or "")
+                item.title = str(result.get("title") or item.title or Path(str(claim["filePath"])).stem)
+                item.pages = int(result.get("pages") or 0)
+                item.units = int(result.get("units") or 0)
+                item.multimodal_units = int(result.get("multimodalUnits") or 0)
+                item.storage_uri = str(result.get("storageUri") or "")
+                item.embedding_backend = str(result.get("embeddingBackend") or "")
+                item.message = str(result.get("message") or "")
+                item.error = ""
+                item.finished_at = datetime.now(timezone.utc)
+        except Exception as exc:
+            db.rollback()
+            item = db.get(DocumentImportItem, item_id)
+            if item is not None:
+                item.status = "failed"
+                item.error = str(exc)
+                item.finished_at = datetime.now(timezone.utc)
+
+        job = db.get(DocumentImportJob, job_id)
+        if job is not None:
+            _refresh_job_counts(db, job)
+        db.commit()
+        return {"processed": True, "jobId": job_id, "itemId": item_id, "worker": worker_name}
+
+
+def _claim_next_import_item(worker_name: str) -> dict[str, Any]:
+    with _CLAIM_LOCK:
         with SessionLocal() as db:
-            _recover_stale_running_items(db)
             item = (
                 db.query(DocumentImportItem)
                 .filter(DocumentImportItem.status == "queued")
@@ -103,72 +150,46 @@ def process_next_import_item() -> dict[str, Any]:
                 item.error = "Parent import job was not found."
                 item.finished_at = datetime.now(timezone.utc)
                 db.commit()
-                return {"processed": True, "reason": "missing-job"}
+                return {"processed": True, "reason": "missing-job", "itemId": item.id, "worker": worker_name}
 
             now = datetime.now(timezone.utc)
-            item_id = item.id
-            job_id = item.job_id
             job.status = "running"
             job.started_at = job.started_at or now
             job.message = f"Indexing {Path(item.file_path).name}"
             item.status = "running"
             item.started_at = now
             item.error = ""
+            item.message = f"Claimed by {worker_name}."
             _refresh_job_counts(db, job)
             db.commit()
-
-            try:
-                result = ingest_geo_document(
-                    db,
-                    {
-                        "filePath": item.file_path,
-                        "title": item.title or Path(item.file_path).stem,
-                        "force": job.force,
-                    },
-                )
-                skipped = "already exists" in str(result.get("message", "")).lower()
-                item = db.get(DocumentImportItem, item_id)
-                if item is not None:
-                    item.status = "skipped" if skipped else str(result.get("status") or "indexed")
-                    item.document_id = str(result.get("documentId") or "")
-                    item.paper_id = str(result.get("paperId") or "")
-                    item.title = str(result.get("title") or item.title or Path(item.file_path).stem)
-                    item.pages = int(result.get("pages") or 0)
-                    item.units = int(result.get("units") or 0)
-                    item.multimodal_units = int(result.get("multimodalUnits") or 0)
-                    item.storage_uri = str(result.get("storageUri") or "")
-                    item.embedding_backend = str(result.get("embeddingBackend") or "")
-                    item.message = str(result.get("message") or "")
-                    item.error = ""
-                    item.finished_at = datetime.now(timezone.utc)
-            except Exception as exc:
-                db.rollback()
-                item = db.get(DocumentImportItem, item_id)
-                if item is not None:
-                    item.status = "failed"
-                    item.error = str(exc)
-                    item.finished_at = datetime.now(timezone.utc)
-
-            job = db.get(DocumentImportJob, job_id)
-            if job is not None:
-                _refresh_job_counts(db, job)
-            db.commit()
-            return {"processed": True, "jobId": job_id}
-    finally:
-        _IMPORT_LOCK.release()
+            return {
+                "processed": True,
+                "claimed": True,
+                "jobId": job.id,
+                "itemId": item.id,
+                "filePath": item.file_path,
+                "title": item.title,
+                "force": job.force,
+                "worker": worker_name,
+            }
 
 
-async def import_worker_loop() -> None:
+async def import_worker_loop(worker_index: int = 1) -> None:
     import asyncio
 
+    worker_name = f"import-worker-{worker_index}"
     while True:
         try:
-            result = await asyncio.to_thread(process_next_import_item)
+            result = await asyncio.to_thread(process_next_import_item, worker_name)
             delay = 0.1 if result.get("processed") else settings.geo_rag_import_worker_poll_seconds
         except Exception as exc:
-            print(f"[import-worker] {exc}", flush=True)
+            print(f"[{worker_name}] {exc}", flush=True)
             delay = max(1.0, settings.geo_rag_import_worker_poll_seconds)
         await asyncio.sleep(delay)
+
+
+def import_worker_count() -> int:
+    return max(1, min(int(settings.geo_rag_import_workers or 1), 8))
 
 
 def _refresh_job_counts(db: Session, job: DocumentImportJob) -> None:
@@ -204,9 +225,9 @@ def _finalize_open_jobs(db: Session) -> None:
 
 
 def _recover_stale_running_items(db: Session) -> None:
-    # The worker is intentionally single-writer. If the backend process was
-    # interrupted while an item was running, recover it to queued so server
-    # restart can continue instead of leaving the import half-stuck forever.
+    # If the backend process was interrupted while an item was running,
+    # recover it once on startup so server restart can continue instead of
+    # leaving the import half-stuck forever.
     stale_items = db.query(DocumentImportItem).filter(DocumentImportItem.status == "running").all()
     for item in stale_items:
         item.status = "queued"
@@ -219,6 +240,19 @@ def _recover_stale_running_items(db: Session) -> None:
             job.status = "queued"
             job.message = "Recovered after worker restart."
         db.commit()
+
+
+def _recover_stale_running_items_once() -> None:
+    global _RECOVERY_DONE
+    if _RECOVERY_DONE:
+        return
+    with _RECOVERY_LOCK:
+        if _RECOVERY_DONE:
+            return
+        with SessionLocal() as db:
+            _recover_stale_running_items(db)
+            db.commit()
+        _RECOVERY_DONE = True
 
 
 def _job_to_dict(db: Session, job: DocumentImportJob, *, item_limit: int = 100) -> dict[str, Any]:
