@@ -91,6 +91,7 @@ class KnowledgeUnit(Base):
     citation_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     embedding_backend: Mapped[str] = mapped_column(String(80), default="raganything")
     index_version: Mapped[str] = mapped_column(String(80), index=True)
+    qdrant_point_id: Mapped[str] = mapped_column(String(80), default="")
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

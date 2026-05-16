@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import importlib.util
 import json
 import math
 import os
+from io import BytesIO
 from pathlib import Path
 import re
 import sys
@@ -25,6 +27,7 @@ _RAG_LOOP_THREAD: threading.Thread | None = None
 _RAG_LOOP_THREAD_ID: int | None = None
 _RAG_LOOP_LOCK = threading.Lock()
 _RAG_OPERATION_LOCK: asyncio.Lock | None = None
+WHITESPACE_RE = re.compile(r"\s+")
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RAGANYTHING_UPSTREAM_ROOT = PROJECT_ROOT / "RAG-Anything-main"
 RAGANYTHING_UPSTREAM_REQUIRED_FILES = [
@@ -404,7 +407,18 @@ async def _ingest_document_with_raganything_impl(
         )
     if not content_blocks:
         content_blocks = _load_latest_content_list(target, output_dir)
+    if not content_blocks and target.suffix.lower() == ".pdf" and settings.raganything_enable_ocr_fallback:
+        fallback_reason = fallback_reason or "Parser returned no text content; OCR fallback was used."
+        used_parse_method = "local-ocr"
+        content_blocks = await _insert_local_ocr_content_list_fallback(
+            rag,
+            target=target,
+            doc_id=doc_id,
+        )
     content_stats = _content_list_stats(content_blocks)
+    if content_stats.get("ocrBlocks"):
+        used_parse_method = "local-ocr"
+        fallback_reason = fallback_reason or "PDF text extraction produced no usable text; OCR fallback was used."
     content_stats.update(
         {
             "parser": effective_parser,
@@ -422,6 +436,7 @@ async def _ingest_document_with_raganything_impl(
         "storePath": settings.raganything_working_dir,
         "outputDir": str(output_dir),
         "contentStats": content_stats,
+        "contentBlocks": content_blocks,
         "message": (
             f"Document parsed with fallback {used_parse_method} and inserted: {target.name}"
             if fallback_reason
@@ -466,13 +481,34 @@ async def _insert_local_text_content_list_fallback(
     return content_blocks
 
 
+async def _insert_local_ocr_content_list_fallback(
+    rag: Any,
+    *,
+    target: Path,
+    doc_id: str | None,
+) -> list[dict[str, Any]]:
+    content_blocks = await asyncio.to_thread(_build_pdf_ocr_content_list, target)
+    if not content_blocks:
+        raise RuntimeError(f"Local OCR fallback produced no content for {target}")
+    await rag.insert_content_list(
+        content_list=content_blocks,
+        file_path=str(target),
+        doc_id=doc_id,
+        display_stats=False,
+    )
+    return content_blocks
+
+
 def _build_local_text_content_list(target: Path) -> list[dict[str, Any]]:
     suffix = target.suffix.lower()
     if suffix == ".pdf":
-        return _build_pdf_text_content_list(target)
+        blocks = _build_pdf_text_content_list(target)
+        if blocks or not settings.raganything_enable_ocr_fallback:
+            return blocks
+        return _build_pdf_ocr_content_list(target)
     if suffix in {".txt", ".md"}:
         text = target.read_text(encoding="utf-8", errors="ignore")
-        return _text_to_content_blocks(text, page_idx=0)
+        return _text_to_content_blocks(text, page_idx=0, metadata={"source": "local-text"})
     raise RuntimeError(f"Local text fallback does not support {suffix or 'unknown'} files")
 
 
@@ -489,11 +525,66 @@ def _build_pdf_text_content_list(target: Path) -> list[dict[str, Any]]:
             text = page.extract_text() or ""
         except Exception:
             text = ""
-        blocks.extend(_text_to_content_blocks(text, page_idx=page_index))
+        blocks.extend(_text_to_content_blocks(text, page_idx=page_index, metadata={"source": "pdf-text"}))
     return blocks
 
 
-def _text_to_content_blocks(text: str, *, page_idx: int) -> list[dict[str, Any]]:
+def _build_pdf_ocr_content_list(target: Path) -> list[dict[str, Any]]:
+    try:
+        import fitz
+    except Exception as exc:
+        raise RuntimeError("Local PDF OCR fallback requires PyMuPDF") from exc
+    try:
+        from PIL import Image
+    except Exception as exc:
+        raise RuntimeError("Local PDF OCR fallback requires Pillow") from exc
+    try:
+        import pytesseract
+    except Exception as exc:
+        raise RuntimeError("Local PDF OCR fallback requires pytesseract") from exc
+
+    dpi = max(96, min(int(settings.raganything_ocr_dpi or 180), 300))
+    max_pages = max(1, int(settings.raganything_ocr_max_pages or 120))
+    language = str(settings.raganything_ocr_language or "eng").strip() or "eng"
+    tesseract_config = str(settings.raganything_ocr_tesseract_config or "").strip()
+    blocks: list[dict[str, Any]] = []
+    with fitz.open(str(target)) as document:
+        page_count = min(len(document), max_pages)
+        matrix = fitz.Matrix(dpi / 72, dpi / 72)
+        for page_index in range(page_count):
+            page = document.load_page(page_index)
+            pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+            image = Image.open(BytesIO(pixmap.tobytes("png")))
+            try:
+                text = pytesseract.image_to_string(
+                    image,
+                    lang=language,
+                    config=tesseract_config,
+                )
+            except Exception as exc:
+                raise RuntimeError(f"Local OCR failed on page {page_index + 1}: {_exception_detail(exc)}") from exc
+            blocks.extend(
+                _text_to_content_blocks(
+                    text,
+                    page_idx=page_index,
+                    metadata={
+                        "source": "ocr",
+                        "ocr": True,
+                        "ocrEngine": "tesseract",
+                        "ocrLanguage": language,
+                        "ocrDpi": dpi,
+                    },
+                )
+            )
+    return blocks
+
+
+def _text_to_content_blocks(
+    text: str,
+    *,
+    page_idx: int,
+    metadata: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     cleaned = _clean_text(text)
     if not cleaned:
         return []
@@ -505,7 +596,10 @@ def _text_to_content_blocks(text: str, *, page_idx: int) -> list[dict[str, Any]]
         end = min(len(cleaned), start + max_chars)
         segment = cleaned[start:end].strip()
         if segment:
-            blocks.append({"type": "text", "text": segment, "page_idx": page_idx})
+            block: dict[str, Any] = {"type": "text", "text": segment, "page_idx": page_idx}
+            if metadata:
+                block["metadata"] = dict(metadata)
+            blocks.append(block)
         if end >= len(cleaned):
             break
         start = max(0, end - overlap)
@@ -646,7 +740,8 @@ async def _query_raganything_impl(
         if unusable_reason:
             attempts.append({"mode": attempt_mode, "status": "empty", "reason": unusable_reason})
             if index + 1 >= len(attempt_modes):
-                card_fallback = _query_document_cards_fallback(
+                card_fallback = await _query_document_cards_fallback(
+                    rag=rag,
                     question=question,
                     requested_mode=requested_mode,
                     attempts=attempts,
@@ -779,18 +874,27 @@ def _can_retry_query_attempt(
     return True
 
 
-def _query_document_cards_fallback(
+async def _query_document_cards_fallback(
     *,
+    rag: Any,
     question: str,
     requested_mode: str,
     attempts: list[dict[str, str]],
     reason: str,
 ) -> dict[str, Any] | None:
-    evidence = _document_card_fallback_evidence(question, limit=5)
+    evidence = _local_chunk_fallback_evidence(question, limit=6)
+    evidence_source = "knowledge-unit-chunks"
+    if not evidence:
+        evidence = _document_card_fallback_evidence(question, limit=5)
+        evidence_source = "document-cards"
     if not evidence:
         return None
     fallback_mode = "document-card"
-    answer = _format_document_card_fallback_answer(question, evidence)
+    answer, answer_source, llm_error = await _synthesize_document_card_fallback_answer(
+        rag=rag,
+        question=question,
+        evidence=evidence,
+    )
     fallback_attempts = [*attempts, {"mode": fallback_mode, "status": "ready", "reason": ""}]
     return {
         "status": "ready",
@@ -807,6 +911,59 @@ def _query_document_cards_fallback(
             "reason": reason[:2000],
             "attempts": fallback_attempts,
             "evidence": evidence,
+            "evidenceSource": evidence_source,
+            "answerSource": answer_source,
+            "llmError": llm_error,
+        },
+    }
+
+
+def _local_chunk_fallback_evidence(question: str, *, limit: int = 6) -> list[dict[str, Any]]:
+    try:
+        from .db import SessionLocal
+        from .models import GeoDocument, KnowledgeUnit
+    except Exception:
+        return []
+
+    try:
+        with SessionLocal() as db:
+            units = (
+                db.query(KnowledgeUnit, GeoDocument)
+                .outerjoin(GeoDocument, GeoDocument.id == KnowledgeUnit.document_id)
+                .filter(KnowledgeUnit.content_type == "text")
+                .limit(500)
+                .all()
+            )
+            scored = [
+                _score_knowledge_unit(question, unit, document)
+                for unit, document in units
+            ]
+    except Exception:
+        return []
+    scored = [item for item in scored if item["score"] > 0 or item["sample"]]
+    scored.sort(key=lambda item: (item["score"], len(item["sample"])), reverse=True)
+    return scored[: max(1, min(limit, 12))]
+
+
+def _score_knowledge_unit(question: str, unit: Any, document: Any | None) -> dict[str, Any]:
+    title = str(getattr(document, "title", "") or (unit.citation_json or {}).get("title") or unit.paper_id or "")
+    text = _clean_text(unit.text)[:1600]
+    haystack = f"{title} {text}".lower()
+    terms = _fallback_query_terms(question)
+    score = sum(1 for term in terms if term and term.lower() in haystack)
+    return {
+        "documentId": str(unit.document_id or ""),
+        "paperId": str(unit.paper_id or ""),
+        "title": title,
+        "score": score,
+        "sample": text,
+        "page": unit.page,
+        "unitId": unit.id,
+        "unitIndex": unit.unit_index,
+        "sourceStats": {
+            "pages": getattr(document, "page_count", 0) if document is not None else 0,
+            "units": getattr(document, "unit_count", 0) if document is not None else 0,
+            "source": "knowledge_units",
         },
     }
 
@@ -872,14 +1029,84 @@ def _fallback_query_terms(question: str) -> list[str]:
         if len(token) <= 1:
             continue
         terms.append(token)
+        terms.extend(_bilingual_query_expansions(token))
         if re.search(r"[\u4e00-\u9fff]", token) and len(token) > 2:
             terms.extend(token[index : index + 2] for index in range(len(token) - 1))
     return list(dict.fromkeys(terms))
 
 
-def _format_document_card_fallback_answer(question: str, evidence: list[dict[str, Any]]) -> str:
+def _bilingual_query_expansions(token: str) -> list[str]:
+    expansions = {
+        "地震": ["earthquake", "seismic", "seismicity", "shock"],
+        "断层": ["fault", "faulting", "faults"],
+        "破裂": ["rupture", "surface rupture", "ruptures"],
+        "构造": ["tectonic", "tectonics", "crustal", "plate"],
+        "板块": ["plate", "plates", "plate tectonics"],
+        "震级": ["magnitude", "magnitudes"],
+        "滑动": ["slip", "displacement"],
+        "俯冲": ["subduction", "underthrusting", "thrust"],
+    }
+    return expansions.get(token, [])
+
+
+async def _synthesize_document_card_fallback_answer(
+    *,
+    rag: Any,
+    question: str,
+    evidence: list[dict[str, Any]],
+) -> tuple[str, str, str]:
+    prompt = _document_card_fallback_prompt(question, evidence)
+    llm_func = getattr(rag, "llm_model_func", None)
+    if llm_func is None:
+        return _format_document_card_extract_answer(question, evidence), "extractive", "RAGAnything LLM function is unavailable."
+    try:
+        result = llm_func(
+            prompt,
+            system_prompt=(
+                "你是地震学和构造地质方向的谨慎科研 RAG 助手。"
+                "只能基于用户提供的证据回答，不能编造未出现的文献结论。"
+            ),
+        )
+        if inspect.isawaitable(result):
+            result = await result
+        answer = _clean_text_preserve_lines(result)
+        if not answer:
+            raise RuntimeError("LLM returned an empty synthesis.")
+        return answer, "llm", ""
+    except Exception as exc:
+        return _format_document_card_extract_answer(question, evidence), "extractive", _exception_detail(exc)[:1000]
+
+
+def _document_card_fallback_prompt(question: str, evidence: list[dict[str, Any]]) -> str:
+    evidence_lines = []
+    for index, item in enumerate(evidence, start=1):
+        stats = item.get("sourceStats") if isinstance(item.get("sourceStats"), dict) else {}
+        pages = stats.get("pages") or "?"
+        units = stats.get("units") or stats.get("blocks") or "?"
+        sample = _clean_text(item.get("sample"))[:1600]
+        evidence_lines.append(
+            f"[{index}] 标题：{item.get('title') or item.get('paperId') or 'Untitled'}\n"
+            f"文献ID：{item.get('paperId') or ''}\n"
+            f"解析统计：页数 {pages}，文本块 {units}\n"
+            f"证据摘录：{sample or '样本文本为空'}"
+        )
+    return (
+        "LightRAG 当前没有返回可用上下文，下面是系统从已入库文献知识卡片中选出的候选证据。"
+        "请基于这些证据对用户问题做中文科研分析。\n\n"
+        f"用户问题：{question}\n\n"
+        "候选证据：\n"
+        + "\n\n".join(evidence_lines)
+        + "\n\n请按以下结构回答：\n"
+        "1. 直接结论：用 2-4 句话回答问题。\n"
+        "2. 证据依据：列出 3-5 条证据，标注对应文献标题。\n"
+        "3. 不确定性：说明当前只是知识卡片兜底，不等同于完整 LightRAG hybrid 检索。\n"
+        "不要输出大段英文原文，不要声称读到了证据之外的信息。"
+    )
+
+
+def _format_document_card_extract_answer(question: str, evidence: list[dict[str, Any]]) -> str:
     lines = [
-        "LightRAG 当前没有返回可用上下文；下面先基于已入库文献知识卡片和解析样本文本给出保守回答。",
+        "LightRAG 当前没有返回可用上下文，且 LLM 综合分析暂时不可用；下面先基于已入库文献知识卡片和解析样本文本给出保守回答。",
         "",
         f"问题：{question}",
         "",
@@ -901,6 +1128,24 @@ def _format_document_card_fallback_answer(question: str, evidence: list[dict[str
         ]
     )
     return "\n".join(lines)
+
+
+def _clean_text_preserve_lines(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(value).replace("\r\n", "\n").replace("\r", "\n")
+    lines = [WHITESPACE_RE.sub(" ", line).strip() for line in text.split("\n")]
+    compact: list[str] = []
+    previous_blank = False
+    for line in lines:
+        if not line:
+            if not previous_blank:
+                compact.append("")
+            previous_blank = True
+            continue
+        compact.append(line)
+        previous_blank = False
+    return "\n".join(compact).strip()
 
 
 def ingest_document_with_raganything_sync(
@@ -1434,11 +1679,18 @@ def _load_latest_content_list(target: Path, output_dir: Path) -> list[dict[str, 
 
 def _content_list_stats(content_blocks: list[dict[str, Any]]) -> dict[str, Any]:
     type_counts: dict[str, int] = {}
+    source_counts: dict[str, int] = {}
     pages: set[int] = set()
     samples: list[dict[str, Any]] = []
+    ocr_blocks = 0
     for block in content_blocks:
         block_type = str(block.get("type") or block.get("content_type") or "unknown")
         type_counts[block_type] = type_counts.get(block_type, 0) + 1
+        metadata = block.get("metadata") if isinstance(block.get("metadata"), dict) else {}
+        source = str(metadata.get("source") or "unknown")
+        source_counts[source] = source_counts.get(source, 0) + 1
+        if metadata.get("ocr"):
+            ocr_blocks += 1
         page = block.get("page_idx", block.get("page"))
         if isinstance(page, int):
             pages.add(page + 1 if page >= 0 else page)
@@ -1457,6 +1709,8 @@ def _content_list_stats(content_blocks: list[dict[str, Any]]) -> dict[str, Any]:
         "blocks": len(content_blocks),
         "pages": len(pages),
         "typeCounts": type_counts,
+        "sourceCounts": source_counts,
+        "ocrBlocks": ocr_blocks,
         "multimodalBlocks": multimodal,
         "sampleBlocks": samples,
     }

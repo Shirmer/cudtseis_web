@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from .geo_ids import document_id_from_file, file_sha256, paper_id_from_metadata
+from .geo_ids import document_id_from_file, file_sha256, paper_id_from_metadata, point_id_from_unit_id, unit_id_from_parts
 from .models import DocumentKnowledgeCard, GeoDocument, KnowledgeUnit
 from .paper_database import get_paper_detail
 from .rag_engines import get_geo_rag_engine_status, index_document_with_primary_engine, normalized_geo_rag_engine
@@ -217,8 +217,21 @@ def _ingest_geo_document_with_raganything_engine(
         raise
 
     content_stats = engine_result.get("contentStats") or {}
+    content_blocks = engine_result.get("contentBlocks") if isinstance(engine_result.get("contentBlocks"), list) else []
+    inserted_units = _insert_document_text_chunks(
+        db,
+        document_id=document_id,
+        paper_id=paper_id,
+        title=title,
+        authors=authors,
+        year=year,
+        doi=doi,
+        source_url=source_url,
+        storage_uri=metadata["storageUri"],
+        content_blocks=content_blocks,
+    )
     page_count = int(content_stats.get("pages") or 0)
-    unit_count = int(content_stats.get("blocks") or 0)
+    unit_count = inserted_units or int(content_stats.get("blocks") or 0)
     multimodal_units = int(content_stats.get("multimodalBlocks") or 0)
     document.page_count = page_count
     document.unit_count = unit_count
@@ -275,7 +288,11 @@ def _ingest_geo_document_with_raganything_engine(
         "embeddingBackend": _engine_embedding_backend(),
         "ragEngine": {
             "selected": "raganything",
-            "index": engine_result,
+            "index": {
+                key: value
+                for key, value in engine_result.items()
+                if key not in {"contentBlocks"}
+            },
         },
         "knowledgeCard": {
             "schemaVersion": document_card["schemaVersion"],
@@ -320,9 +337,14 @@ def _raganything_document_card(
         if item
     )
     limitations = [
-        "详细 chunk 和关系图谱由 RAGAnything/LightRAG 存储，不在本地 KnowledgeUnit 表重复保存。",
+        "文本 chunk 已写入本地 KnowledgeUnit 表；关系图谱仍由 RAGAnything/LightRAG 管理。",
         "若页面数或类型统计为 0，通常表示解析输出未生成 content_list，需检查 MinerU/RAGAnything 日志。",
     ]
+    if int(content_stats.get("ocrBlocks") or 0) > 0:
+        limitations.insert(
+            0,
+            "该文献使用 OCR 兜底抽取扫描页文本，检索可用但文字精度受扫描质量影响。",
+        )
     if content_stats.get("parseFallback"):
         limitations.insert(
             0,
@@ -343,7 +365,9 @@ def _raganything_document_card(
             "pages": int(content_stats.get("pages") or 0),
             "units": int(content_stats.get("blocks") or 0),
             "multimodalUnits": int(content_stats.get("multimodalBlocks") or 0),
+            "ocrBlocks": int(content_stats.get("ocrBlocks") or 0),
             "typeCounts": type_counts,
+            "sourceCounts": content_stats.get("sourceCounts") or {},
             "parser": content_stats.get("parser") or settings.raganything_parser,
             "requestedParseMethod": content_stats.get("requestedParseMethod") or settings.raganything_parse_method,
             "parseMethod": content_stats.get("parseMethod") or settings.raganything_parse_method,
@@ -365,7 +389,7 @@ def _raganything_document_card(
         "engineResult": {
             key: value
             for key, value in engine_result.items()
-            if key not in {"contentStats"}
+            if key not in {"contentStats", "contentBlocks"}
         },
         "sampleEvidence": samples[:8],
         "searchableText": searchable_text,
@@ -449,6 +473,74 @@ def ingest_geo_document_batch(db: Session, payload: dict[str, Any]) -> dict[str,
         "items": items,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _insert_document_text_chunks(
+    db: Session,
+    *,
+    document_id: str,
+    paper_id: str,
+    title: str,
+    authors: list[str],
+    year: int | None,
+    doi: str,
+    source_url: str,
+    storage_uri: str,
+    content_blocks: list[dict[str, Any]],
+) -> int:
+    inserted = 0
+    for block in content_blocks:
+        if not isinstance(block, dict):
+            continue
+        block_type = str(block.get("type") or block.get("content_type") or "text").strip().lower()
+        text = _clean_text(block.get("text") or block.get("caption") or block.get("html") or "")
+        if block_type != "text" or not text:
+            continue
+        inserted += 1
+        page = block.get("page_idx", block.get("page"))
+        page_number = page + 1 if isinstance(page, int) and page >= 0 else page if isinstance(page, int) else None
+        section = str(block.get("section") or block.get("title") or "").strip()
+        block_metadata = block.get("metadata") if isinstance(block.get("metadata"), dict) else {}
+        unit_id = unit_id_from_parts(document_id, inserted, "text")
+        db.merge(
+            KnowledgeUnit(
+                id=unit_id,
+                document_id=document_id,
+                paper_id=paper_id,
+                unit_index=inserted,
+                content_type="text",
+                text=text,
+                page=page_number,
+                section=section,
+                citation_json={
+                    "paperId": paper_id,
+                    "documentId": document_id,
+                    "title": title,
+                    "authors": authors,
+                    "year": year,
+                    "doi": doi,
+                    "sourceUrl": source_url,
+                    "storageUri": storage_uri,
+                },
+                embedding_backend=_engine_embedding_backend(),
+                index_version=settings.geo_rag_index_version,
+                qdrant_point_id=point_id_from_unit_id(unit_id),
+                metadata_json={
+                    "engine": "raganything",
+                    "source": block_metadata.get("source") or "content_list",
+                    "parser": settings.raganything_parser,
+                    "parseMethod": "local-ocr" if block_metadata.get("ocr") else settings.raganything_parse_method,
+                    "ocr": bool(block_metadata.get("ocr")),
+                    "ocrEngine": block_metadata.get("ocrEngine", ""),
+                    "ocrLanguage": block_metadata.get("ocrLanguage", ""),
+                    "ocrDpi": block_metadata.get("ocrDpi", 0),
+                    "sectionRole": _section_role(section, text),
+                    "evidenceRole": _evidence_role(_section_role(section, text)),
+                },
+            )
+        )
+    db.flush()
+    return inserted
 
 
 def get_geo_document_status(db: Session, document_id: str) -> dict[str, Any]:
@@ -538,12 +630,39 @@ def _search_geo_knowledge_with_raganything(
     from .raganything_service import query_raganything_sync
 
     search_filters = _normalize_search_filters(filters or {})
-    result = query_raganything_sync(
-        question=query,
-        mode=settings.raganything_query_mode,
-        only_need_prompt=True,
-        fail_on_error=True,
-    )
+    hits = _search_project_text_chunks(db, query=query, top_k=top_k, filters=search_filters)
+    if hits:
+        return {
+            "query": query,
+            "topK": top_k,
+            "filters": search_filters,
+            "backend": "raganything",
+            "collection": settings.raganything_working_dir,
+            "warning": "LightRAG chunk store is unavailable; using project KnowledgeUnit chunks.",
+            "embeddingBackend": _engine_embedding_backend(),
+            "results": hits,
+            "generatedAt": datetime.now(timezone.utc).isoformat(),
+            "diagnostics": {
+                "retrievalStrategy": "project-knowledge-unit-chunks",
+                "engine": {"status": "skipped", "reason": "Project chunk index returned evidence first."},
+                "qualityFlags": ["project_chunk_index"],
+                "evidenceFragments": len(hits),
+            },
+            "storeStats": {
+                "documents": db.query(GeoDocument).count(),
+                "units": db.query(KnowledgeUnit).count(),
+            },
+        }
+    result: dict[str, Any]
+    try:
+        result = query_raganything_sync(
+            question=query,
+            mode=settings.raganything_query_mode,
+            only_need_prompt=True,
+            fail_on_error=True,
+        )
+    except Exception as exc:
+        result = {"status": "failed", "reason": str(exc), "queryMode": settings.raganything_query_mode}
     content = str(result.get("answer") or "")
     hits = _raganything_hits_from_context(
         db,
@@ -552,6 +671,13 @@ def _search_geo_knowledge_with_raganything(
         top_k=top_k,
         filters=search_filters,
     )
+    retrieval_strategy = "raganything-lightrag-primary"
+    quality_flags = [] if hits else ["no_raganything_context"]
+    if not hits:
+        hits = _search_project_text_chunks(db, query=query, top_k=top_k, filters=search_filters)
+        if hits:
+            retrieval_strategy = "project-knowledge-unit-chunks"
+            quality_flags = ["lightrag_context_unavailable", "project_chunk_fallback"]
     return {
         "query": query,
         "topK": top_k,
@@ -563,9 +689,9 @@ def _search_geo_knowledge_with_raganything(
         "results": hits,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "diagnostics": {
-            "retrievalStrategy": "raganything-lightrag-primary",
+            "retrievalStrategy": retrieval_strategy,
             "engine": result,
-            "qualityFlags": [] if hits else ["no_raganything_context"],
+            "qualityFlags": quality_flags if hits else ["no_raganything_context", "no_project_chunks"],
             "evidenceFragments": len(hits),
         },
         "storeStats": {
@@ -573,6 +699,60 @@ def _search_geo_knowledge_with_raganything(
             "units": db.query(KnowledgeUnit).count(),
         },
     }
+
+
+def _search_project_text_chunks(
+    db: Session,
+    *,
+    query: str,
+    top_k: int,
+    filters: dict[str, Any],
+) -> list[dict[str, Any]]:
+    rows = db.query(KnowledgeUnit, GeoDocument).outerjoin(GeoDocument, GeoDocument.id == KnowledgeUnit.document_id)
+    rows = rows.filter(KnowledgeUnit.content_type == "text")
+    document_filter = str(filters.get("document_id") or "").strip()
+    paper_filter = str(filters.get("paper_id") or "").strip()
+    if document_filter:
+        rows = rows.filter(KnowledgeUnit.document_id == document_filter)
+    if paper_filter:
+        rows = rows.filter(KnowledgeUnit.paper_id == paper_filter)
+    candidates = rows.limit(1000).all()
+    terms = _search_terms(query)
+    scored: list[tuple[int, KnowledgeUnit, GeoDocument | None]] = []
+    for unit, document in candidates:
+        haystack = f"{document.title if document is not None else ''} {unit.text}".lower()
+        score = sum(1 for term in terms if term in haystack)
+        if score > 0 or not terms:
+            scored.append((score, unit, document))
+    scored.sort(key=lambda item: (item[0], len(item[1].text or "")), reverse=True)
+    hits: list[dict[str, Any]] = []
+    for index, (score, unit, document) in enumerate(scored[:top_k], start=1):
+        title = document.title if document is not None else (unit.citation_json or {}).get("title", "")
+        citation = unit.citation_json or {}
+        public_url = _document_public_url(document) if document is not None else ""
+        if public_url:
+            citation = {**citation, "publicUrl": public_url}
+        hits.append(
+            {
+                "unitId": unit.id,
+                "documentId": unit.document_id,
+                "paperId": unit.paper_id,
+                "title": title or unit.paper_id,
+                "contentType": unit.content_type,
+                "text": unit.text[:1800],
+                "page": unit.page,
+                "score": max(0.1, min(1.0, 0.35 + score * 0.08 - (index - 1) * 0.03)),
+                "citation": citation,
+                "metadata": {
+                    "engine": "project-chunk-index",
+                    "queryMode": "keyword",
+                    "fragmentIndex": index,
+                    "matchedDocument": document is not None,
+                    "note": "Fallback evidence from project KnowledgeUnit chunks.",
+                },
+            }
+        )
+    return hits
 
 
 def _raganything_hits_from_context(
@@ -1080,3 +1260,58 @@ def _normalize_search_filters(filters: dict[str, Any]) -> dict[str, Any]:
         if cleaned:
             normalized["topics"] = cleaned
     return normalized
+
+
+def _search_terms(query: str) -> list[str]:
+    terms: list[str] = []
+    for token in re.findall(r"[\w\u4e00-\u9fff]+", str(query or "").lower()):
+        if len(token) <= 1:
+            continue
+        terms.append(token)
+        terms.extend(_bilingual_query_expansions(token))
+        if re.search(r"[\u4e00-\u9fff]", token) and len(token) > 2:
+            terms.extend(token[index : index + 2] for index in range(len(token) - 1))
+    return list(dict.fromkeys(terms))
+
+
+def _bilingual_query_expansions(token: str) -> list[str]:
+    expansions = {
+        "地震": ["earthquake", "seismic", "seismicity", "shock"],
+        "断层": ["fault", "faulting", "faults"],
+        "破裂": ["rupture", "surface rupture", "ruptures"],
+        "构造": ["tectonic", "tectonics", "crustal", "plate"],
+        "板块": ["plate", "plates", "plate tectonics"],
+        "震级": ["magnitude", "magnitudes"],
+        "滑动": ["slip", "displacement"],
+        "俯冲": ["subduction", "underthrusting", "thrust"],
+    }
+    return expansions.get(token, [])
+
+
+def _clean_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return WHITESPACE_RE.sub(" ", str(value)).strip()
+
+
+def _section_role(section: str, text: str) -> str:
+    lower = f"{section} {text[:300]}".lower()
+    if any(marker in lower for marker in ("abstract", "摘要")):
+        return "abstract"
+    if any(marker in lower for marker in ("conclusion", "summary", "结论")):
+        return "conclusion"
+    if any(marker in lower for marker in ("method", "data", "方法", "数据")):
+        return "method"
+    if any(marker in lower for marker in ("result", "discussion", "结果", "讨论")):
+        return "finding"
+    return "body"
+
+
+def _evidence_role(section_role: str) -> str:
+    if section_role in {"abstract", "conclusion"}:
+        return "claim"
+    if section_role in {"method"}:
+        return "method"
+    if section_role in {"finding"}:
+        return "evidence"
+    return "context"
