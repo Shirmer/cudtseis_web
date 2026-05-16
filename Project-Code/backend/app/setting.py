@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     raganything_allow_parse_fallback: bool = True
     raganything_parse_fallback_method: str = "local-text"
     raganything_query_mode: str = "hybrid"
+    raganything_allow_query_fallback: bool = True
+    raganything_query_fallback_mode: str = "naive"
     raganything_llm_model: str = "gpt-4o-mini"
     raganything_vision_model: str = "gpt-4o"
     raganything_embedding_dim: int = 1536

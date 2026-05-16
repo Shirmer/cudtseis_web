@@ -6,6 +6,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import sys
 import threading
 from typing import Any
@@ -261,6 +262,8 @@ def get_raganything_status() -> dict[str, Any]:
         "allowParseFallback": settings.raganything_allow_parse_fallback,
         "parseFallbackMethod": settings.raganything_parse_fallback_method,
         "queryMode": settings.raganything_query_mode,
+        "allowQueryFallback": settings.raganything_allow_query_fallback,
+        "queryFallbackMode": settings.raganything_query_fallback_mode,
         "dependencies": runtime,
         "sourceSnapshot": snapshot,
         "requiredActions": required_actions,
@@ -594,40 +597,310 @@ async def _query_raganything_impl(
                 "Import at least one PDF/TXT/MD document before asking literature questions."
             ),
         )
-    kwargs: dict[str, Any] = {"mode": mode or settings.raganything_query_mode}
-    if vlm_enhanced is not None:
-        kwargs["vlm_enhanced"] = vlm_enhanced
-    if only_need_prompt:
-        kwargs["only_need_prompt"] = True
-        kwargs["vlm_enhanced"] = False
-    try:
-        result = await rag.aquery(question, **kwargs)
-    except ValueError as exc:
-        if "No LightRAG instance available" in str(exc):
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "RAGAnything is installed but the LightRAG index is empty or not initialized. "
-                    "Import at least one PDF/TXT/MD document before asking literature questions."
-                ),
-            ) from exc
-        raise
-    if result is None or (isinstance(result, str) and not result.strip()):
+    requested_mode = _normalize_query_mode(mode or settings.raganything_query_mode)
+    attempt_modes = _query_attempt_modes(requested_mode, only_need_prompt=only_need_prompt)
+    attempts: list[dict[str, str]] = []
+    fallback_reason = ""
+    result: Any = None
+    used_mode = requested_mode
+    for index, attempt_mode in enumerate(attempt_modes):
+        kwargs = _query_kwargs(
+            mode=attempt_mode,
+            vlm_enhanced=vlm_enhanced,
+            only_need_prompt=only_need_prompt,
+        )
+        try:
+            result = await rag.aquery(question, **kwargs)
+        except ValueError as exc:
+            if "No LightRAG instance available" in str(exc):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "RAGAnything is installed but the LightRAG index is empty or not initialized. "
+                        "Import at least one PDF/TXT/MD document before asking literature questions."
+                    ),
+                ) from exc
+            attempts.append({"mode": attempt_mode, "status": "failed", "reason": _exception_detail(exc)[:500]})
+            if not _can_retry_query_attempt(
+                exc,
+                attempt_index=index,
+                attempt_count=len(attempt_modes),
+                only_need_prompt=only_need_prompt,
+            ):
+                raise
+            fallback_reason = _exception_detail(exc)
+            continue
+        except Exception as exc:
+            attempts.append({"mode": attempt_mode, "status": "failed", "reason": _exception_detail(exc)[:500]})
+            if not _can_retry_query_attempt(
+                exc,
+                attempt_index=index,
+                attempt_count=len(attempt_modes),
+                only_need_prompt=only_need_prompt,
+            ):
+                raise
+            fallback_reason = _exception_detail(exc)
+            continue
+
+        unusable_reason = _unusable_query_result_reason(result)
+        if unusable_reason:
+            attempts.append({"mode": attempt_mode, "status": "empty", "reason": unusable_reason})
+            if index + 1 >= len(attempt_modes):
+                card_fallback = _query_document_cards_fallback(
+                    question=question,
+                    requested_mode=requested_mode,
+                    attempts=attempts,
+                    reason=unusable_reason,
+                )
+                if card_fallback is not None:
+                    return card_fallback
+                raise _empty_query_http_exception()
+            fallback_reason = unusable_reason
+            continue
+
+        attempts.append({"mode": attempt_mode, "status": "ready", "reason": ""})
+        used_mode = attempt_mode
+        break
+    else:
         raise HTTPException(
             status_code=502,
             detail=(
-                "RAGAnything returned an empty answer. Check the LLM API configuration "
-                "and confirm that the imported documents have completed indexing."
+                "RAGAnything query failed before producing an answer. "
+                f"Attempts: {', '.join(item['mode'] + ':' + item['status'] for item in attempts)}"
             ),
         )
+
+    fallback_active = used_mode != requested_mode
     return {
         "status": "ready",
         "question": question,
         "answer": str(result),
-        "retrievalMode": f"raganything:{kwargs['mode']}",
-        "queryMode": kwargs["mode"],
+        "retrievalMode": f"raganything:{used_mode}",
+        "queryMode": used_mode,
         "mode": "raganything",
+        "attemptedQueryModes": [item["mode"] for item in attempts],
+        "queryFallback": {
+            "active": fallback_active,
+            "requestedMode": requested_mode,
+            "usedMode": used_mode,
+            "reason": fallback_reason[:2000] if fallback_active else "",
+            "attempts": attempts,
+        },
     }
+
+
+def _query_kwargs(
+    *,
+    mode: str,
+    vlm_enhanced: bool | None,
+    only_need_prompt: bool,
+) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {"mode": mode}
+    # RAGAnything auto-enables VLM-enhanced query when a vision model exists.
+    # The production literature index is text-first today, so default to a
+    # stable text query unless the caller explicitly opts into VLM.
+    kwargs["vlm_enhanced"] = bool(vlm_enhanced) if vlm_enhanced is not None else False
+    if only_need_prompt:
+        kwargs["only_need_prompt"] = True
+        kwargs["vlm_enhanced"] = False
+    return kwargs
+
+
+def _query_attempt_modes(requested_mode: str, *, only_need_prompt: bool) -> list[str]:
+    modes = [requested_mode]
+    fallback_mode = _normalize_query_mode(settings.raganything_query_fallback_mode)
+    if (
+        settings.raganything_allow_query_fallback
+        and not only_need_prompt
+        and fallback_mode
+        and fallback_mode != requested_mode
+        and requested_mode not in {"naive", "bypass"}
+    ):
+        modes.append(fallback_mode)
+    return modes
+
+
+def _normalize_query_mode(value: str | None) -> str:
+    cleaned = str(value or "").strip().lower()
+    return cleaned or "hybrid"
+
+
+def _query_result_is_empty(result: Any) -> bool:
+    return result is None or (isinstance(result, str) and not result.strip())
+
+
+def _unusable_query_result_reason(result: Any) -> str:
+    if _query_result_is_empty(result):
+        return "RAGAnything returned an empty answer."
+    if isinstance(result, str) and _query_result_has_no_context(result):
+        return "RAGAnything returned a no-context answer."
+    return ""
+
+
+def _query_result_has_no_context(result: str) -> bool:
+    normalized = result.lower()
+    return "[no-context]" in normalized or "no context" in normalized
+
+
+def _empty_query_http_exception() -> HTTPException:
+    return HTTPException(
+        status_code=502,
+        detail=(
+            "RAGAnything returned an empty answer. Check the LLM API configuration "
+            "and confirm that the imported documents have completed indexing."
+        ),
+    )
+
+
+def _can_retry_query_attempt(
+    exc: Exception,
+    *,
+    attempt_index: int,
+    attempt_count: int,
+    only_need_prompt: bool,
+) -> bool:
+    if only_need_prompt or attempt_index + 1 >= attempt_count:
+        return False
+    detail = _exception_detail(exc).lower()
+    if any(
+        marker in detail
+        for marker in (
+            "invalid token",
+            "unauthorized",
+            "authentication",
+            "api key",
+            "api_key",
+            "embedding service failed",
+            "index is empty",
+            "no lightrag instance",
+        )
+    ):
+        return False
+    return True
+
+
+def _query_document_cards_fallback(
+    *,
+    question: str,
+    requested_mode: str,
+    attempts: list[dict[str, str]],
+    reason: str,
+) -> dict[str, Any] | None:
+    evidence = _document_card_fallback_evidence(question, limit=5)
+    if not evidence:
+        return None
+    fallback_mode = "document-card"
+    answer = _format_document_card_fallback_answer(question, evidence)
+    fallback_attempts = [*attempts, {"mode": fallback_mode, "status": "ready", "reason": ""}]
+    return {
+        "status": "ready",
+        "question": question,
+        "answer": answer,
+        "retrievalMode": "raganything:document-card-fallback",
+        "queryMode": fallback_mode,
+        "mode": "raganything",
+        "attemptedQueryModes": [item["mode"] for item in fallback_attempts],
+        "queryFallback": {
+            "active": True,
+            "requestedMode": requested_mode,
+            "usedMode": fallback_mode,
+            "reason": reason[:2000],
+            "attempts": fallback_attempts,
+            "evidence": evidence,
+        },
+    }
+
+
+def _document_card_fallback_evidence(question: str, *, limit: int = 5) -> list[dict[str, Any]]:
+    try:
+        from .db import SessionLocal
+        from .models import DocumentKnowledgeCard
+    except Exception:
+        return []
+
+    try:
+        with SessionLocal() as db:
+            cards = (
+                db.query(DocumentKnowledgeCard)
+                .order_by(DocumentKnowledgeCard.updated_at.desc())
+                .limit(80)
+                .all()
+            )
+            scored = [_score_document_card(question, card) for card in cards]
+    except Exception:
+        return []
+    scored = [item for item in scored if item["score"] > 0 or item["sample"]]
+    scored.sort(key=lambda item: (item["score"], len(item["sample"])), reverse=True)
+    return scored[: max(1, min(limit, 12))]
+
+
+def _score_document_card(question: str, card: Any) -> dict[str, Any]:
+    card_json = card.card_json if isinstance(card.card_json, dict) else {}
+    samples = card_json.get("sampleEvidence") or []
+    sample_texts: list[str] = []
+    for sample in samples:
+        if not isinstance(sample, dict):
+            continue
+        text = _clean_text(sample.get("text"))
+        if text:
+            sample_texts.append(text)
+    sample = " ".join(sample_texts[:3])[:1400]
+    haystack = " ".join(
+        item
+        for item in (
+            card.title,
+            card.card_text,
+            sample,
+        )
+        if item
+    ).lower()
+    terms = _fallback_query_terms(question)
+    score = sum(1 for term in terms if term and term.lower() in haystack)
+    return {
+        "documentId": str(card.document_id or ""),
+        "paperId": str(card.paper_id or ""),
+        "title": str(card.title or ""),
+        "score": score,
+        "sample": sample,
+        "sourceStats": card_json.get("sourceStats") if isinstance(card_json.get("sourceStats"), dict) else {},
+    }
+
+
+def _fallback_query_terms(question: str) -> list[str]:
+    terms: list[str] = []
+    for token in re.findall(r"[\w\u4e00-\u9fff]+", question.lower()):
+        if len(token) <= 1:
+            continue
+        terms.append(token)
+        if re.search(r"[\u4e00-\u9fff]", token) and len(token) > 2:
+            terms.extend(token[index : index + 2] for index in range(len(token) - 1))
+    return list(dict.fromkeys(terms))
+
+
+def _format_document_card_fallback_answer(question: str, evidence: list[dict[str, Any]]) -> str:
+    lines = [
+        "LightRAG 当前没有返回可用上下文；下面先基于已入库文献知识卡片和解析样本文本给出保守回答。",
+        "",
+        f"问题：{question}",
+        "",
+        "可用证据：",
+    ]
+    for index, item in enumerate(evidence, start=1):
+        stats = item.get("sourceStats") if isinstance(item.get("sourceStats"), dict) else {}
+        pages = stats.get("pages") or "?"
+        units = stats.get("units") or stats.get("blocks") or "?"
+        sample = _clean_text(item.get("sample"))[:500]
+        lines.append(
+            f"{index}. {item.get('title') or item.get('paperId') or 'Untitled'}"
+            f"（页数 {pages}，文本块 {units}）：{sample or '该文献已有入库记录，但知识卡片样本文本较少。'}"
+        )
+    lines.extend(
+        [
+            "",
+            "使用建议：把以上条目视为临时证据索引；完整结论仍应等待 RAGAnything/LightRAG 恢复上下文检索后再细化。",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def ingest_document_with_raganything_sync(

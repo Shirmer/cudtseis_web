@@ -438,6 +438,8 @@ class RagAnythingStatusOut(BaseModel):
     allowParseFallback: bool = False
     parseFallbackMethod: str = ""
     queryMode: str
+    allowQueryFallback: bool = False
+    queryFallbackMode: str = ""
     dependencies: dict[str, Any] = Field(default_factory=dict)
     sourceSnapshot: dict[str, Any] = Field(default_factory=dict)
     requiredActions: list[str] = Field(default_factory=list)
@@ -460,6 +462,8 @@ class RagAnythingQueryOut(BaseModel):
     retrievalMode: str
     queryMode: str = ""
     mode: str
+    attemptedQueryModes: list[str] = Field(default_factory=list)
+    queryFallback: dict[str, Any] = Field(default_factory=dict)
 
 
 class WorkflowStepOut(BaseModel):
