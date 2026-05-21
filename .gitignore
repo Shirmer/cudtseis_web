@@ -44,3 +44,13 @@ Project-Code/Frontend/quakes-frontend/dist/
 *.log
 dev-out.log
 dev-err.log
+
+# rag-system runtime data
+rag-system/data/
+rag-system/logs/
+rag-system/workspaces/
+rag-system/.env
+rag-system/**/*.pyc
+rag-system/**/__pycache__/
+rag-system/**/*.bak
+rag-system/**/*.fixed
