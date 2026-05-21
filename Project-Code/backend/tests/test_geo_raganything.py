@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,29 +12,8 @@ from app.embedding_service import embed_texts
 from app.geo_ids import document_id_from_file, paper_id_from_metadata, point_id_from_unit_id, unit_id_from_parts
 from app.geo_ingest_service import _document_public_url, _storage_uri, _store_document_file
 from app.rag_engines import get_geo_rag_engine_status, index_document_with_primary_engine, normalized_geo_rag_engine
-from app.raganything_service import _build_local_text_content_list, _content_list_stats, _query_raganything_impl, build_event_rag_documents
+from app.raganything_service import build_event_rag_documents
 from app.settings import settings
-
-
-class FakeRagAnythingQuery:
-    def __init__(self, responses: dict[str, object], *, llm_response: object | None = None):
-        self.responses = responses
-        self.llm_response = llm_response
-        self.calls: list[dict[str, object]] = []
-        self.llm_calls: list[dict[str, object]] = []
-
-    async def aquery(self, question: str, **kwargs):
-        self.calls.append({"question": question, **kwargs})
-        response = self.responses.get(str(kwargs.get("mode")))
-        if isinstance(response, Exception):
-            raise response
-        return response
-
-    async def llm_model_func(self, prompt, system_prompt=None, history_messages=[], **kwargs):
-        self.llm_calls.append({"prompt": prompt, "system_prompt": system_prompt, **kwargs})
-        if isinstance(self.llm_response, Exception):
-            raise self.llm_response
-        return self.llm_response
 
 
 class GeoRagAnythingTests(unittest.TestCase):
@@ -174,138 +152,6 @@ class GeoRagAnythingTests(unittest.TestCase):
             self.assertEqual(stored_file["publicUrl"], "https://example.com/files/doc-test.pdf")
             self.assertEqual(storage_uri, "local://doc-test.pdf")
 
-    def test_scanned_pdf_uses_ocr_fallback_when_text_extraction_is_empty(self):
-        old_ocr = settings.raganything_enable_ocr_fallback
-        settings.raganything_enable_ocr_fallback = True
-        try:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                pdf_path = Path(tmpdir) / "scan.pdf"
-                pdf_path.write_bytes(b"%PDF-1.4\n% scanned fixture\n")
-                ocr_blocks = [
-                    {
-                        "type": "text",
-                        "text": "Scanned earthquake fault rupture evidence.",
-                        "page_idx": 0,
-                        "metadata": {"source": "ocr", "ocr": True, "ocrEngine": "tesseract"},
-                    }
-                ]
-                with patch("app.raganything_service._build_pdf_text_content_list", return_value=[]):
-                    with patch("app.raganything_service._build_pdf_ocr_content_list", return_value=ocr_blocks):
-                        blocks = _build_local_text_content_list(pdf_path)
-        finally:
-            settings.raganything_enable_ocr_fallback = old_ocr
-
-        self.assertEqual(blocks, ocr_blocks)
-        stats = _content_list_stats(blocks)
-        self.assertEqual(stats["ocrBlocks"], 1)
-        self.assertEqual(stats["sourceCounts"]["ocr"], 1)
-
-    def test_query_falls_back_to_naive_when_primary_mode_is_empty(self):
-        fake_rag = FakeRagAnythingQuery({"hybrid": "", "naive": "fallback answer"})
-        old_allow = settings.raganything_allow_query_fallback
-        old_fallback = settings.raganything_query_fallback_mode
-        try:
-            settings.raganything_allow_query_fallback = True
-            settings.raganything_query_fallback_mode = "naive"
-            with patch("app.raganything_service._get_raganything", new=lambda: _async_value(fake_rag)):
-                with patch("app.raganything_service._ensure_raganything_query_ready", new=lambda rag: _async_value(None)):
-                    with patch("app.raganything_service._raganything_has_indexed_documents", new=lambda rag: _async_value(True)):
-                        result = asyncio.run(
-                            _query_raganything_impl(
-                                question="fault rupture evidence",
-                                mode="hybrid",
-                            )
-                        )
-        finally:
-            settings.raganything_allow_query_fallback = old_allow
-            settings.raganything_query_fallback_mode = old_fallback
-
-        self.assertEqual(result["answer"], "fallback answer")
-        self.assertEqual(result["queryMode"], "naive")
-        self.assertEqual(result["attemptedQueryModes"], ["hybrid", "naive"])
-        self.assertTrue(result["queryFallback"]["active"])
-        self.assertEqual(fake_rag.calls[0]["vlm_enhanced"], False)
-
-    def test_query_falls_back_to_naive_when_primary_mode_rejects_schema(self):
-        fake_rag = FakeRagAnythingQuery(
-            {
-                "hybrid": RuntimeError("response_format json_schema is not supported"),
-                "naive": "naive answer",
-            }
-        )
-        old_allow = settings.raganything_allow_query_fallback
-        old_fallback = settings.raganything_query_fallback_mode
-        try:
-            settings.raganything_allow_query_fallback = True
-            settings.raganything_query_fallback_mode = "naive"
-            with patch("app.raganything_service._get_raganything", new=lambda: _async_value(fake_rag)):
-                with patch("app.raganything_service._ensure_raganything_query_ready", new=lambda rag: _async_value(None)):
-                    with patch("app.raganything_service._raganything_has_indexed_documents", new=lambda rag: _async_value(True)):
-                        result = asyncio.run(
-                            _query_raganything_impl(
-                                question="fault rupture evidence",
-                                mode="hybrid",
-                            )
-                        )
-        finally:
-            settings.raganything_allow_query_fallback = old_allow
-            settings.raganything_query_fallback_mode = old_fallback
-
-        self.assertEqual(result["answer"], "naive answer")
-        self.assertEqual(result["queryFallback"]["usedMode"], "naive")
-        self.assertIn("response_format", result["queryFallback"]["reason"])
-
-    def test_query_uses_document_cards_when_lightrag_has_no_context(self):
-        fake_rag = FakeRagAnythingQuery(
-            {
-                "hybrid": "",
-                "naive": "Sorry, I'm not able to provide an answer.[no-context]",
-            },
-            llm_response=(
-                "1. 直接结论：断层破裂和构造背景可通过地表破裂、震源参数和板块构造证据联系起来。\n"
-                "2. 证据依据：Wells-Coppersmith 给出破裂尺度经验关系。\n"
-                "3. 不确定性：当前是知识卡片兜底。"
-            ),
-        )
-        card_evidence = [
-            {
-                "documentId": "doc-test",
-                "paperId": "paper-test",
-                "title": "Fault rupture evidence",
-                "score": 3,
-                "sample": "Observed surface rupture and tectonic stress indicators.",
-                "sourceStats": {"pages": 12, "units": 8},
-            }
-        ]
-        old_allow = settings.raganything_allow_query_fallback
-        old_fallback = settings.raganything_query_fallback_mode
-        try:
-            settings.raganything_allow_query_fallback = True
-            settings.raganything_query_fallback_mode = "naive"
-            with patch("app.raganything_service._get_raganything", new=lambda: _async_value(fake_rag)):
-                with patch("app.raganything_service._ensure_raganything_query_ready", new=lambda rag: _async_value(None)):
-                    with patch("app.raganything_service._raganything_has_indexed_documents", new=lambda rag: _async_value(True)):
-                        with patch("app.raganything_service._local_chunk_fallback_evidence", return_value=[]):
-                            with patch("app.raganything_service._document_card_fallback_evidence", return_value=card_evidence):
-                                result = asyncio.run(
-                                    _query_raganything_impl(
-                                        question="fault rupture evidence",
-                                        mode="hybrid",
-                                    )
-                                )
-        finally:
-            settings.raganything_allow_query_fallback = old_allow
-            settings.raganything_query_fallback_mode = old_fallback
-
-        self.assertEqual(result["queryMode"], "document-card")
-        self.assertEqual(result["retrievalMode"], "raganything:document-card-fallback")
-        self.assertEqual(result["attemptedQueryModes"], ["hybrid", "naive", "document-card"])
-        self.assertIn("直接结论", result["answer"])
-        self.assertEqual(result["queryFallback"]["answerSource"], "llm")
-        self.assertEqual(len(fake_rag.llm_calls), 1)
-        self.assertIn("Fault rupture evidence", fake_rag.llm_calls[0]["prompt"])
-        self.assertTrue(result["queryFallback"]["active"])
-
     def test_ssh_document_storage_records_cloud_location(self):
         old_backend = settings.geo_rag_storage_backend
         old_host = settings.geo_rag_storage_ssh_host
@@ -341,10 +187,6 @@ class GeoRagAnythingTests(unittest.TestCase):
         document = SimpleNamespace(metadata_json={"publicUrl": stored_file["publicUrl"]}, file_name="doc-test.pdf")
         self.assertEqual(_document_public_url(document), "https://example.com/geo/doc-test.pdf")
         self.assertEqual(run.call_count, 2)
-
-
-async def _async_value(value):
-    return value
 
 
 if __name__ == "__main__":

@@ -12,6 +12,9 @@ import PapersView from '../views/PapersView.vue'
 import TerraLayout from '../layouts/TerraLayout.vue'
 import TerraChat from '../views/TerraChat.vue'
 
+// --- 3. RAG 知识库 ---
+import RAGDashboard from '../views/RAGDashboard.vue'
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -45,6 +48,13 @@ const router = createRouter({
       path: '/papers/:paperId',
       name: 'paper-detail',
       component: PaperDetailView
+    },
+
+    // =========== RAG 知识库 ===========
+    {
+      path: '/rag',
+      name: 'rag',
+      component: RAGDashboard
     },
 
     // =========== 新增路由 (Terra) ===========

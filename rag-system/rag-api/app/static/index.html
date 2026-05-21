@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAG 文献问答测试界面</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f5f7fb;
+      color: #111827;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 36px 20px;
+    }
+
+    .header {
+      margin-bottom: 22px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 30px;
+    }
+
+    .subtitle {
+      margin-top: 8px;
+      color: #6b7280;
+      font-size: 15px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 18px;
+      padding: 24px;
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: 20px;
+    }
+
+    label {
+      display: block;
+      margin: 10px 0 8px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    textarea,
+    input[type="text"],
+    input[type="file"],
+    select {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid #d1d5db;
+      border-radius: 12px;
+      font-size: 15px;
+      outline: none;
+      background: #fff;
+    }
+
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+
+    textarea:focus,
+    input:focus,
+    select:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .row > * {
+      flex: 1;
+      min-width: 180px;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 500;
+      min-width: 130px;
+      flex: 0;
+      white-space: nowrap;
+    }
+
+    button {
+      border: none;
+      border-radius: 12px;
+      padding: 12px 18px;
+      background: #2563eb;
+      color: white;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      min-width: 120px;
+    }
+
+    button.secondary {
+      background: #111827;
+    }
+
+    button.ghost {
+      background: #eef2ff;
+      color: #3730a3;
+    }
+
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 12px;
+      color: #6b7280;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .success { color: #059669; }
+    .error { color: #dc2626; }
+    .warn { color: #d97706; }
+
+    .answer-box,
+    .result-box {
+      margin-top: 16px;
+      background: #0f172a;
+      color: #e5e7eb;
+      border-radius: 14px;
+      padding: 16px;
+      min-height: 120px;
+      white-space: pre-wrap;
+      line-height: 1.7;
+      font-size: 14px;
+      overflow-x: auto;
+    }
+
+    .tag {
+      display: inline-block;
+      background: #eef2ff;
+      color: #3730a3;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      margin-right: 6px;
+    }
+
+    .small {
+      font-size: 13px;
+      color: #6b7280;
+      line-height: 1.7;
+    }
+
+    .doc-item {
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      margin-top: 10px;
+      background: #f9fafb;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .doc-item code {
+      background: #eef2ff;
+      color: #3730a3;
+      padding: 2px 5px;
+      border-radius: 5px;
+    }
+
+
+    .file-item {
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      margin-top: 10px;
+      background: #f9fafb;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .file-item.duplicate {
+      background: #fff7ed;
+      border-color: #fed7aa;
+    }
+
+    .file-item.new-file {
+      background: #f0fdf4;
+      border-color: #bbf7d0;
+    }
+
+    .file-title {
+      font-weight: 700;
+      word-break: break-all;
+    }
+
+    .file-path {
+      color: #6b7280;
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    h3 {
+      margin: 0 0 12px;
+      font-size: 17px;
+    }
+
+    hr.soft {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 22px 0;
+    }
+
+
+
+    .progress-panel {
+      margin-top: 18px;
+      padding: 16px;
+      border: 1px solid #dbeafe;
+      border-radius: 16px;
+      background: #eff6ff;
+    }
+
+    .progress-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .progress-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .progress-meta {
+      margin-top: 6px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .progress-bar-wrap {
+      width: 100%;
+      height: 16px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #dbeafe;
+      margin-top: 14px;
+      border: 1px solid #bfdbfe;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #2563eb, #10b981);
+      transition: width 0.35s ease;
+    }
+
+    .progress-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .stat-card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+
+    .stat-value {
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .stat-label {
+      margin-top: 2px;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .task-list {
+      margin-top: 14px;
+      max-height: 360px;
+      overflow: auto;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+    }
+
+    .task-row {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .task-row:last-child {
+      border-bottom: none;
+    }
+
+    .task-status-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #e5e7eb;
+      color: #374151;
+      white-space: nowrap;
+      height: 24px;
+      margin-top: 2px;
+    }
+
+    .task-status-pill.status-success,
+    .task-status-pill.status-done {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .task-status-pill.status-failed {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .task-status-pill.status-inserting {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .task-status-pill.status-cloud_running,
+    .task-status-pill.status-cloud_submitted,
+    .task-status-pill.status-cloud_submitting,
+    .task-status-pill.status-cloud_downloading,
+    .task-status-pill.status-cloud_downloading_result {
+      background: #ede9fe;
+      color: #5b21b6;
+    }
+
+    .task-status-pill.status-queued,
+    .task-status-pill.status-waiting_parser {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .task-file-name {
+      font-weight: 700;
+      word-break: break-all;
+    }
+
+    .task-message {
+      color: #64748b;
+      word-break: break-all;
+    }
+
+    .task-id-text {
+      color: #94a3b8;
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    @media (min-width: 900px) {
+      .grid-two {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>RAG 文献问答后台测试台</h1>
+      <div class="subtitle">
+        当前后端：<span class="tag">FastAPI</span>
+        知识库：<span class="tag">default</span>
+        状态：<span id="healthText">检测中...</span>
+      </div>
+    </div>
+
+    <div class="grid">
+
+      <!-- 问答区域 -->
+      <div class="card">
+        <h2>一、知识库问答</h2>
+
+        <label for="question">输入问题</label>
+        <textarea id="question">请总结这篇文献的主要内容、研究方法和核心结论。</textarea>
+
+        <div class="row">
+          <div>
+            <label for="kbId">知识库 ID</label>
+            <input id="kbId" type="text" value="default" />
+          </div>
+
+          <div>
+            <label for="mode">检索模式</label>
+            <select id="mode">
+              <option value="hybrid" selected>hybrid</option>
+              <option value="local">local</option>
+              <option value="global">global</option>
+              <option value="naive">naive</option>
+            </select>
+          </div>
+
+          <label class="checkbox-label">
+            <input id="vlmEnhanced" type="checkbox" checked />
+            多模态增强
+          </label>
+
+          <label class="checkbox-label">
+            <input id="enableRerank" type="checkbox" />
+            Rerank
+          </label>
+        </div>
+
+        <div class="row">
+          <button id="askBtn" onclick="askQuestion()">发送问题</button>
+        </div>
+
+        <div id="chatStatus" class="status">等待提问。</div>
+        <div id="answer" class="answer-box">回答会显示在这里。</div>
+      </div>
+
+      <div class="grid-two">
+
+        <!-- 上传区域 -->
+        <div class="card">
+          <h2>二、上传 PDF</h2>
+
+          <p class="small">
+            当前阶段：上传 PDF 只会保存文件并生成 document_id，暂时不会自动解析入库。
+          </p>
+
+          <label for="uploadKbId">知识库 ID</label>
+          <input id="uploadKbId" type="text" value="default" />
+
+          <label for="pdfFile">选择 PDF 文件</label>
+          <input id="pdfFile" type="file" accept="application/pdf" />
+
+          <div class="row">
+            <button id="uploadBtn" onclick="uploadPdf()">上传 PDF</button>
+          </div>
+
+          <div id="uploadStatus" class="status">等待上传。</div>
+          <div id="uploadResult" class="result-box">上传结果会显示在这里。</div>
+        </div>
+
+        <!-- 文献添加管理区域 -->
+        <div class="card">
+          <h2>二-B、文献添加管理</h2>
+
+          <p class="small">
+            支持两种方式：① 从本机电脑选择 PDF 上传并云解析入库；② 从服务器已有目录选择 PDF 直接提交云解析入库。
+            系统会尽量根据 SHA256、文件路径、文件名判断是否重复。
+          </p>
+
+          <label for="adminKbId">知识库 ID</label>
+          <input id="adminKbId" type="text" value="default" />
+
+          <div class="row">
+            <div>
+              <label for="adminModelVersion">MinerU 模型版本</label>
+              <select id="adminModelVersion">
+                <option value="vlm" selected>vlm：推荐，图文表格公式能力更强</option>
+                <option value="pipeline">pipeline：较快，适合普通文本 PDF</option>
+              </select>
+            </div>
+
+            <label class="checkbox-label">
+              <input id="adminEnableTable" type="checkbox" checked />
+              表格
+            </label>
+
+            <label class="checkbox-label">
+              <input id="adminEnableFormula" type="checkbox" checked />
+              公式
+            </label>
+
+            <label class="checkbox-label">
+              <input id="adminIsOcr" type="checkbox" />
+              OCR
+            </label>
+
+            <label class="checkbox-label">
+              <input id="adminSkipDuplicates" type="checkbox" checked />
+              跳过重复
+            </label>
+          </div>
+
+          <hr class="soft" />
+
+          <h3>方式 A：从本机电脑添加文献</h3>
+
+          <label for="adminLocalFiles">选择 PDF，可多选</label>
+          <input id="adminLocalFiles" type="file" accept="application/pdf" multiple />
+
+          <div class="row">
+            <button class="ghost" onclick="checkLocalFileDuplicates()">检查本机文件是否重复</button>
+            <button onclick="uploadLocalFilesCloudIngest()">上传并云解析入库</button>
+          </div>
+
+          <div id="adminLocalStatus" class="status">等待选择本机 PDF。</div>
+          <div id="adminLocalResult" class="result-box">本机文件检查/上传结果会显示在这里。</div>
+
+          <hr class="soft" />
+
+          <h3>方式 B：从服务器已有文件添加文献</h3>
+
+          <label for="serverDirInput">服务器目录</label>
+          <input id="serverDirInput" type="text" value="/opt/rag-system/data/inputs/batch100" />
+
+          <div class="row">
+            <button class="ghost" onclick="loadServerPdfFiles()">扫描服务器目录</button>
+            <button onclick="selectNonDuplicateServerFiles()">选择非重复文件</button>
+            <button onclick="submitSelectedServerFiles()">提交选中文件云解析入库</button>
+          </div>
+
+          <div id="serverFilesStatus" class="status">等待扫描服务器目录。</div>
+          <div id="serverFilesList"></div>
+          <div id="serverFilesResult" class="result-box">服务器文件处理结果会显示在这里。</div>
+
+          <div class="progress-panel" id="batchProgressPanel">
+            <div class="progress-head">
+              <div>
+                <p class="progress-title">批量任务进度可视化</p>
+                <div id="batchProgressMeta" class="progress-meta">暂无正在跟踪的批量任务。提交本机文件或服务器文件后，这里会自动显示进度。</div>
+              </div>
+              <div class="row" style="margin-top:0;flex:0 0 auto;">
+                <button class="ghost" onclick="refreshBatchProgressNow()">刷新进度</button>
+                <button class="secondary" onclick="clearBatchProgress()">清空跟踪</button>
+              </div>
+            </div>
+
+            <div class="progress-bar-wrap">
+              <div id="batchProgressBar" class="progress-bar"></div>
+            </div>
+
+            <div class="progress-stats">
+              <div class="stat-card">
+                <div id="progressTotal" class="stat-value">0</div>
+                <div class="stat-label">总任务</div>
+              </div>
+              <div class="stat-card">
+                <div id="progressSuccess" class="stat-value success">0</div>
+                <div class="stat-label">成功</div>
+              </div>
+              <div class="stat-card">
+                <div id="progressRunning" class="stat-value warn">0</div>
+                <div class="stat-label">进行中</div>
+              </div>
+              <div class="stat-card">
+                <div id="progressFailed" class="stat-value error">0</div>
+                <div class="stat-label">失败</div>
+              </div>
+              <div class="stat-card">
+                <div id="progressPercent" class="stat-value">0%</div>
+                <div class="stat-label">综合进度</div>
+              </div>
+            </div>
+
+            <div id="batchProgressList" class="task-list">
+              <div class="task-row">
+                <span class="task-status-pill">空</span>
+                <div>
+                  <div class="task-file-name">暂无任务</div>
+                  <div class="task-message">提交批量任务后会显示每篇文献的状态、进度和错误信息。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- content_list 直接入库区域 -->
+        <div class="card">
+          <h2>三、content_list 直接入库</h2>
+
+          <p class="small">
+            用于上传 MinerU 云 API / GPU MinerU 已经解析好的 content_list.json。
+            这个接口不会再解析 PDF，而是直接插入 RAG-Anything / LightRAG。
+          </p>
+
+          <label for="contentListKbId">知识库 ID</label>
+          <input id="contentListKbId" type="text" value="contentlist_test" />
+
+          <label for="originalFileName">原始 PDF 名称</label>
+          <input id="originalFileName" type="text" value="external_document.pdf" />
+
+          <label for="contentListFile">选择 content_list.json</label>
+          <input id="contentListFile" type="file" accept="application/json,.json" />
+
+          <div class="row">
+             <button onclick="uploadContentList()">上传并直接入库</button>
+        </div>
+
+          <div id="contentListStatus" class="status">等待上传 content_list。</div>
+          <div id="contentListResult" class="result-box">content_list 入库结果会显示在这里。</div>
+         </div>
+        <!-- 任务区域 -->
+        <div class="card">
+          <h2>四、创建导入任务 / 查看状态</h2>
+
+          <p class="small">
+            现在导入任务是骨架状态。创建后一般会显示 waiting_parser，
+            后续会接 MinerU 云 API / GPU MinerU / content_list 直接入库。
+          </p>
+
+          <label for="documentId">Document ID</label>
+          <input id="documentId" type="text" placeholder="上传后会自动填入 document_id" />
+
+          <div class="row">
+            <button onclick="createIngestTask()">创建导入任务</button>
+          </div>
+
+          <label for="taskId">Task ID</label>
+          <input id="taskId" type="text" placeholder="创建任务后会自动填入 task_id" />
+
+          <div class="row">
+            <button class="secondary" onclick="getTaskStatus()">查询任务状态</button>
+            <button class="ghost" onclick="startPollingTask()">自动刷新状态</button>
+          </div>
+
+          <div id="taskStatus" class="status">等待任务操作。</div>
+          <div id="taskResult" class="result-box">任务状态会显示在这里。</div>
+        </div>
+      </div>
+
+      <!-- 文档列表区域 -->
+      <div class="card">
+        <h2>五、文档列表</h2>
+
+        <div class="row">
+          <div>
+            <label for="listKbId">知识库 ID</label>
+            <input id="listKbId" type="text" value="default" />
+          </div>
+          <button onclick="loadDocuments()">刷新文档列表</button>
+        </div>
+
+        <div id="documentsStatus" class="status">点击刷新查看已上传文档。</div>
+        <div id="documentsList"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    async function checkHealth() {
+      const el = document.getElementById("healthText");
+      try {
+        const res = await fetch("/health");
+        if (!res.ok) throw new Error("health failed");
+        const data = await res.json();
+        el.textContent = data.status === "ok" ? "正常" : "异常";
+        el.className = data.status === "ok" ? "success" : "warn";
+      } catch (err) {
+        el.textContent = "无法连接";
+        el.className = "error";
+      }
+    }
+
+    function pretty(obj) {
+      return JSON.stringify(obj, null, 2);
+    }
+
+    async function askQuestion() {
+      const kbId = document.getElementById("kbId").value.trim() || "default";
+      const question = document.getElementById("question").value.trim();
+      const mode = document.getElementById("mode").value;
+      const vlmEnhanced = document.getElementById("vlmEnhanced").checked;
+      const enableRerank = document.getElementById("enableRerank").checked;
+
+      const btn = document.getElementById("askBtn");
+      const status = document.getElementById("chatStatus");
+      const answerBox = document.getElementById("answer");
+
+      if (!question) {
+        status.innerHTML = '<span class="error">请先输入问题。</span>';
+        return;
+      }
+
+      btn.disabled = true;
+      status.textContent = "正在请求后端，请稍等……";
+      answerBox.textContent = "";
+
+      try {
+        const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question,
+            mode,
+            vlm_enhanced: vlmEnhanced,
+            enable_rerank: enableRerank
+          })
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+
+        const data = await res.json();
+        status.innerHTML = '<span class="success">请求成功。</span>';
+        answerBox.textContent = data.answer || pretty(data);
+      } catch (err) {
+        status.innerHTML = '<span class="error">请求失败：' + err.message + '</span>';
+        answerBox.textContent = "";
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function uploadPdf() {
+      const kbId = document.getElementById("uploadKbId").value.trim() || "default";
+      const fileInput = document.getElementById("pdfFile");
+      const status = document.getElementById("uploadStatus");
+      const resultBox = document.getElementById("uploadResult");
+      const btn = document.getElementById("uploadBtn");
+
+      if (!fileInput.files || fileInput.files.length === 0) {
+        status.innerHTML = '<span class="error">请先选择 PDF 文件。</span>';
+        return;
+      }
+
+      const file = fileInput.files[0];
+      if (!file.name.toLowerCase().endsWith(".pdf")) {
+        status.innerHTML = '<span class="error">当前只支持 PDF 文件。</span>';
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      btn.disabled = true;
+      status.textContent = "正在上传 PDF……";
+      resultBox.textContent = "";
+
+      try {
+        const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents`, {
+          method: "POST",
+          body: formData
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+
+        const data = await res.json();
+
+        status.innerHTML = '<span class="success">上传成功，已生成 document_id。</span>';
+        resultBox.textContent = pretty(data);
+
+        if (data.document_id) {
+          document.getElementById("documentId").value = data.document_id;
+        }
+
+        document.getElementById("listKbId").value = kbId;
+        loadDocuments();
+      } catch (err) {
+        status.innerHTML = '<span class="error">上传失败：' + err.message + '</span>';
+        resultBox.textContent = "";
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function createIngestTask() {
+      const documentId = document.getElementById("documentId").value.trim();
+      const status = document.getElementById("taskStatus");
+      const resultBox = document.getElementById("taskResult");
+
+      if (!documentId) {
+        status.innerHTML = '<span class="error">请先填写 document_id。</span>';
+        return;
+      }
+
+      status.textContent = "正在创建导入任务……";
+      resultBox.textContent = "";
+
+      try {
+        const res = await fetch(`/api/v1/documents/${encodeURIComponent(documentId)}/ingest`, {
+          method: "POST"
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+
+        const data = await res.json();
+
+        status.innerHTML = '<span class="success">导入任务已创建。</span>';
+        resultBox.textContent = pretty(data);
+
+        if (data.task_id) {
+          document.getElementById("taskId").value = data.task_id;
+        }
+      } catch (err) {
+        status.innerHTML = '<span class="error">创建任务失败：' + err.message + '</span>';
+        resultBox.textContent = "";
+      }
+    }
+
+    async function getTaskStatus() {
+      const taskId = document.getElementById("taskId").value.trim();
+      const status = document.getElementById("taskStatus");
+      const resultBox = document.getElementById("taskResult");
+
+      if (!taskId) {
+        status.innerHTML = '<span class="error">请先填写 task_id。</span>';
+        return null;
+      }
+
+      status.textContent = "正在查询任务状态……";
+
+      try {
+        const res = await fetch(`/api/v1/tasks/${encodeURIComponent(taskId)}`);
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+
+        const data = await res.json();
+
+        const taskStatus = data.status || "unknown";
+        let colorClass = "warn";
+        if (taskStatus === "success" || taskStatus === "done") colorClass = "success";
+        if (taskStatus === "failed") colorClass = "error";
+
+        status.innerHTML = `当前任务状态：<span class="${colorClass}">${taskStatus}</span>`;
+        resultBox.textContent = pretty(data);
+
+        return data;
+      } catch (err) {
+        status.innerHTML = '<span class="error">查询任务失败：' + err.message + '</span>';
+        return null;
+      }
+    }
+
+    let pollingTimer = null;
+
+    function startPollingTask() {
+      if (pollingTimer) {
+        clearInterval(pollingTimer);
+        pollingTimer = null;
+      }
+
+      getTaskStatus();
+
+      pollingTimer = setInterval(async () => {
+        const data = await getTaskStatus();
+        if (!data) return;
+
+        if (["success", "done", "failed", "waiting_parser"].includes(data.status)) {
+          clearInterval(pollingTimer);
+          pollingTimer = null;
+        }
+      }, 3000);
+    }
+
+    async function loadDocuments() {
+      const kbId = document.getElementById("listKbId").value.trim() || "default";
+      const status = document.getElementById("documentsStatus");
+      const list = document.getElementById("documentsList");
+
+      status.textContent = "正在加载文档列表……";
+      list.innerHTML = "";
+
+      try {
+        const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents`);
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+
+        const data = await res.json();
+        const items = data.items || [];
+
+        status.innerHTML = `共找到 <span class="success">${items.length}</span> 个文档。`;
+
+        if (items.length === 0) {
+          list.innerHTML = '<p class="small">暂无文档。</p>';
+          return;
+        }
+
+        list.innerHTML = items.map(doc => `
+          <div class="doc-item">
+            <div><strong>${doc.filename}</strong></div>
+            <div>document_id：<code>${doc.document_id}</code></div>
+            <div>状态：<code>${doc.status}</code></div>
+            <div>路径：${doc.file_path}</div>
+            <div>创建时间：${doc.created_at}</div>
+            <div style="margin-top:8px;">
+              <button class="ghost" onclick="fillDocumentId('${doc.document_id}')">填入导入任务</button>
+            </div>
+          </div>
+        `).join("");
+      } catch (err) {
+        status.innerHTML = '<span class="error">加载文档失败：' + err.message + '</span>';
+      }
+    }
+
+    function fillDocumentId(documentId) {
+      document.getElementById("documentId").value = documentId;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    
+    async function uploadContentList() {
+  const kbId = document.getElementById("contentListKbId").value.trim() || "contentlist_test";
+  const originalFileName = document.getElementById("originalFileName").value.trim() || "external_document.pdf";
+  const fileInput = document.getElementById("contentListFile");
+
+  const status = document.getElementById("contentListStatus");
+  const resultBox = document.getElementById("contentListResult");
+  
+    checkHealth();
+    
+  if (!fileInput.files || fileInput.files.length === 0) {
+    status.innerHTML = '<span class="error">请先选择 content_list.json 文件。</span>';
+    return;
+  }
+
+  const file = fileInput.files[0];
+
+  if (!file.name.toLowerCase().endsWith(".json")) {
+    status.innerHTML = '<span class="error">当前只支持 JSON 文件。</span>';
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("original_file_name", originalFileName);
+
+  status.textContent = "正在上传 content_list 并创建入库任务……";
+  resultBox.textContent = "";
+
+  try {
+    const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/content-list/insert`, {
+      method: "POST",
+      body: formData
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+
+    const data = await res.json();
+
+    status.innerHTML = '<span class="success">content_list 入库任务已创建。</span>';
+    resultBox.textContent = pretty(data);
+
+    if (data.task_id) {
+      document.getElementById("taskId").value = data.task_id;
+      startPollingTask();
+    }
+
+    if (data.document_id) {
+      document.getElementById("documentId").value = data.document_id;
+    }
+
+    document.getElementById("listKbId").value = kbId;
+    document.getElementById("kbId").value = kbId;
+    loadDocuments();
+
+  } catch (err) {
+    status.innerHTML = '<span class="error">上传失败：' + err.message + '</span>';
+    resultBox.textContent = "";
+  }
+}
+
+    function getAdminOptions() {
+      return {
+        kbId: document.getElementById("adminKbId").value.trim() || "default",
+        modelVersion: document.getElementById("adminModelVersion").value,
+        enableTable: document.getElementById("adminEnableTable").checked,
+        enableFormula: document.getElementById("adminEnableFormula").checked,
+        isOcr: document.getElementById("adminIsOcr").checked,
+        skipDuplicates: document.getElementById("adminSkipDuplicates").checked,
+      };
+    }
+
+    async function sha256File(file) {
+      const buffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    async function checkLocalFileDuplicates() {
+      const opts = getAdminOptions();
+      const fileInput = document.getElementById("adminLocalFiles");
+      const status = document.getElementById("adminLocalStatus");
+      const resultBox = document.getElementById("adminLocalResult");
+
+      if (!fileInput.files || fileInput.files.length === 0) {
+        status.innerHTML = '<span class="error">请先选择 PDF 文件。</span>';
+        return;
+      }
+
+      status.textContent = "正在计算本机文件 SHA256 并检查重复，请稍等……";
+      resultBox.textContent = "";
+
+      try {
+        const items = [];
+
+        for (const file of fileInput.files) {
+          if (!file.name.toLowerCase().endsWith(".pdf")) {
+            throw new Error("当前只支持 PDF 文件：" + file.name);
+          }
+
+          const sha256 = await sha256File(file);
+          items.push({
+            filename: file.name,
+            sha256,
+          });
+        }
+
+        const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(opts.kbId)}/documents/check-duplicates`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items })
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+
+        const data = await res.json();
+
+        const dupCount = (data.items || []).filter(x => x.is_duplicate).length;
+        const newCount = (data.items || []).length - dupCount;
+
+        status.innerHTML = `检查完成：<span class="success">${newCount}</span> 个新文件，<span class="warn">${dupCount}</span> 个可能重复。`;
+        resultBox.textContent = pretty(data);
+
+      } catch (err) {
+        status.innerHTML = '<span class="error">检查失败：' + err.message + '</span>';
+      }
+    }
+
+    async function uploadLocalFilesCloudIngest() {
+      const opts = getAdminOptions();
+      const fileInput = document.getElementById("adminLocalFiles");
+      const status = document.getElementById("adminLocalStatus");
+      const resultBox = document.getElementById("adminLocalResult");
+
+      if (!fileInput.files || fileInput.files.length === 0) {
+        status.innerHTML = '<span class="error">请先选择 PDF 文件。</span>';
+        return;
+      }
+
+      if (fileInput.files.length > 50) {
+        status.innerHTML = '<span class="error">一次最多上传 50 个文件，建议 20 个一批。</span>';
+        return;
+      }
+
+      const formData = new FormData();
+
+      for (const file of fileInput.files) {
+        if (!file.name.toLowerCase().endsWith(".pdf")) {
+          status.innerHTML = '<span class="error">当前只支持 PDF 文件：' + file.name + '</span>';
+          return;
+        }
+        formData.append("files", file);
+      }
+
+      formData.append("model_version", opts.modelVersion);
+      formData.append("enable_table", opts.enableTable);
+      formData.append("enable_formula", opts.enableFormula);
+      formData.append("is_ocr", opts.isOcr);
+      formData.append("language", "ch");
+
+      status.textContent = "正在上传本机 PDF，并提交 MinerU 云解析入库任务……";
+      resultBox.textContent = "";
+
+      try {
+        const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(opts.kbId)}/documents/batch-cloud-ingest`, {
+          method: "POST",
+          body: formData
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+
+        const data = await res.json();
+
+        status.innerHTML = '<span class="success">本机文件已提交云解析入库任务。</span>';
+        resultBox.textContent = pretty(data);
+        registerBatchProgress(data, opts.kbId, "本机多文件上传");
+
+        if (data.items && data.items.length > 0) {
+          document.getElementById("taskId").value = data.items[0].task_id;
+          document.getElementById("documentId").value = data.items[0].document_id;
+          startPollingTask();
+        }
+
+        document.getElementById("kbId").value = opts.kbId;
+        document.getElementById("listKbId").value = opts.kbId;
+        loadDocuments();
+
+      } catch (err) {
+        status.innerHTML = '<span class="error">提交失败：' + err.message + '</span>';
+      }
+    }
+
+    let currentServerFiles = [];
+
+    async function loadServerPdfFiles() {
+      const opts = getAdminOptions();
+      const dir = document.getElementById("serverDirInput").value.trim();
+      const status = document.getElementById("serverFilesStatus");
+      const list = document.getElementById("serverFilesList");
+      const resultBox = document.getElementById("serverFilesResult");
+
+      if (!dir) {
+        status.innerHTML = '<span class="error">请填写服务器目录。</span>';
+        return;
+      }
+
+      status.textContent = "正在扫描服务器目录并计算重复状态……";
+      list.innerHTML = "";
+      resultBox.textContent = "";
+
+      try {
+        const url = `/api/v1/admin/server-files?kb_id=${encodeURIComponent(opts.kbId)}&dir=${encodeURIComponent(dir)}`;
+        const res = await fetch(url);
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+
+        const data = await res.json();
+        currentServerFiles = data.items || [];
+
+        const dupCount = currentServerFiles.filter(x => x.is_duplicate).length;
+        const newCount = currentServerFiles.length - dupCount;
+
+        status.innerHTML = `扫描完成：共 <span class="success">${currentServerFiles.length}</span> 个 PDF；新文件 <span class="success">${newCount}</span> 个；可能重复 <span class="warn">${dupCount}</span> 个。`;
+        resultBox.textContent = pretty(data);
+
+        if (currentServerFiles.length === 0) {
+          list.innerHTML = '<p class="small">该目录下没有 PDF。</p>';
+          return;
+        }
+
+        list.innerHTML = currentServerFiles.map((file, idx) => {
+          const cls = file.is_duplicate ? "duplicate" : "new-file";
+          const statusText = file.is_duplicate
+            ? `可能重复：${file.reason || "unknown"}`
+            : "新文件";
+
+          return `
+            <div class="file-item ${cls}">
+              <label class="checkbox-label" style="display:flex;white-space:normal;">
+                <input class="server-file-checkbox" type="checkbox" data-index="${idx}" ${file.is_duplicate ? "" : "checked"} />
+                <span class="file-title">${file.filename}</span>
+              </label>
+              <div>状态：<code>${statusText}</code></div>
+              <div>大小：${Math.round((file.size_bytes || 0) / 1024)} KB</div>
+              <div>SHA256：<code>${file.sha256 || "-"}</code></div>
+              <div class="file-path">${file.file_path}</div>
+            </div>
+          `;
+        }).join("");
+
+      } catch (err) {
+        status.innerHTML = '<span class="error">扫描失败：' + err.message + '</span>';
+      }
+    }
+
+    function selectNonDuplicateServerFiles() {
+      const boxes = document.querySelectorAll(".server-file-checkbox");
+      boxes.forEach(box => {
+        const idx = Number(box.dataset.index);
+        const item = currentServerFiles[idx];
+        box.checked = item && !item.is_duplicate;
+      });
+    }
+
+    async function submitSelectedServerFiles() {
+      const opts = getAdminOptions();
+      const status = document.getElementById("serverFilesStatus");
+      const resultBox = document.getElementById("serverFilesResult");
+
+      const boxes = Array.from(document.querySelectorAll(".server-file-checkbox"));
+      const selected = boxes
+        .filter(box => box.checked)
+        .map(box => currentServerFiles[Number(box.dataset.index)])
+        .filter(Boolean);
+
+      if (selected.length === 0) {
+        status.innerHTML = '<span class="error">请先选择要提交的服务器 PDF。</span>';
+        return;
+      }
+
+      if (selected.length > 50) {
+        status.innerHTML = '<span class="error">一次最多提交 50 个文件，建议 20 个一批。</span>';
+        return;
+      }
+
+      status.textContent = `正在提交 ${selected.length} 个服务器已有 PDF 到 MinerU 云解析入库任务……`;
+
+      try {
+        const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(opts.kbId)}/documents/server-paths-cloud-ingest`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            file_paths: selected.map(x => x.file_path),
+            model_version: opts.modelVersion,
+            enable_formula: opts.enableFormula,
+            enable_table: opts.enableTable,
+            is_ocr: opts.isOcr,
+            language: "ch",
+            skip_duplicates: opts.skipDuplicates,
+          })
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+
+        const data = await res.json();
+
+        status.innerHTML = '<span class="success">服务器文件已提交云解析入库任务。</span>';
+        resultBox.textContent = pretty(data);
+        registerBatchProgress(data, opts.kbId, "服务器已有文件");
+
+        if (data.items && data.items.length > 0) {
+          document.getElementById("taskId").value = data.items[0].task_id;
+          document.getElementById("documentId").value = data.items[0].document_id;
+          startPollingTask();
+        }
+
+        document.getElementById("kbId").value = opts.kbId;
+        document.getElementById("listKbId").value = opts.kbId;
+        loadDocuments();
+
+      } catch (err) {
+        status.innerHTML = '<span class="error">提交失败：' + err.message + '</span>';
+      }
+    }
+
+
+    const BATCH_PROGRESS_STORAGE_KEY = "rag_admin_batch_progress_v1";
+    let currentBatchProgress = null;
+    let batchProgressTimer = null;
+
+    function isTerminalTaskStatus(status) {
+      return ["success", "done", "failed", "duplicate_skipped", "skipped"].includes(status);
+    }
+
+    function getTaskProgressWeight(status) {
+      if (status === "success" || status === "done") return 100;
+      if (status === "failed") return 100;
+      if (status === "inserting" || status === "ingesting" || status === "indexed") return 80;
+      if (status === "cloud_downloading" || status === "cloud_downloading_result" || status === "result_downloaded") return 60;
+      if (status === "cloud_running" || status === "parser_running") return 40;
+      if (status === "cloud_submitted" || status === "parser_submitted") return 25;
+      if (status === "cloud_submitting" || status === "parser_queued") return 15;
+      if (status === "queued" || status === "waiting_parser" || status === "uploaded") return 5;
+      return 10;
+    }
+
+    function saveBatchProgress() {
+      if (!currentBatchProgress) return;
+      localStorage.setItem(BATCH_PROGRESS_STORAGE_KEY, JSON.stringify(currentBatchProgress));
+    }
+
+    function loadSavedBatchProgress() {
+      const raw = localStorage.getItem(BATCH_PROGRESS_STORAGE_KEY);
+      if (!raw) {
+        renderBatchProgress();
+        return;
+      }
+
+      try {
+        currentBatchProgress = JSON.parse(raw);
+        renderBatchProgress();
+        if (currentBatchProgress && currentBatchProgress.tasks && currentBatchProgress.tasks.some(t => !isTerminalTaskStatus(t.status))) {
+          startBatchProgressPolling();
+        }
+      } catch (err) {
+        console.warn("无法恢复批量进度：", err);
+        localStorage.removeItem(BATCH_PROGRESS_STORAGE_KEY);
+        currentBatchProgress = null;
+        renderBatchProgress();
+      }
+    }
+
+    function registerBatchProgress(data, kbId, sourceLabel) {
+      const items = (data.items || []).filter(x => x.task_id);
+      if (items.length === 0) return;
+
+      currentBatchProgress = {
+        job_id: `frontend_${Date.now()}`,
+        kb_id: kbId,
+        source: sourceLabel,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        skipped_duplicates: data.skipped_duplicates || [],
+        tasks: items.map(item => ({
+          task_id: item.task_id,
+          document_id: item.document_id || "",
+          filename: item.filename || item.file_path || item.task_id,
+          file_path: item.file_path || "",
+          status: item.status || "queued",
+          message: item.message || "已提交，等待后端处理",
+          updated_at: "",
+        }))
+      };
+
+      saveBatchProgress();
+      renderBatchProgress();
+      startBatchProgressPolling();
+    }
+
+    function getBatchSummary() {
+      const tasks = currentBatchProgress?.tasks || [];
+      const total = tasks.length;
+      const success = tasks.filter(t => t.status === "success" || t.status === "done").length;
+      const failed = tasks.filter(t => t.status === "failed").length;
+      const terminal = tasks.filter(t => isTerminalTaskStatus(t.status)).length;
+      const running = Math.max(0, total - terminal);
+      const percent = total === 0
+        ? 0
+        : Math.round(tasks.reduce((sum, t) => sum + getTaskProgressWeight(t.status), 0) / total);
+
+      return { total, success, failed, running, terminal, percent };
+    }
+
+    function statusClass(status) {
+      return `status-${String(status || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+    }
+
+    function renderBatchProgress() {
+      const meta = document.getElementById("batchProgressMeta");
+      const bar = document.getElementById("batchProgressBar");
+      const list = document.getElementById("batchProgressList");
+      const totalEl = document.getElementById("progressTotal");
+      const successEl = document.getElementById("progressSuccess");
+      const runningEl = document.getElementById("progressRunning");
+      const failedEl = document.getElementById("progressFailed");
+      const percentEl = document.getElementById("progressPercent");
+
+      if (!meta || !bar || !list) return;
+
+      if (!currentBatchProgress || !currentBatchProgress.tasks || currentBatchProgress.tasks.length === 0) {
+        meta.textContent = "暂无正在跟踪的批量任务。提交本机文件或服务器文件后，这里会自动显示进度。";
+        bar.style.width = "0%";
+        totalEl.textContent = "0";
+        successEl.textContent = "0";
+        runningEl.textContent = "0";
+        failedEl.textContent = "0";
+        percentEl.textContent = "0%";
+        list.innerHTML = `
+          <div class="task-row">
+            <span class="task-status-pill">空</span>
+            <div>
+              <div class="task-file-name">暂无任务</div>
+              <div class="task-message">提交批量任务后会显示每篇文献的状态、进度和错误信息。</div>
+            </div>
+          </div>`;
+        return;
+      }
+
+      const summary = getBatchSummary();
+      const skippedCount = currentBatchProgress.skipped_duplicates?.length || 0;
+      const startedAt = currentBatchProgress.created_at ? new Date(currentBatchProgress.created_at).toLocaleString() : "-";
+      const updatedAt = currentBatchProgress.updated_at ? new Date(currentBatchProgress.updated_at).toLocaleString() : "-";
+
+      meta.innerHTML = `来源：<strong>${currentBatchProgress.source || "批量任务"}</strong>；知识库：<strong>${currentBatchProgress.kb_id}</strong>；开始：${startedAt}；更新：${updatedAt}；跳过重复：${skippedCount}。`;
+      bar.style.width = `${summary.percent}%`;
+      totalEl.textContent = summary.total;
+      successEl.textContent = summary.success;
+      runningEl.textContent = summary.running;
+      failedEl.textContent = summary.failed;
+      percentEl.textContent = `${summary.percent}%`;
+
+      list.innerHTML = currentBatchProgress.tasks.map((task, index) => `
+        <div class="task-row">
+          <span class="task-status-pill ${statusClass(task.status)}">${task.status || "unknown"}</span>
+          <div>
+            <div class="task-file-name">${index + 1}. ${task.filename || task.document_id || task.task_id}</div>
+            <div class="task-message">${task.message || "-"}</div>
+            <div class="task-id-text">task_id: ${task.task_id}</div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    async function pollBatchProgressOnce() {
+      if (!currentBatchProgress || !currentBatchProgress.tasks) return;
+
+      const tasks = currentBatchProgress.tasks;
+      for (const task of tasks) {
+        if (!task.task_id || isTerminalTaskStatus(task.status)) continue;
+
+        try {
+          const res = await fetch(`/api/v1/tasks/${encodeURIComponent(task.task_id)}`);
+          if (!res.ok) {
+            task.message = `查询失败：HTTP ${res.status}`;
+            continue;
+          }
+
+          const data = await res.json();
+          task.status = data.status || task.status || "unknown";
+          task.message = data.message || "";
+          task.updated_at = data.updated_at || "";
+          task.document_id = data.document_id || task.document_id;
+          task.kb_id = data.kb_id || task.kb_id;
+        } catch (err) {
+          task.message = `查询失败：${err.message}`;
+        }
+      }
+
+      currentBatchProgress.updated_at = new Date().toISOString();
+      saveBatchProgress();
+      renderBatchProgress();
+
+      if (tasks.every(t => isTerminalTaskStatus(t.status))) {
+        stopBatchProgressPolling();
+      }
+    }
+
+    function startBatchProgressPolling() {
+      stopBatchProgressPolling();
+      pollBatchProgressOnce();
+      batchProgressTimer = setInterval(pollBatchProgressOnce, 10000);
+    }
+
+    function stopBatchProgressPolling() {
+      if (batchProgressTimer) {
+        clearInterval(batchProgressTimer);
+        batchProgressTimer = null;
+      }
+    }
+
+    async function refreshBatchProgressNow() {
+      await pollBatchProgressOnce();
+    }
+
+    function clearBatchProgress() {
+      stopBatchProgressPolling();
+      currentBatchProgress = null;
+      localStorage.removeItem(BATCH_PROGRESS_STORAGE_KEY);
+      renderBatchProgress();
+    }
+
+
+    checkHealth();
+    loadSavedBatchProgress();
+  </script>
+</body>
+</html>
