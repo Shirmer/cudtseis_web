@@ -1,0 +1,1670 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GeoRAG Studio - 静态原型</title>
+  <style>
+    :root {
+      --bg: #070a0f;
+      --panel: rgba(18, 24, 35, 0.78);
+      --panel-strong: rgba(23, 31, 45, 0.96);
+      --panel-soft: rgba(255, 255, 255, 0.055);
+      --line: rgba(255, 255, 255, 0.105);
+      --line-strong: rgba(255, 255, 255, 0.18);
+      --text: #edf4ff;
+      --muted: #8b98aa;
+      --muted-2: #647184;
+      --accent: #8be9d3;
+      --accent-2: #66a6ff;
+      --warning: #ffd166;
+      --danger: #ff6b7a;
+      --success: #86efac;
+      --radius: 22px;
+      --radius-sm: 14px;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 12%, rgba(102,166,255,0.18), transparent 30%),
+        radial-gradient(circle at 88% 4%, rgba(139,233,211,0.13), transparent 26%),
+        radial-gradient(circle at 68% 90%, rgba(184,134,255,0.12), transparent 34%),
+        linear-gradient(145deg, #05070b 0%, #09111c 46%, #05070b 100%);
+      overflow-x: hidden;
+    }
+
+    .noise {
+      position: fixed; inset: 0; pointer-events: none; opacity: 0.12;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 38px 38px;
+      mask-image: radial-gradient(circle at center, black, transparent 80%);
+    }
+
+    .app { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; position: relative; z-index: 1; }
+
+    aside {
+      position: sticky; top: 0; height: 100vh; padding: 22px 18px;
+      border-right: 1px solid var(--line); background: rgba(4, 8, 14, 0.74); backdrop-filter: blur(24px);
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; padding: 10px 10px 22px; }
+
+    .logo {
+      width: 42px; height: 42px; border-radius: 16px; display: grid; place-items: center;
+      color: #06100e; font-weight: 800; letter-spacing: -0.04em;
+      background: radial-gradient(circle at 30% 24%, #ffffff, transparent 22%), linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 14px 36px rgba(102,166,255,0.24);
+    }
+
+    .brand h1 { margin: 0; font-size: 17px; letter-spacing: -0.02em; }
+    .brand p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+
+    nav { display: grid; gap: 7px; }
+
+    .nav-item {
+      border: 1px solid transparent; color: #b9c4d3; padding: 12px 13px; border-radius: 15px;
+      cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+      transition: 0.2s ease; user-select: none; font-size: 14px;
+    }
+
+    .nav-item span:first-child { display: flex; align-items: center; gap: 10px; }
+    .nav-item:hover { background: rgba(255,255,255,0.055); color: #fff; }
+
+    .nav-item.active {
+      background: linear-gradient(135deg, rgba(139,233,211,0.16), rgba(102,166,255,0.12));
+      border-color: rgba(139,233,211,0.25); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+    }
+
+    .badge {
+      padding: 3px 8px; border-radius: 999px; font-size: 11px; color: var(--accent);
+      background: rgba(139,233,211,0.1); border: 1px solid rgba(139,233,211,0.2);
+    }
+
+    .side-card {
+      position: absolute; left: 18px; right: 18px; bottom: 20px; padding: 16px; border-radius: 20px;
+      border: 1px solid var(--line); background: linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.035));
+    }
+
+    .side-card h3 { margin: 0 0 8px; font-size: 14px; }
+    .side-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+
+    main { padding: 24px; max-width: 1540px; width: 100%; margin: 0 auto; }
+
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; gap: 18px; }
+
+    .title h2 { margin: 0; font-size: 28px; letter-spacing: -0.045em; font-weight: 760; }
+    .title p { margin: 7px 0 0; color: var(--muted); font-size: 14px; }
+
+    .top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+    .select, .btn, .input {
+      height: 42px; border-radius: 14px; border: 1px solid var(--line);
+      background: rgba(255,255,255,0.06); color: var(--text); padding: 0 13px; font-family: var(--font); outline: none;
+    }
+
+    .select option { background: #111827; color: white; }
+
+    .btn {
+      cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; transition: 0.2s ease; font-weight: 650;
+    }
+
+    .btn:hover { transform: translateY(-1px); background: rgba(255,255,255,0.1); }
+    .btn.primary { border-color: rgba(139,233,211,0.34); background: linear-gradient(135deg, rgba(139,233,211,0.95), rgba(102,166,255,0.92)); color: #06100e; }
+    .btn.danger { color: #ffd5d9; border-color: rgba(255,107,122,0.35); background: rgba(255,107,122,0.08); }
+
+    .page { display: none; animation: fade 0.22s ease; }
+    .page.active { display: block; }
+    @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+
+    .grid { display: grid; gap: 16px; }
+    .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.main-split { grid-template-columns: minmax(0, 1.25fr) minmax(360px, 0.75fr); }
+    .grid.chat-split { grid-template-columns: minmax(0, 1fr) 420px; align-items: stretch; }
+
+    .card { border: 1px solid var(--line); background: var(--panel); backdrop-filter: blur(24px); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+    .card.pad { padding: 18px; }
+
+    .card-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 18px 0; gap: 14px; }
+    .card-head h3, .section-title { margin: 0; font-size: 16px; letter-spacing: -0.02em; }
+    .card-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+
+    .stat { padding: 18px; min-height: 126px; position: relative; }
+    .stat .label { color: var(--muted); font-size: 13px; }
+    .stat .num { margin-top: 14px; font-size: 32px; font-weight: 760; letter-spacing: -0.04em; }
+    .stat .trend { margin-top: 10px; color: var(--success); font-size: 12px; }
+    .stat .icon {
+      position: absolute; right: 16px; top: 16px; width: 34px; height: 34px; border-radius: 13px;
+      display: grid; place-items: center; background: rgba(139,233,211,0.09);
+      color: var(--accent); border: 1px solid rgba(139,233,211,0.16);
+    }
+
+    .hero {
+      min-height: 280px; position: relative; padding: 24px; overflow: hidden;
+      background: radial-gradient(circle at 80% 50%, rgba(139,233,211,0.12), transparent 24%),
+        radial-gradient(circle at 55% 20%, rgba(102,166,255,0.14), transparent 34%), rgba(18,24,35,0.72);
+    }
+
+    .hero h3 { margin: 0; max-width: 560px; font-size: 28px; line-height: 1.18; letter-spacing: -0.05em; }
+    .hero p { margin: 14px 0 22px; max-width: 610px; color: var(--muted); line-height: 1.75; font-size: 14px; }
+    .pipeline { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .pill {
+      padding: 8px 11px; border-radius: 999px; background: rgba(255,255,255,0.065);
+      border: 1px solid var(--line); color: #d6deea; font-size: 12px;
+    }
+
+    .orb {
+      position: absolute; width: 250px; height: 250px; right: 30px; bottom: -52px; border-radius: 50%;
+      background: radial-gradient(circle at 36% 24%, rgba(255,255,255,0.9), transparent 8%),
+        radial-gradient(circle at 32% 32%, rgba(139,233,211,0.95), transparent 19%),
+        radial-gradient(circle at 68% 68%, rgba(102,166,255,0.7), transparent 34%),
+        linear-gradient(135deg, #132840, #06131e 62%, #050a12);
+      box-shadow: inset -38px -42px 80px rgba(0,0,0,0.55), 0 38px 100px rgba(102,166,255,0.23);
+    }
+
+    .orb::before, .orb::after {
+      content: ""; position: absolute; inset: 18px; border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 50%; transform: rotate(-22deg) scaleY(0.34);
+    }
+    .orb::after { inset: 54px -28px; border-color: rgba(139,233,211,0.18); transform: rotate(18deg) scaleY(0.18); }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    th, td {
+      padding: 13px 14px; border-bottom: 1px solid var(--line); text-align: left;
+      color: #dbe4f0; font-size: 13px; vertical-align: middle;
+    }
+
+    th { color: var(--muted); font-weight: 650; background: rgba(255,255,255,0.035); }
+    tr:last-child td { border-bottom: none; }
+
+    .status {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+      padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line); color: #dfe9f7;
+    }
+
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+    .ok .dot { background: var(--success); }
+    .run .dot { background: var(--accent-2); }
+    .fail .dot { background: var(--danger); }
+    .wait .dot { background: var(--warning); }
+
+    .upload-zone {
+      border: 1.5px dashed rgba(139,233,211,0.34);
+      background: linear-gradient(135deg, rgba(139,233,211,0.08), rgba(102,166,255,0.06));
+      min-height: 228px; border-radius: 24px; display: grid; place-items: center;
+      text-align: center; padding: 28px;
+    }
+
+    .upload-zone .big { font-size: 42px; margin-bottom: 12px; }
+    .upload-zone h3 { margin: 0 0 8px; font-size: 19px; }
+    .upload-zone p { margin: 0; color: var(--muted); line-height: 1.7; }
+
+    .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 16px; }
+
+    .field { padding: 13px; border-radius: 16px; background: rgba(255,255,255,0.045); border: 1px solid var(--line); }
+    .field label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    .field .input, .field .select { width: 100%; }
+
+    .switch-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 0; border-bottom: 1px solid var(--line);
+    }
+    .switch-row:last-child { border-bottom: none; }
+    .switch-row p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+
+    .toggle {
+      width: 46px; height: 26px; border-radius: 999px; border: 1px solid rgba(139,233,211,0.28);
+      background: rgba(139,233,211,0.14); position: relative; flex: 0 0 auto;
+    }
+    .toggle::after {
+      content: ""; position: absolute; width: 20px; height: 20px; top: 2px;
+      right: 2px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    }
+    .toggle.off { border-color: var(--line); background: rgba(255,255,255,0.05); }
+    .toggle.off::after { left: 2px; right: auto; background: #6b7280; }
+
+    .progress { width: 100%; height: 8px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+    .progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+
+    .chat-box { height: 70vh; min-height: 500px; max-height: 800px; display: grid; grid-template-rows: auto 1fr auto; }
+
+    .mode-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px; border-bottom: 1px solid var(--line); }
+    .mode-tabs .pill.active { background: rgba(139,233,211,0.15); color: var(--accent); border-color: rgba(139,233,211,0.3); }
+
+    .messages { padding: 18px; overflow: auto; display: grid; align-content: start; gap: 14px; }
+
+    .msg { max-width: 82%; padding: 14px 15px; border-radius: 18px; line-height: 1.72; font-size: 14px; }
+    .msg.user { justify-self: end; background: linear-gradient(135deg, rgba(139,233,211,0.18), rgba(102,166,255,0.14)); border: 1px solid rgba(139,233,211,0.22); }
+    .msg.ai { justify-self: start; background: rgba(255,255,255,0.055); border: 1px solid var(--line); }
+
+    .composer { padding: 14px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+    .composer input { width: 100%; }
+
+    .evidence-list { display: grid; gap: 12px; padding: 18px; }
+    .evidence { border: 1px solid var(--line); border-radius: 18px; padding: 13px; background: rgba(255,255,255,0.045); }
+    .evidence h4 { margin: 0 0 8px; font-size: 13px; }
+    .evidence p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .score { color: var(--accent); font-weight: 700; }
+
+    .graph-wrap { min-height: 590px; position: relative; overflow: hidden; background: radial-gradient(circle at 50% 45%, rgba(102,166,255,0.12), transparent 32%), rgba(255,255,255,0.03); }
+
+    .graph-node {
+      position: absolute; padding: 10px 12px; border-radius: 999px; background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 18px 54px rgba(0,0,0,0.28);
+      font-size: 13px; backdrop-filter: blur(20px);
+    }
+    .graph-node.core { background: linear-gradient(135deg, rgba(139,233,211,0.22), rgba(102,166,255,0.16)); border-color: rgba(139,233,211,0.35); color: #fff; font-weight: 700; }
+
+    .line-svg { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.54; }
+
+    .settings-list { display: grid; gap: 12px; }
+
+    .setting-card {
+      padding: 16px; border: 1px solid var(--line); border-radius: 18px;
+      background: rgba(255,255,255,0.045); display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
+    }
+    .setting-card h4 { margin: 0 0 4px; font-size: 14px; }
+    .setting-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+
+    .code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: #cfe7ff; background: rgba(0,0,0,0.23); border: 1px solid var(--line);
+      border-radius: 14px; padding: 12px; overflow: auto; font-size: 12px; line-height: 1.7;
+    }
+
+    .mobile-header { display: none; }
+    #graphContainer canvas { outline: none; }
+    .vis-tooltip { background: rgba(8,14,24,0.92) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 10px !important; padding: 10px 12px !important; color: #dce6f2 !important; font-size: 12px !important; line-height: 1.6 !important; max-width: 300px !important; backdrop-filter: blur(12px) !important; }
+
+    @media (max-width: 1100px) {
+      .app { grid-template-columns: 1fr; }
+      aside { display: none; }
+      .mobile-header { display: flex; position: sticky; top: 0; z-index: 5; padding: 12px 16px; border-bottom: 1px solid var(--line); background: rgba(5,8,13,0.82); backdrop-filter: blur(18px); gap: 8px; overflow-x: auto; }
+      .mobile-header button { white-space: nowrap; }
+      main { padding: 18px; }
+      header { align-items: flex-start; flex-direction: column; }
+      .grid.cols-4, .grid.cols-3, .grid.cols-2, .grid.main-split, .grid.chat-split { grid-template-columns: 1fr; }
+      .chat-box { height: auto; min-height: 620px; }
+      .orb { opacity: 0.32; }
+    }
+  </style>
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+</head>
+<body>
+  <div class="noise"></div>
+  <div class="mobile-header" id="mobileNav"></div>
+  <div class="app">
+    <aside>
+      <div class="brand">
+        <div class="logo">G</div>
+        <div><h1>GeoRAG Studio</h1><p>RAG-Anything × LightRAG</p></div>
+      </div>
+      <nav id="sideNav"></nav>
+      <div class="side-card">
+        <h3>当前知识库</h3>
+        <p>地震与地质文献库 · 128 篇文档 · 多模态解析开启 · 默认 Mix 查询模式</p>
+      </div>
+    </aside>
+
+    <main>
+      <header>
+        <div class="title">
+          <h2 id="pageTitle">工作台</h2>
+          <p id="pageSub">从上传、解析、入库，到问答、证据追溯和图谱探索的一体化文献知识库界面。</p>
+        </div>
+        <div class="top-actions">
+          <span style="color:var(--muted);font-size:13px;align-self:center;">地震与地质文献库</span>
+          <button class="btn primary" onclick="switchPage('upload')">上传文档</button>
+        </div>
+      </header>
+
+      <section class="page active" id="dashboard">
+        <div class="grid cols-4" id="dashStats">
+          <div class="card stat"><div class="icon">📚</div><div class="label">已入库文档</div><div class="num" id="dashDocCount">-</div><div class="trend" id="dashDocTrend">加载中...</div></div>
+          <div class="card stat"><div class="icon">🧩</div><div class="label">知识单元 Chunks</div><div class="num">N/A</div><div class="trend">后端未提供 chunks 统计</div></div>
+          <div class="card stat"><div class="icon">🕸</div><div class="label">实体 / 关系</div><div class="num" id="dashGraphCount">-</div><div class="trend" id="dashGraphTrend">加载中...</div></div>
+          <div class="card stat"><div class="icon">⚡</div><div class="label">平均问答耗时</div><div class="num" id="dashAvgTime">-</div><div class="trend" id="dashAvgTrend">前端计时统计</div></div>
+        </div>
+        <div class="grid main-split" style="margin-top:16px;">
+          <div class="card hero">
+            <h3>多模态文献知识库工作台，而不是普通聊天框。</h3>
+            <p>将论文 PDF、Office、图片、表格和公式解析成结构化 content_list，再通过 LightRAG 建立向量索引与知识图谱。用户可以问答、查看引用证据、调试检索路径、管理任务和导出图谱。</p>
+            <div class="pipeline">
+              <span class="pill">上传文档</span><span class="pill">MinerU / Docling / PaddleOCR</span>
+              <span class="pill">文本 + 图片 + 表格 + 公式</span>
+              <span class="pill">向量库</span><span class="pill">知识图谱</span><span class="pill">可追溯问答</span>
+            </div>
+            <div class="orb"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>系统健康状态</h3><p>服务、模型和解析器连接状态</p></div></div>
+            <div style="padding:10px 18px 18px;" id="dashHealth">
+              <div class="switch-row"><div><strong>RAG API</strong><p>检查中...</p></div><span class="status wait"><span class="dot"></span>检查中</span></div>
+              <div class="switch-row"><div><strong>MinerU 云解析</strong><p>检查中...</p></div><span class="status wait"><span class="dot"></span>检查中</span></div>
+              <div class="switch-row"><div><strong>Embedding</strong><p>检查中...</p></div><span class="status wait"><span class="dot"></span>检查中</span></div>
+              <div class="switch-row"><div><strong>VLM 图像理解</strong><p>检查中...</p></div><span class="status wait"><span class="dot"></span>检查中</span></div>
+              <div class="switch-row"><div><strong>任务队列</strong><p>检查中...</p></div><span class="status wait"><span class="dot"></span>检查中</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="grid cols-2" style="margin-top:16px;">
+          <div class="card">
+            <div class="card-head"><div><h3>最近任务</h3><p>解析、入库、多模态处理状态</p></div><div><button class="btn" onclick="loadDashboard()">↻ 刷新</button><button class="btn" onclick="switchPage('tasks')">全部任务</button></div></div>
+            <div style="padding-top:14px;overflow-x:auto;">
+              <table>
+                <thead><tr><th>文件</th><th>阶段</th><th>状态</th><th>时间</th></tr></thead>
+                <tbody id="dashRecentTasks">
+                  <tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px;">加载中...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>文档状态分布</h3><p>按入库状态分类统计</p></div></div>
+            <div class="grid cols-3" style="padding:18px;" id="dashDocDist">
+              <div class="field"><label>Indexed 已入库</label><div style="font-size:28px;font-weight:760;color:var(--success);" id="dashIndexed">-</div></div>
+              <div class="field"><label>Failed 失败</label><div style="font-size:28px;font-weight:760;color:var(--danger);" id="dashFailed">-</div></div>
+              <div class="field"><label>Processing 处理中</label><div style="font-size:28px;font-weight:760;color:var(--warning);" id="dashProcessing">-</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="upload">
+        <div class="grid main-split">
+          <div class="card pad">
+            <div class="upload-zone" id="uploadZone" style="cursor:pointer;">
+              <div>
+                <div class="big">⬆️</div>
+                <h3>拖拽 PDF 到这里，或点击选择文件</h3>
+                <p>通过 MinerU 云端 API 解析后自动入库。建议每批 20 个，最多 50 个。</p>
+                <div style="margin-top:18px;"><button class="btn primary" id="uploadSelectBtn">选择 PDF 文件</button></div>
+                <input type="file" id="uploadFileInput" accept=".pdf" multiple style="display:none" />
+              </div>
+            </div>
+            <div id="uploadQueue" style="margin-top:14px;display:none;">
+              <h3 class="section-title">待上传文件</h3>
+              <div id="uploadFileList" style="margin-top:8px;"></div>
+              <button class="btn primary" id="uploadStartBtn" style="margin-top:12px;width:100%;">开始上传并解析</button>
+            </div>
+          </div>
+          <div class="card pad">
+            <h3 class="section-title">解析与入库选项</h3>
+            <div style="margin-top:12px;">
+              <div class="switch-row"><div><strong>图片处理</strong><p>使用 VLM 生成图片描述、实体和关系</p></div><div class="toggle" id="optImage"></div></div>
+              <div class="switch-row"><div><strong>表格处理</strong><p>抽取 table_body，转换 Markdown 并入库</p></div><div class="toggle" id="optTable"></div></div>
+              <div class="switch-row"><div><strong>公式处理</strong><p>提取 LaTeX / OMML 公式并建立语义描述</p></div><div class="toggle" id="optFormula"></div></div>
+              <div class="switch-row"><div><strong>OCR 增强</strong><p>对扫描件启用 OCR 识别</p></div><div class="toggle off" id="optOcr"></div></div>
+            </div>
+            <div style="margin-top:12px;color:var(--muted);font-size:11px;">默认全部开启，VLM 模型版本：vlm</div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px;display:none;" id="uploadResultCard">
+          <div class="card-head"><div><h3>上传结果</h3></div></div>
+          <div id="uploadResultList" style="padding:14px;font-size:13px;"></div>
+        </div>
+      </section>
+
+      <section class="page" id="tasks">
+        <div class="card">
+          <div class="card-head"><div><h3>任务中心</h3><p>追踪上传、解析、文本入库、多模态处理任务</p></div><div><button class="btn" id="tasksRefreshBtn" onclick="loadTasks()">↻ 刷新</button></div></div>
+          <div style="padding-top:14px;overflow-x:auto;">
+            <table>
+              <thead><tr><th>任务 ID</th><th>文档 ID</th><th>状态</th><th>信息</th><th>创建时间</th></tr></thead>
+              <tbody id="tasksBody"></tbody>
+            </table>
+          </div>
+          <div id="tasksEmpty" style="display:none;text-align:center;color:var(--muted);padding:40px 0;font-size:13px;">暂无任务</div>
+        </div>
+      </section>
+
+      <section class="page" id="docs">
+        <div class="card">
+          <div class="card-head"><div><h3>文档库</h3><p>管理已上传文献、解析结果、重建索引和删除操作</p></div><div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn primary" onclick="batchReindex()">⟳ 重新入库失败/等待文档</button><input class="input" id="docsSearch" placeholder="搜索文件名..." oninput="filterDocs()" /><span style="color:var(--muted);font-size:12px;align-self:center;" id="docsCount"></span></div></div>
+          <div style="padding-top:14px;overflow-x:auto;">
+            <table>
+              <thead><tr><th>文件名</th><th>状态</th><th>上传时间</th><th>操作</th></tr></thead>
+              <tbody id="docsBody"></tbody>
+            </table>
+          </div>
+          <div id="docsEmpty" style="display:none;text-align:center;color:var(--muted);padding:40px 0;font-size:13px;">暂无文档，前往「文档导入与解析」上传</div>
+        </div>
+        <div class="grid cols-3" style="margin-top:16px;">
+          <div class="card pad"><h3 class="section-title">重新入库</h3><p style="color:var(--muted);line-height:1.7;">对已上传文档重新调用 MinerU 云解析 + LightRAG 入库。</p></div>
+          <div class="card pad"><h3 class="section-title">删除与回滚</h3><p style="color:var(--muted);line-height:1.7;">按 doc_id 删除文档记录和文件，不影响知识图谱已有数据。</p></div>
+          <div class="card pad"><h3 class="section-title">Content List 预览</h3><p style="color:var(--muted);line-height:1.7;">查看已解析文档的 content_list 结构：text、image、table、equation 分块。</p></div>
+        </div>
+      </section>
+
+      <section class="page" id="chat">
+        <div style="display:grid;gap:16px;">
+          <div class="card chat-box">
+            <div class="mode-tabs" id="modeTabs" style="flex-wrap:wrap;">
+              <span class="pill active" data-mode="mix">Mix</span><span class="pill" data-mode="local">Local</span><span class="pill" data-mode="global">Global</span>
+              <span class="pill" data-mode="hybrid">Hybrid</span><span class="pill" data-mode="naive">Naive</span><span class="pill" data-mode="bypass">Bypass</span>
+              <span class="pill" data-mode="context">只检索 Context</span><span class="pill" data-mode="vlm">VLM 增强</span>
+              <span class="pill" id="advancedToggle" style="cursor:pointer;">⚙ 参数</span>
+            </div>
+            <div id="advancedPanel" style="display:none;padding:12px 16px;border-bottom:1px solid var(--line);background:rgba(255,255,255,0.02);">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">
+                <div class="field"><label>response_type</label><select id="paramResponseType" class="select"><option>Multiple Paragraphs</option><option>Single Paragraph</option><option>Bullet Points</option><option>JSON</option></select></div>
+                <div class="field"><label>top_k</label><input id="paramTopK" class="input" value="60" type="number" min="10" max="200" /></div>
+                <div class="field"><label>chunk_top_k</label><input id="paramChunkTopK" class="input" value="30" type="number" min="5" max="100" /></div>
+                <div class="field"><label>history_turns</label><input id="paramHistoryTurns" class="input" value="3" type="number" min="0" max="10" /></div>
+                <div class="field"><label>temperature</label><input id="paramTemp" class="input" value="0.3" type="number" step="0.1" min="0" max="2" /></div>
+                <div class="field"><label>max_tokens</label><input id="paramMaxTokens" class="input" value="8192" type="number" min="256" max="32768" /></div>
+                <div class="field"><label>max_total_tokens</label><input id="paramMaxTotalTokens" class="input" value="30000" type="number" min="4096" max="128000" /></div>
+                <div class="field" style="grid-column:1/-1;"><label>system_prompt (覆盖模型默认)</label><textarea id="paramSystemPrompt" class="input" style="height:48px;resize:vertical;padding:8px 12px;" placeholder="留空用默认">你是一位学术文献分析专家。请基于提供的资料，用严谨的学术风格撰写详尽的分析报告。要求：1）分章节系统论述；2）每个论点必须有表格或公式支撑；3）结论要凝练核心发现。篇幅不限，越详细越好。</textarea></div>
+                <div class="field"><label>hl_keywords (逗号分隔)</label><input id="paramHlKeywords" class="input" placeholder="关键词1,关键词2" /></div>
+              </div>
+              <div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="paramIncludeRef" checked /> include_references</label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="paramRerank" checked /> enable_rerank</label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="paramStream" /> stream（流式）</label>
+              </div>
+              <div style="margin-top:8px;color:var(--muted);font-size:11px;">前 6 个是 LightRAG QueryParam，其余是 RAG-Anything 扩展。temperature/top_p/max_tokens 走模型 API，模型 DeepSeek-V4-Flash 全部支持。</div>
+            </div>
+            <div class="messages" id="chatMessages" style="min-height:360px;">
+              <div style="text-align:center;color:var(--muted);padding:40px 0;font-size:13px;" class="chat-empty-hint">输入问题开始问答</div>
+            </div>
+            <div class="composer">
+              <div style="display:flex;gap:8px;align-items:center;grid-column:1/-1;">
+                <button class="btn" id="chatAttachBtn" style="font-size:18px;padding:0 10px;" title="附加图片">📎</button>
+                <input class="input" id="chatInput" placeholder="输入问题，按 Enter 发送..." style="flex:1;" />
+                <button class="btn primary" id="chatSendBtn">发送</button>
+              </div>
+              <div id="chatImagePreview" style="display:none;grid-column:1/-1;padding:4px 0;">
+                <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,0.06);border-radius:10px;padding:6px 10px;border:1px solid var(--line);">
+                  <img id="chatPreviewImg" style="height:40px;border-radius:6px;" />
+                  <span id="chatPreviewName" style="font-size:12px;color:var(--muted);"></span>
+                  <span id="chatRemoveImage" style="cursor:pointer;color:var(--danger);font-size:14px;">✕</span>
+                </div>
+              </div>
+            </div>
+            <input type="file" id="chatFileInput" accept="image/*" style="display:none" />
+          </div>
+
+          <div class="card">
+            <div class="card-head" style="padding:14px 18px 0;">
+              <div><h3>证据面板</h3><p>检索到的实体和 chunk</p></div>
+              <div><span class="code" id="queryParamDisplay" style="font-size:11px;padding:6px 10px;">mode=mix  vlm_enhanced=true</span></div>
+            </div>
+            <div class="evidence-list" id="evidenceList">
+              <div style="text-align:center;color:var(--muted);padding:20px 0;font-size:12px;">询问后此处显示检索证据</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="debug">
+        <div class="grid cols-2">
+          <div class="card pad">
+            <h3 class="section-title">检索调试</h3>
+            <div class="form-grid">
+              <div class="field"><label>查询模式</label><select class="select"><option>mix</option><option>local</option><option>global</option><option>hybrid</option><option>naive</option></select></div>
+              <div class="field"><label>top_k</label><input class="input" value="40" /></div>
+              <div class="field"><label>chunk_top_k</label><input class="input" value="20" /></div>
+              <div class="field"><label>cosine_threshold</label><input class="input" value="0.2" /></div>
+            </div>
+            <button class="btn primary" style="margin-top:16px;">只检索，不调用 LLM</button>
+          </div>
+          <div class="card pad">
+            <h3 class="section-title">召回路径</h3>
+            <div class="code" style="margin-top:14px;">query → keywords_extraction → entity retrieval → relation traversal → vector chunks → multimodal chunks → rerank(optional) → context assembly → LLM response</div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <div class="card-head"><div><h3>纯检索结果</h3><p>用于判断是解析问题、检索问题、排序问题还是生成问题</p></div></div>
+          <table style="margin-top:14px;">
+            <thead><tr><th>类型</th><th>来源</th><th>分数</th><th>摘要</th></tr></thead>
+            <tbody>
+              <tr><td>Text Chunk</td><td>paper_012.pdf p.7</td><td>0.83</td><td>跨区域泛化性能下降，训练集分布影响明显。</td></tr>
+              <tr><td>Relation</td><td>Entity: Seismic anomaly → Model generalization</td><td>0.76</td><td>异常信号定义影响模型稳定性。</td></tr>
+              <tr><td>Table</td><td>benchmark.xlsx sheet1</td><td>0.79</td><td>不同地区测试结果差异较大。</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="page" id="graph">
+        <div class="grid main-split">
+          <div class="card" style="padding:0;overflow:hidden;">
+            <div id="graphContainer" style="width:100%;height:620px;background:rgba(255,255,255,0.02);"></div>
+          </div>
+          <div class="card pad">
+            <h3 class="section-title">知识图谱控制台</h3>
+            <div style="margin-top:14px;">
+              <div class="field"><label>搜索实体</label>
+                <div style="display:flex;gap:8px;">
+                  <input class="input" id="graphSearchInput" placeholder="输入实体名..." />
+                  <button class="btn primary" id="graphSearchBtn">搜索</button>
+                </div>
+              </div>
+              <div style="margin-top:12px;" id="graphStats">
+                <div style="color:var(--muted);font-size:12px;">加载中...</div>
+              </div>
+              <div class="switch-row"><div><strong>显示全部节点</strong><p>默认只显示最高连接度的 200 节点</p></div><div class="toggle off" id="graphShowAll"></div></div>
+              <div class="settings-list" style="margin-top:12px;">
+                <div class="setting-card"><div><h4>导出 PNG</h4><p>当前视图截图</p></div><button class="btn" id="graphExportPng">导出</button></div>
+                <div class="setting-card"><div><h4>重置视图</h4><p>回到初始缩放位置</p></div><button class="btn" id="graphReset">重置</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="settings">
+        <div class="grid cols-2">
+          <div class="card pad">
+            <h3 class="section-title">模型配置</h3>
+            <div class="settings-list" style="margin-top:14px;">
+              <div class="setting-card"><div><h4>LLM 后端</h4><p>SiliconFlow · OpenAI compatible</p></div><span style="color:var(--accent);font-size:13px;font-weight:600;">DeepSeek-V4-Flash</span></div>
+              <div class="setting-card"><div><h4>Chat LLM 密钥</h4><p>独立密钥避免问答与入库抢 TPM</p></div><span style="color:var(--accent);font-size:13px;">已配置</span></div>
+              <div class="setting-card"><div><h4>Embedding 模型</h4><p>用于 chunk、实体和关系向量化</p></div><span style="color:var(--accent);font-size:13px;font-weight:600;">Qwen3-Embedding-4B (2560d)</span></div>
+              <div class="setting-card"><div><h4>VLM 模型</h4><p>用于图片证据和图表理解</p></div><span style="color:var(--accent);font-size:13px;font-weight:600;">Qwen3.5-122B-A10B</span></div>
+              <div class="setting-card"><div><h4>Rerank 模型</h4><p>提高证据排序质量</p></div><span style="color:var(--success);font-size:13px;">已启用</span></div>
+              <div class="setting-card"><div><h4>默认查询模式</h4><p>推荐普通用户默认 mix</p></div><span style="color:var(--accent);font-size:13px;font-weight:600;">mix</span></div>
+            </div>
+          </div>
+          <div class="card pad">
+            <h3 class="section-title">系统状态</h3>
+            <div class="settings-list" style="margin-top:14px;">
+              <div class="setting-card"><div><h4>RAG API</h4><p>FastAPI · 127.0.0.1:8010</p></div><span class="status ok"><span class="dot"></span>正常</span></div>
+              <div class="setting-card"><div><h4>MinerU 解析</h4><p>云端 API · 限流 50 files/min</p></div><span class="status wait"><span class="dot"></span>需关注</span></div>
+              <div class="setting-card"><div><h4>LLM 缓存</h4><p>重复查询结果缓存</p></div><span style="color:var(--success);font-size:13px;">已启用</span></div>
+              <div class="setting-card"><div><h4>存储后端</h4><p>JSON KV + NanoVector + NetworkX</p></div><span style="color:var(--muted);font-size:13px;">本地文件</span></div>
+              <div class="setting-card"><div><h4>系统服务</h4><p>systemd rag-api.service</p></div><span class="status ok"><span class="dot"></span>运行中</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card pad" style="margin-top:16px;">
+          <h3 class="section-title">高级能力开关</h3>
+          <div style="margin-top:12px;">
+            <div class="switch-row"><div><strong>Prompt 中文化</strong><p>RAG-Anything 内置中文 Prompt</p></div><span style="color:var(--success);font-size:13px;">已启用</span></div>
+            <div class="switch-row"><div><strong>Rerank</strong><p>提高证据排序质量，SiliconFlow rerank</p></div><span style="color:var(--success);font-size:13px;">已启用</span></div>
+            <div class="switch-row"><div><strong>LLM 缓存</strong><p>重复查询结果缓存，减少 API 调用</p></div><span style="color:var(--success);font-size:13px;">已启用</span></div>
+            <div class="switch-row"><div><strong>API 密钥隔离</strong><p>问答与入库使用独立 SiliconFlow 密钥</p></div><span style="color:var(--success);font-size:13px;">已启用</span></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const pages = [
+      { id: 'dashboard', icon: '⌘', name: '工作台', sub: '系统状态、知识库概览、最近任务和多模态统计。', badge: '' },
+      { id: 'upload', icon: '⬆', name: '文档导入与解析', sub: '上传 PDF、Office、图片和 Markdown，配置解析器与入库策略。', badge: 'P0' },
+      { id: 'tasks', icon: '⏱', name: '任务中心', sub: '查看解析、入库、多模态处理、失败重试和任务日志。', badge: '3' },
+      { id: 'docs', icon: '📚', name: '文档库', sub: '管理文档、标签、解析结果、重新入库和删除。', badge: '' },
+      { id: 'chat', icon: '💬', name: '智能问答', sub: '支持多查询模式、引用证据、多模态问答和 VLM 增强。', badge: '' },
+      { id: 'debug', icon: '🔎', name: '证据与检索调试', sub: '查看纯检索结果、上下文、分数和召回路径。', badge: '' },
+      { id: 'graph', icon: '🕸', name: '知识图谱', sub: '探索实体关系、查询子图、图谱修正和导出。', badge: '' },
+      { id: 'settings', icon: '⚙', name: '系统设置', sub: '模型配置、系统状态和高级能力开关。', badge: '' }
+    ];
+
+    const sideNav = document.getElementById('sideNav');
+    const mobileNav = document.getElementById('mobileNav');
+
+    function renderNav() {
+      sideNav.innerHTML = pages.map(p => `
+        <div class="nav-item ${p.id === 'dashboard' ? 'active' : ''}" onclick="switchPage('${p.id}')">
+          <span><span>${p.icon}</span>${p.name}</span>
+          ${p.badge ? `<span class="badge">${p.badge}</span>` : ''}
+        </div>
+      `).join('');
+      mobileNav.innerHTML = pages.map(p => `
+        <button class="btn ${p.id === 'dashboard' ? 'primary' : ''}" onclick="switchPage('${p.id}')">${p.icon} ${p.name}</button>
+      `).join('');
+    }
+
+    function switchPage(id) {
+      document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      document.querySelectorAll('.nav-item').forEach((el, i) => { el.classList.toggle('active', pages[i].id === id); });
+      document.querySelectorAll('.mobile-header .btn').forEach((el, i) => { el.classList.toggle('primary', pages[i].id === id); });
+      const page = pages.find(p => p.id === id);
+      document.getElementById('pageTitle').textContent = page.name;
+      document.getElementById('pageSub').textContent = page.sub;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (id === 'graph' && !graphNetwork) setTimeout(loadGraph, 300);
+      if (id === 'docs') setTimeout(loadDocs, 200);
+      if (id === 'tasks') setTimeout(loadTasks, 200);
+      if (id === 'dashboard') setTimeout(loadDashboard, 200);
+    }
+
+    renderNav();
+
+    // ====== 工作台 Dashboard ======
+    let chatTimings = [];
+
+    async function loadDashboard() {
+      const kbId = 'default';
+
+      // 1) Stats
+      try {
+        const res = await fetch(`/rag-api/api/v1/knowledge-bases/${kbId}/stats`);
+        const s = await res.json();
+        document.getElementById('dashDocCount').textContent = s.total_documents || 0;
+        const parts = [];
+        if (s.indexed) parts.push(`已入库 ${s.indexed}`);
+        if (s.failed) parts.push(`失败 ${s.failed}`);
+        if (s.processing) parts.push(`处理中 ${s.processing}`);
+        document.getElementById('dashDocTrend').textContent = parts.length ? parts.join(' · ') : '暂无文档';
+        document.getElementById('dashIndexed').textContent = s.indexed || 0;
+        document.getElementById('dashFailed').textContent = s.failed || 0;
+        document.getElementById('dashProcessing').textContent = (s.processing || 0) + (s.inserting || 0) + (s.waiting_parser || 0);
+      } catch (e) {
+        document.getElementById('dashDocCount').textContent = '错误';
+        document.getElementById('dashDocTrend').textContent = e.message;
+      }
+
+      // 2) Graph
+      try {
+        const res = await fetch(`/rag-api/api/v1/knowledge-bases/${kbId}/graph`);
+        const g = await res.json();
+        const nc = g.nodes ? g.nodes.length : 0;
+        const ec = g.edges ? g.edges.length : 0;
+        document.getElementById('dashGraphCount').textContent = (nc + ec).toLocaleString();
+        document.getElementById('dashGraphTrend').textContent = `${nc.toLocaleString()} 实体 · ${ec.toLocaleString()} 关系`;
+      } catch (e) {
+        document.getElementById('dashGraphCount').textContent = '0';
+        document.getElementById('dashGraphTrend').textContent = '加载失败';
+      }
+
+      // 3) Avg chat time
+      if (chatTimings.length > 0) {
+        const avg = chatTimings.reduce((a, b) => a + b, 0) / chatTimings.length;
+        document.getElementById('dashAvgTime').textContent = avg.toFixed(1) + 's';
+        document.getElementById('dashAvgTrend').textContent = `基于 ${chatTimings.length} 次问答`;
+      } else {
+        document.getElementById('dashAvgTime').textContent = '-';
+        document.getElementById('dashAvgTrend').textContent = '发送问答后自动统计';
+      }
+
+      // 4) Health
+      await loadDashHealth(kbId);
+
+      // 5) Recent tasks
+      await loadDashRecentTasks(kbId);
+    }
+
+    async function loadDashHealth(kbId) {
+      const container = document.getElementById('dashHealth');
+      const rows = [];
+
+      // RAG API
+      try {
+        const res = await fetch('/rag-api/health');
+        const h = await res.json();
+        rows.push({ name: 'RAG API', desc: h.service || 'FastAPI', ok: h.status === 'ok' });
+      } catch { rows.push({ name: 'RAG API', desc: '无法连接', ok: false }); }
+
+      // MinerU - check task failure rate
+      try {
+        const res = await fetch(`/rag-api/api/v1/knowledge-bases/${kbId}/tasks`);
+        const tasks = await res.json();
+        const arr = Array.isArray(tasks) ? tasks : (tasks.tasks || []);
+        const total = arr.length;
+        const failed = arr.filter(t => t.status === 'failed').length;
+        const rate = total > 0 ? Math.round(failed / total * 100) : 0;
+        if (rate > 50) rows.push({ name: 'MinerU 云解析', desc: `失败率 ${rate}% (${failed}/${total})`, ok: false });
+        else if (rate > 20) rows.push({ name: 'MinerU 云解析', desc: `失败率 ${rate}%，需关注`, ok: 'wait' });
+        else rows.push({ name: 'MinerU 云解析', desc: `失败率 ${rate}% (${failed}/${total})`, ok: true });
+      } catch { rows.push({ name: 'MinerU 云解析', desc: '无法获取任务数据', ok: false }); }
+
+      // Embedding - infer from graph load success
+      try {
+        const res = await fetch(`/rag-api/api/v1/knowledge-bases/${kbId}/graph`);
+        const g = await res.json();
+        const hasData = g.nodes && g.nodes.length > 0;
+        rows.push({ name: 'Embedding', desc: hasData ? 'BAAI/bge-m3，图谱正常' : '服务正常，图谱为空', ok: true });
+      } catch { rows.push({ name: 'Embedding', desc: '连接失败', ok: false }); }
+
+      // VLM - infer from retrieve with images
+      try {
+        const res = await fetch(`/rag-api/api/v1/knowledge-bases/${kbId}/retrieve`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: 'test', mode: 'naive', top_k: 1, chunk_top_k: 0 })
+        });
+        const d = await res.json();
+        const hasImages = d.images && d.images.length > 0;
+        rows.push({ name: 'VLM 图像理解', desc: hasImages ? `${d.images.length} 张图片可用` : '服务正常，无图片数据', ok: true });
+      } catch { rows.push({ name: 'VLM 图像理解', desc: '连接失败', ok: false }); }
+
+      // Task queue
+      try {
+        const res = await fetch(`/rag-api/api/v1/knowledge-bases/${kbId}/tasks`);
+        const tasks = await res.json();
+        const arr = Array.isArray(tasks) ? tasks : (tasks.tasks || []);
+        const active = arr.filter(t => ['cloud_requesting', 'inserting', 'queued', 'waiting_parser'].includes(t.status)).length;
+        rows.push({ name: '任务队列', desc: active > 0 ? `${active} 个活跃任务` : '队列空闲', ok: active > 0 ? 'run' : true });
+      } catch { rows.push({ name: '任务队列', desc: '无法获取', ok: false }); }
+
+      const statusClass = s => s === true ? 'ok' : s === 'wait' ? 'wait' : s === 'run' ? 'run' : 'fail';
+      const statusLabel = s => s === true ? '正常' : s === 'wait' ? '需关注' : s === 'run' ? '运行中' : '异常';
+      container.innerHTML = rows.map(r =>
+        `<div class="switch-row"><div><strong>${r.name}</strong><p>${r.desc}</p></div><span class="status ${statusClass(r.ok)}"><span class="dot"></span>${statusLabel(r.ok)}</span></div>`
+      ).join('');
+    }
+
+    async function loadDashRecentTasks(kbId) {
+      const tbody = document.getElementById('dashRecentTasks');
+      try {
+        const res = await fetch(`/rag-api/api/v1/knowledge-bases/${kbId}/tasks`);
+        const tasks = await res.json();
+        const arr = Array.isArray(tasks) ? tasks : (tasks.tasks || []);
+        const recent = arr.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 5);
+
+        if (recent.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px;">暂无任务</td></tr>';
+          return;
+        }
+
+        // Build doc_id -> filename map
+        const docMap = {};
+        try {
+          const dRes = await fetch(`/rag-api/api/v1/knowledge-bases/${kbId}/documents`);
+          const docs = await dRes.json();
+          const dArr = Array.isArray(docs) ? docs : (docs.documents || []);
+          dArr.forEach(d => { docMap[d.document_id] = d.filename; });
+        } catch {}
+
+        const statusMap = {
+          success: { cls: 'ok', label: '完成' },
+          failed: { cls: 'fail', label: '失败' },
+          inserting: { cls: 'run', label: '入库中' },
+          cloud_requesting: { cls: 'run', label: '解析中' },
+          queued: { cls: 'wait', label: '排队中' },
+          waiting_parser: { cls: 'wait', label: '等待解析' },
+        };
+
+        tbody.innerHTML = recent.map(t => {
+          const fn = docMap[t.document_id] || t.document_id.slice(0, 16) + '...';
+          const st = statusMap[t.status] || { cls: 'wait', label: t.status };
+          const time = t.created_at ? t.created_at.slice(5, 19).replace('T', ' ') : '-';
+          return `<tr><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${fn}">${fn}</td><td>${st.label}</td><td><span class="status ${st.cls}"><span class="dot"></span>${st.label}</span></td><td style="font-size:12px;color:var(--muted);white-space:nowrap;">${time}</td></tr>`;
+        }).join('');
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--danger);padding:20px;">加载失败: ${e.message}</td></tr>`;
+      }
+    }
+
+    function recordChatTiming(ms) {
+      chatTimings.push(ms / 1000);
+      if (chatTimings.length > 50) chatTimings.shift();
+    }
+
+    // ====== 知识图谱 ======
+    let graphNetwork = null;
+    let graphAllData = { nodes: [], edges: [] };
+    let graphShowAll = false;
+
+    async function loadGraph() {
+      const statsEl = document.getElementById('graphStats');
+      statsEl.innerHTML = '<div style="color:var(--muted);font-size:12px;">正在加载图谱数据...</div>';
+      try {
+        const res = await fetch('/rag-api/api/v1/knowledge-bases/default/graph');
+        const data = await res.json();
+        graphAllData = data;
+        renderGraph(data.nodes, data.edges, 200);
+      } catch (e) {
+        statsEl.innerHTML = '<div style="color:var(--danger);font-size:12px;">加载失败: ' + e.message + '</div>';
+      }
+    }
+
+    function renderGraph(nodes, edges, limit) {
+      const statsEl = document.getElementById('graphStats');
+      const container = document.getElementById('graphContainer');
+
+      if (nodes.length === 0) {
+        statsEl.innerHTML = '<div style="color:var(--muted);font-size:12px;">图谱为空</div>';
+        return;
+      }
+
+      // 按连接度排序，取 top N
+      const edgeCount = {};
+      edges.forEach(e => {
+        edgeCount[e.source_id] = (edgeCount[e.source_id] || 0) + 1;
+        edgeCount[e.target_id] = (edgeCount[e.target_id] || 0) + 1;
+      });
+
+      let selectedNodes = nodes;
+      if (limit && !graphShowAll) {
+        const ranked = [...nodes].sort((a, b) => (edgeCount[b.id] || 0) - (edgeCount[a.id] || 0));
+        const topIds = new Set(ranked.slice(0, limit).map(n => n.id));
+        selectedNodes = ranked.filter(n => topIds.has(n.id));
+      }
+
+      // 边的 source/target 存的是实体名，节点 id 是 ent-xxx，需建立名→ID映射
+      const nameToId = {};
+      selectedNodes.forEach(n => { nameToId[n.name] = n.id; });
+
+      const nodeIds = new Set(selectedNodes.map(n => n.id));
+      const selectedEdges = edges.filter(e => {
+        const srcId = nameToId[e.source_id];
+        const tgtId = nameToId[e.target_id];
+        return srcId && tgtId && nodeIds.has(srcId) && nodeIds.has(tgtId);
+      });
+
+      const visNodes = selectedNodes.map(n => ({
+        id: n.id,
+        label: n.name.length > 28 ? n.name.slice(0, 26) + '…' : n.name,
+        title: '<strong>' + n.name + '</strong><br/>' + (n.content || ''),
+        value: edgeCount[n.id] || 1,
+        color: { background: '#1e2a45', border: '#3a5688', highlight: { background: '#2a3f6a', border: '#66a6ff' } },
+        font: { color: '#d6e0f0', size: 12 },
+        borderWidth: 1.5,
+      }));
+
+      const visEdges = selectedEdges.map(e => ({
+        from: nameToId[e.source_id],
+        to: nameToId[e.target_id],
+        title: e.content || '',
+        color: { color: 'rgba(139,233,211,0.25)', hover: '#8be9d3', highlight: '#8be9d3' },
+        width: 1,
+        smooth: { type: 'continuous' },
+      }));
+
+      const options = {
+        physics: { stabilization: { iterations: 100 }, solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -80, springLength: 180, springConstant: 0.01 } },
+        edges: { smooth: { type: 'continuous' }, arrows: { to: { enabled: false } } },
+        interaction: { hover: true, tooltipDelay: 200, navigationButtons: true, keyboard: true },
+        height: '100%',
+      };
+
+      if (graphNetwork) {
+        graphNetwork.setData({ nodes: new vis.DataSet(visNodes), edges: new vis.DataSet(visEdges) });
+      } else {
+        graphNetwork = new vis.Network(container, { nodes: new vis.DataSet(visNodes), edges: new vis.DataSet(visEdges) }, options);
+      }
+
+      const totalNodes = nodes.length;
+      const shownNodes = selectedNodes.length;
+      const shownEdges = selectedEdges.length;
+      statsEl.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;">
+          <div><strong style="font-size:18px;">${totalNodes}</strong><br/><span style="color:var(--muted);font-size:11px;">总实体</span></div>
+          <div><strong style="font-size:18px;">${edges.length}</strong><br/><span style="color:var(--muted);font-size:11px;">总关系</span></div>
+          <div><strong style="font-size:18px;">${shownNodes}</strong><br/><span style="color:var(--muted);font-size:11px;">当前显示</span></div>
+        </div>
+        ${!graphShowAll && totalNodes > limit ? `<div style="text-align:center;margin-top:8px;color:var(--accent);font-size:11px;">显示前 ${limit} 个实体，开启"显示全部"查看完整图谱</div>` : ''}
+      `;
+    }
+
+    document.getElementById('graphSearchBtn')?.addEventListener('click', function() {
+      const q = document.getElementById('graphSearchInput').value.trim().toLowerCase();
+      if (!q || !graphNetwork) return;
+      const allNodes = graphAllData.nodes;
+      const matched = allNodes.filter(n => n.name.toLowerCase().includes(q)).map(n => n.id);
+      if (matched.length === 0) { alert('未找到匹配实体'); return; }
+      graphNetwork.selectNodes(matched);
+      graphNetwork.focus(matched[0], { scale: 1.5 });
+    });
+
+    document.getElementById('graphSearchInput')?.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') document.getElementById('graphSearchBtn')?.click();
+    });
+
+    document.getElementById('graphShowAll')?.addEventListener('click', function() {
+      graphShowAll = !graphShowAll;
+      this.classList.toggle('off', !graphShowAll);
+      renderGraph(graphAllData.nodes, graphAllData.edges, 200);
+    });
+
+    document.getElementById('graphExportPng')?.addEventListener('click', function() {
+      if (!graphNetwork) return;
+      const canvas = document.querySelector('#graphContainer canvas');
+      if (!canvas) return;
+      const link = document.createElement('a');
+      link.download = 'knowledge_graph.png';
+      link.href = canvas.toDataURL();
+      link.click();
+    });
+
+    document.getElementById('graphReset')?.addEventListener('click', function() {
+      if (graphNetwork) graphNetwork.fit();
+    });
+
+    // ====== 文档库 ======
+    let allDocs = [];
+
+    async function loadDocs() {
+      const tbody = document.getElementById('docsBody');
+      const empty = document.getElementById('docsEmpty');
+      try {
+        const res = await fetch('/rag-api/api/v1/knowledge-bases/default/documents');
+        const data = await res.json();
+        allDocs = data.items || [];
+        filterDocs();
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--danger);">加载失败: ' + e.message + '</td></tr>';
+      }
+    }
+
+    function filterDocs() {
+      const q = (document.getElementById('docsSearch').value || '').toLowerCase();
+      const filtered = allDocs.filter(d => d.filename.toLowerCase().includes(q));
+      const tbody = document.getElementById('docsBody');
+      const empty = document.getElementById('docsEmpty');
+      document.getElementById('docsCount').textContent = filtered.length + '/' + allDocs.length;
+      if (filtered.length === 0) {
+        tbody.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+      tbody.innerHTML = filtered.map(d => {
+        const st = statusHtml(d.status);
+        const time = (d.created_at || '').slice(0, 19).replace('T', ' ');
+        const pdfBtn = d.status === 'indexed'
+          ? '<button class="btn" onclick="openDocPdf(\'' + d.document_id + '\')" title="查看原文PDF">📄 原文</button> '
+          : '';
+        return '<tr>' +
+          '<td><strong>' + esc(d.filename) + '</strong></td>' +
+          '<td>' + st + '</td>' +
+          '<td style="font-size:12px;color:var(--muted);">' + time + '</td>' +
+          '<td style="white-space:nowrap;">' +
+            pdfBtn +
+            '<button class="btn" onclick="reindexDoc(\'' + d.document_id + '\')" title="重新入库">⟳ 重入库</button> ' +
+            '<button class="btn danger" onclick="deleteDoc(\'' + d.document_id + '\',\'' + esc(d.filename) + '\')">✕ 删除</button>' +
+          '</td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    async function deleteDoc(docId, name) {
+      if (!confirm('确定删除「' + name + '」？')) return;
+      try {
+        const res = await fetch('/rag-api/api/v1/documents/' + docId, { method: 'DELETE' });
+        if (res.ok) {
+          loadDocs();
+        } else {
+          const data = await res.json();
+          alert('删除失败: ' + (data.detail || res.status));
+        }
+      } catch (e) {
+        alert('删除失败: ' + e.message);
+      }
+    }
+
+    function openDocPdf(docId, page, filename) {
+      let url = '/rag-api/api/v1/documents/' + docId + '/pdf';
+      if (filename) url += '?filename=' + encodeURIComponent(filename);
+      if (page) url += '#page=' + page;
+      window.open(url, '_blank');
+    }
+
+    function openImageDetail(url, caption) {
+      const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>图片详情</title><style>body{margin:0;background:#070a0f;color:#edf4ff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:20px;}.img-container{max-width:90vw;max-height:80vh;}.img-container img{max-width:100%;max-height:80vh;border-radius:12px;border:1px solid rgba(255,255,255,0.1);}.caption{margin-top:16px;font-size:14px;line-height:1.6;color:#8b98aa;max-width:800px;text-align:center;}.close-btn{position:fixed;top:16px;right:16px;background:rgba(255,255,255,0.1);border:none;color:#edf4ff;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;}.close-btn:hover{background:rgba(255,255,255,0.2);}</style></head><body><button class="close-btn" onclick="window.close()">✕ 关闭</button><div class="img-container"><img src="' + url + '" /></div>' + (caption ? '<div class="caption">' + caption + '</div>' : '') + '</body></html>';
+      const win = window.open('', '_blank');
+      win.document.write(html);
+      win.document.close();
+    }
+
+    async function reindexDoc(docId) {
+      try {
+        const res = await fetch('/rag-api/api/v1/documents/' + docId + '/ingest', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          alert('已创建入库任务: ' + data.task_id);
+          loadDocs();
+        } else {
+          alert('创建任务失败: ' + (data.detail || res.status));
+        }
+      } catch (e) {
+        alert('创建任务失败: ' + e.message);
+      }
+    }
+
+    async function batchReindex() {
+      if (!confirm('确定重新入库所有失败/等待中的文档？')) return;
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = '提交中...';
+      try {
+        const res = await fetch('/rag-api/api/v1/knowledge-bases/default/documents/batch-reindex', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ document_ids: null }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert('已提交 ' + data.total + ' 个文档到批量入库队列，后台自动处理中');
+          loadDocs();
+          setTimeout(loadTasks, 500);
+        } else {
+          alert('批量入库失败: ' + (data.detail || JSON.stringify(data)));
+        }
+      } catch (e) {
+        alert('批量入库失败: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '⟳ 重新入库失败/等待文档';
+      }
+    }
+
+    function statusHtml(status) {
+      const map = {
+        'uploaded': ['wait', '已上传'],
+        'indexed': ['ok', '已入库'],
+        'processing': ['run', '处理中'],
+        'failed': ['fail', '失败'],
+        'waiting_parser': ['wait', '等待解析'],
+        'cloud_requesting': ['run', '云解析中'],
+        'inserting': ['run', '入库中'],
+        'queued': ['wait', '排队中'],
+        'success': ['ok', '成功'],
+        'duplicate_skipped': ['ok', '重复跳过'],
+      };
+      const s = map[status] || ['wait', status];
+      return '<span class="status ' + s[0] + '"><span class="dot"></span>' + s[1] + '</span>';
+    }
+
+    function esc(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ====== 文档上传 ======
+    let uploadFiles = [];
+
+    document.getElementById('uploadSelectBtn').addEventListener('click', function(e) {
+      e.stopPropagation();
+      document.getElementById('uploadFileInput').click();
+    });
+
+    document.getElementById('uploadZone').addEventListener('click', function() {
+      document.getElementById('uploadFileInput').click();
+    });
+
+    // 拖拽
+    document.getElementById('uploadZone').addEventListener('dragover', function(e) {
+      e.preventDefault();
+      this.style.borderColor = 'var(--accent)';
+    });
+    document.getElementById('uploadZone').addEventListener('dragleave', function() {
+      this.style.borderColor = '';
+    });
+    document.getElementById('uploadZone').addEventListener('drop', function(e) {
+      e.preventDefault();
+      this.style.borderColor = '';
+      handleUploadFiles(e.dataTransfer.files);
+    });
+
+    document.getElementById('uploadFileInput').addEventListener('change', function(e) {
+      handleUploadFiles(e.target.files);
+    });
+
+    function handleUploadFiles(files) {
+      if (!files.length) return;
+      for (const f of files) {
+        if (!f.name.toLowerCase().endsWith('.pdf')) {
+          alert('仅支持 PDF 文件: ' + f.name);
+          continue;
+        }
+        if (!uploadFiles.find(u => u.name === f.name && u.size === f.size)) {
+          uploadFiles.push(f);
+        }
+      }
+      renderUploadQueue();
+    }
+
+    function renderUploadQueue() {
+      const list = document.getElementById('uploadFileList');
+      const queue = document.getElementById('uploadQueue');
+      if (uploadFiles.length === 0) {
+        queue.style.display = 'none';
+        return;
+      }
+      queue.style.display = 'block';
+      list.innerHTML = uploadFiles.map((f, i) =>
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;">' +
+          '<span>' + esc(f.name) + ' (' + (f.size / 1024).toFixed(0) + ' KB)</span>' +
+          '<button class="btn" onclick="removeUploadFile(' + i + ')" style="font-size:11px;">✕</button>' +
+        '</div>'
+      ).join('');
+    }
+
+    function removeUploadFile(i) {
+      uploadFiles.splice(i, 1);
+      renderUploadQueue();
+    }
+
+    document.getElementById('uploadStartBtn').addEventListener('click', async function() {
+      if (uploadFiles.length === 0) { alert('请先选择文件'); return; }
+      const btn = this;
+      btn.disabled = true;
+      btn.textContent = '上传中...';
+      const resultCard = document.getElementById('uploadResultCard');
+      const resultList = document.getElementById('uploadResultList');
+      resultCard.style.display = 'none';
+
+      const formData = new FormData();
+      for (const f of uploadFiles) {
+        formData.append('files', f);
+      }
+
+      try {
+        const res = await fetch('/rag-api/api/v1/knowledge-bases/default/documents/batch-cloud-ingest', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        resultCard.style.display = 'block';
+        if (res.ok) {
+          resultList.innerHTML = '<div style="color:var(--success);">✅ 上传成功，' + data.items.length + ' 个文件已加入解析队列</div>' +
+            data.items.map(i => '<div style="padding:4px 0;font-size:12px;border-bottom:1px solid var(--line);">' +
+              esc(i.filename) + ' → 任务: ' + i.task_id.slice(0, 8) + '... 状态: ' + data.status +
+            '</div>').join('');
+          uploadFiles = [];
+          renderUploadQueue();
+        } else {
+          resultList.innerHTML = '<div style="color:var(--danger);">❌ 上传失败: ' + (data.detail || JSON.stringify(data)) + '</div>';
+        }
+      } catch (e) {
+        resultCard.style.display = 'block';
+        resultList.innerHTML = '<div style="color:var(--danger);">❌ 请求失败: ' + e.message + '</div>';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '开始上传并解析';
+      }
+    });
+
+    // 切换开关
+    document.querySelectorAll('#upload .toggle').forEach(t => {
+      t.addEventListener('click', function() { this.classList.toggle('off'); });
+    });
+
+    // ====== 任务中心 ======
+    async function loadTasks() {
+      const tbody = document.getElementById('tasksBody');
+      const empty = document.getElementById('tasksEmpty');
+      try {
+        const res = await fetch('/rag-api/api/v1/knowledge-bases/default/tasks?limit=100');
+        const data = await res.json();
+        const items = data.items || [];
+        if (items.length === 0) {
+          tbody.innerHTML = '';
+          empty.style.display = 'block';
+          return;
+        }
+        empty.style.display = 'none';
+        tbody.innerHTML = items.map(t => {
+          const st = statusHtml(t.status);
+          const time = (t.created_at || '').slice(0, 19).replace('T', ' ');
+          return '<tr>' +
+            '<td style="font-size:11px;font-family:monospace;">' + esc(t.task_id).slice(0, 12) + '…</td>' +
+            '<td style="font-size:11px;font-family:monospace;">' + esc(t.document_id).slice(0, 12) + '…</td>' +
+            '<td>' + st + '</td>' +
+            '<td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;">' + esc(t.message || '') + '</td>' +
+            '<td style="font-size:12px;color:var(--muted);">' + time + '</td>' +
+          '</tr>';
+        }).join('');
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--danger);">加载失败: ' + e.message + '</td></tr>';
+      }
+    }
+
+    // ====== 智能问答 ======
+    // ====== 智能问答（含图片附件 + 证据检索）======
+    let chatMode = 'mix';
+    let chatVlm = true;
+    let chatLoading = false;
+    let chatImageBase64 = null;
+    let chatImageName = null;
+    let chatHistory = [];
+    let chatStatusDiv = null;
+    let chatStatusTimers = [];
+
+    // 高级参数面板展开/收起
+    document.getElementById('advancedToggle').addEventListener('click', function() {
+      const panel = document.getElementById('advancedPanel');
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      this.classList.toggle('active');
+    });
+
+    // 参数变更时更新显示
+    document.querySelectorAll('#advancedPanel input, #advancedPanel select').forEach(el => {
+      el.addEventListener('change', updateQueryParamDisplay);
+      el.addEventListener('input', updateQueryParamDisplay);
+    });
+
+    function getAdvancedParams() {
+      return {
+        top_k: parseInt(document.getElementById('paramTopK').value) || 60,
+        chunk_top_k: parseInt(document.getElementById('paramChunkTopK').value) || 30,
+        response_type: document.getElementById('paramResponseType').value,
+        history_turns: parseInt(document.getElementById('paramHistoryTurns').value) || 3,
+        enable_rerank: document.getElementById('paramRerank').checked,
+        include_references: document.getElementById('paramIncludeRef').checked,
+        temperature: parseFloat(document.getElementById('paramTemp').value) || 0.3,
+        max_tokens: parseInt(document.getElementById('paramMaxTokens').value) || 8192,
+        max_total_tokens: parseInt(document.getElementById('paramMaxTotalTokens').value) || 30000,
+        stream: document.getElementById('paramStream').checked,
+        hl_keywords: document.getElementById('paramHlKeywords').value.trim() ? document.getElementById('paramHlKeywords').value.split(',').map(s => s.trim()).filter(Boolean) : [],
+        system_prompt: document.getElementById('paramSystemPrompt').value.trim() || null,
+      };
+    }
+
+    // 模式/开关点击
+    document.querySelectorAll('#modeTabs .pill').forEach(pill => {
+      pill.addEventListener('click', function() {
+        const mode = this.dataset.mode;
+        if (mode === 'vlm') {
+          this.classList.toggle('active');
+          chatVlm = this.classList.contains('active');
+          updateQueryParamDisplay();
+          return;
+        }
+        if (mode === 'context') {
+          this.classList.toggle('active');
+          updateQueryParamDisplay();
+          return;
+        }
+        document.querySelectorAll('#modeTabs .pill').forEach(p => p.classList.remove('active'));
+        this.classList.add('active');
+        chatMode = mode;
+        updateQueryParamDisplay();
+      });
+    });
+
+    function updateQueryParamDisplay() {
+      const ap = getAdvancedParams();
+      const contextOn = document.querySelector('#modeTabs .pill[data-mode="context"]')?.classList.contains('active');
+      const parts = [
+        `mode=${chatMode}`,
+        `vlm=${chatVlm}`,
+        `top_k=${ap.top_k}`,
+        `chunk_top_k=${ap.chunk_top_k}`,
+        `rerank=${ap.enable_rerank}`,
+        `refs=${ap.include_references}`,
+        `hist=${ap.history_turns}`,
+        `temp=${ap.temperature}`,
+        `total_tokens=${ap.max_total_tokens}`,
+        `type=${ap.response_type.split(' ')[0]}`,
+      ];
+      if (contextOn) parts.push('仅检索');
+      if (chatImageName) parts.push('有附件');
+      document.getElementById('queryParamDisplay').textContent = parts.join('  ');
+    }
+
+    function renderLatex(text) {
+      // 先处理行内公式 $...$，再处理行间公式 $$...$$
+      if (typeof katex !== 'undefined') {
+        text = text.replace(/\$\$(.+?)\$\$/gs, function(_, code) {
+          try { return katex.renderToString(code, {displayMode: true, throwOnError: false}); }
+          catch(e) { return '<code>$$' + code + '$$</code>'; }
+        });
+        text = text.replace(/(?<!\$)\$([^$\n]+?)\$(?!\$)/g, function(_, code) {
+          if (code.length > 100) return '$' + code + '$';
+          try { return katex.renderToString(code, {displayMode: false, throwOnError: false}); }
+          catch(e) { return '<code>$' + code + '$</code>'; }
+        });
+      }
+      return text;
+    }
+
+    function renderMarkdown(text) {
+      if (!text) return '<p style="color:var(--muted);">无内容</p>';
+      const escaped = text
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      let html = escaped
+        .replace(/### (.+)/g, '<h3 style="font-size:16px;margin:14px 0 8px;color:var(--accent);">$1</h3>')
+        .replace(/## (.+)/g, '<h2 style="font-size:18px;margin:16px 0 10px;color:var(--accent);">$1</h2>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+        .replace(/\n{2,}/g, '</p><p style="margin:8px 0;">')
+        .replace(/\n/g, '<br/>');
+      html = '<p style="margin:4px 0;">' + html + '</p>';
+      html = renderLatex(html);
+      return html;
+    }
+
+    function addChatMessage(role, content, isHtml) {
+      const container = document.getElementById('chatMessages');
+      const hint = container.querySelector('.chat-empty-hint');
+      if (hint) hint.remove();
+      const div = document.createElement('div');
+      div.className = 'msg ' + role;
+      div.innerHTML = isHtml ? content : renderMarkdown(content);
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function setChatLoading(loading) {
+      chatLoading = loading;
+      document.getElementById('chatSendBtn').disabled = loading;
+      document.getElementById('chatSendBtn').textContent = loading ? '思考中...' : '发送';
+      document.getElementById('chatInput').disabled = loading;
+      if (loading) {
+        addChatStatus();
+      } else {
+        clearTimers();
+        removeChatStatus();
+      }
+    }
+    function clearTimers() {
+      chatStatusTimers.forEach(t => clearTimeout(t));
+      chatStatusTimers = [];
+    }
+    function removeChatStatus() {
+      if (chatStatusDiv && chatStatusDiv.parentNode) {
+        chatStatusDiv.remove();
+      }
+      chatStatusDiv = null;
+    }
+    function addChatStatus() {
+      clearTimers();
+      removeChatStatus();
+      const container = document.getElementById('chatMessages');
+      const hint = container.querySelector('.chat-empty-hint');
+      if (hint) hint.remove();
+      const div = document.createElement('div');
+      div.className = 'msg ai';
+      div.style.transition = 'opacity 0.15s';
+      div.id = 'chatStatusMsg';
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+      chatStatusDiv = div;
+      const steps = [
+        { delay: 0,    icon: '🔍', text: '正在检索知识库...', detail: '向量检索 + 实体/关系遍历' },
+        { delay: 1800, icon: '⚙️', text: '正在重排序...',     detail: 'BAAI/bge-reranker-v2-m3' },
+        { delay: 3800, icon: '🧠', text: '正在生成回答...',    detail: 'DeepSeek-V4-Flash + 上下文组合' },
+      ];
+      steps.forEach(s => {
+        const t = setTimeout(() => {
+          if (chatStatusDiv) {
+            chatStatusDiv.innerHTML = `<div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:18px;animation:pulse 1s ease-in-out infinite">${s.icon}</span>
+              <div><div style="font-weight:600">${s.text}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">${s.detail}</div></div>
+            </div>`;
+          }
+        }, s.delay);
+        chatStatusTimers.push(t);
+      });
+    }
+
+    function updateEvidence(evidenceList) {
+      const list = document.getElementById('evidenceList');
+      list.innerHTML = '';
+      if (!evidenceList || evidenceList.length === 0) {
+        list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px 0;font-size:12px;">无检索证据，或当前接口未返回结构化证据</div>';
+        return;
+      }
+      const contextMode = document.querySelector('#modeTabs .pill[data-mode="context"]')?.classList.contains('active');
+      evidenceList.slice(0, contextMode ? 20 : 5).forEach((ev, i) => {
+        const div = document.createElement('div');
+        div.className = 'evidence';
+        const typeLabel = {entity:'实体',concept:'概念',chunk:'Chunk',text:'Chunk',table:'Table',image:'Image',info:'信息','document':'文档'};
+        const label = typeLabel[ev.type] || ev.type || 'Item';
+        const scoreHtml = ev.score !== undefined && ev.score !== null ? ` · score <span class="score">${Number(ev.score).toFixed(2)}</span>` : '';
+        const srcText = ev.source || ev.content || '—';
+        let pdfLinkHtml = '';
+        if (ev.page_idx !== undefined && ev.page_idx !== null) {
+          const page = ev.page_idx + 1;
+          const docId = ev.full_doc_id || '';
+          const fn = ev.file_path || '';
+          pdfLinkHtml = ` <a href="javascript:void(0)" onclick="openDocPdf('${docId}', ${page}, '${esc(fn)}')" style="font-size:11px;color:var(--accent);text-decoration:none;margin-left:6px;" title="定位到原文第 ${page} 页">📄 定位原文</a>`;
+        }
+        div.innerHTML = `<h4>${label}${scoreHtml}${pdfLinkHtml}</h4><p>${srcText.slice(0, 150)}</p>`;
+        list.appendChild(div);
+      });
+    }
+
+    // 图片附件处理
+    document.getElementById('chatAttachBtn').addEventListener('click', function() {
+      document.getElementById('chatFileInput').click();
+    });
+
+    document.getElementById('chatFileInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      chatImageName = file.name;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        chatImageBase64 = ev.target.result.split(',')[1]; // 去掉 data:image/...;base64, 前缀
+        document.getElementById('chatPreviewImg').src = URL.createObjectURL(file);
+        document.getElementById('chatPreviewName').textContent = file.name;
+        document.getElementById('chatImagePreview').style.display = 'block';
+        updateQueryParamDisplay();
+      };
+      reader.readAsDataURL(file);
+    });
+
+    document.getElementById('chatRemoveImage').addEventListener('click', function() {
+      chatImageBase64 = null;
+      chatImageName = null;
+      document.getElementById('chatImagePreview').style.display = 'none';
+      document.getElementById('chatFileInput').value = '';
+      updateQueryParamDisplay();
+    });
+
+    // 发送 + 检索证据
+    async function handleChatSend() {
+      const input = document.getElementById('chatInput');
+      const question = input.value.trim();
+      if (!question || chatLoading) return;
+
+      const startTime = Date.now();
+      input.value = '';
+      const qWithImage = question + (chatImageName ? ` [附件: ${chatImageName}]` : '');
+      addChatMessage('user', qWithImage);
+      setChatLoading(true);
+
+      const kbId = 'default';
+      const contextOnly = document.querySelector('#modeTabs .pill[data-mode="context"]')?.classList.contains('active');
+
+      try {
+        const ap = getAdvancedParams();
+
+        if (contextOnly) {
+          // 只检索模式：调用 /retrieve，不调用 LLM，不显示思考动画
+          setChatLoading(false);
+          const body = JSON.stringify({
+            question,
+            mode: chatMode,
+            vlm_enhanced: chatVlm,
+            enable_rerank: ap.enable_rerank,
+            top_k: ap.top_k,
+            chunk_top_k: ap.chunk_top_k,
+            history_turns: 0,
+          });
+
+          const res = await fetch(`/rag-api/api/v1/knowledge-bases/${kbId}/retrieve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+          });
+
+          let data;
+          try { data = await res.json(); } catch (e) {
+            addChatMessage('ai', '❌ 服务错误: ' + (await res.text()));
+            return;
+          }
+
+          if (!res.ok) {
+            addChatMessage('ai', '❌ 检索失败: ' + (data.detail || JSON.stringify(data)));
+          } else {
+            const ev = data.evidence || [];
+            let html = '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">检索到 ' + ev.length + ' 条结果</div>';
+            ev.forEach((item, i) => {
+              const typeLabel = {entity:'实体',concept:'概念',chunk:'Chunk',text:'Chunk',table:'Table',image:'Image',info:'信息','document':'文档'};
+              const label = typeLabel[item.type] || item.type || 'Item';
+              const score = item.score !== undefined && item.score !== null ? ` · score <span style="color:var(--accent);font-weight:700;">${Number(item.score).toFixed(2)}</span>` : '';
+              let pdfLink = '';
+              if (item.page_idx !== undefined && item.page_idx !== null) {
+                const page = item.page_idx + 1;
+                const docId = item.full_doc_id || '';
+                const fn = item.file_path || '';
+                pdfLink = ` <a href="javascript:void(0)" onclick="openDocPdf('${docId}', ${page}, '${esc(fn)}')" style="font-size:11px;color:var(--accent);text-decoration:none;">📄 定位原文</a>`;
+              }
+              html += '<div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;background:rgba(255,255,255,0.03);">' +
+                '<div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px;">' + label + score + pdfLink + '</div>' +
+                '<div style="font-size:11px;color:var(--muted);">' + esc(item.source || item.content || '').slice(0, 200) + '</div>' +
+                '</div>';
+            });
+            if (data.images && data.images.length > 0) {
+              html += '<div style="margin-top:8px;">';
+              data.images.slice(0, 4).forEach(img => {
+                const url = img.url || img;
+                const caption = img.caption || '';
+                const captionShort = caption ? caption.slice(0, 60) + (caption.length > 60 ? '...' : '') : '';
+                html += '<div style="margin-bottom:6px;">' +
+                  '<img src="' + url + '" style="width:120px;height:90px;border-radius:8px;border:1px solid var(--line);object-fit:cover;cursor:pointer;" onclick="openImageDetail(\'' + url + '\',\'' + esc(caption) + '\')" />' +
+                  (captionShort ? '<div style="font-size:11px;color:var(--muted);margin-top:2px;max-width:120px;line-height:1.3;">' + esc(captionShort) + '</div>' : '') +
+                  '</div>';
+              });
+              html += '</div>';
+            }
+            addChatMessage('ai', html, true);
+          }
+          return;
+        } else {
+          // 正常问答模式
+          const body = JSON.stringify({
+            question,
+            mode: chatMode,
+            vlm_enhanced: chatVlm,
+            enable_rerank: ap.enable_rerank,
+            include_references: ap.include_references,
+            top_k: ap.top_k,
+            chunk_top_k: ap.chunk_top_k,
+            history_turns: ap.history_turns,
+            response_type: ap.response_type,
+            temperature: ap.temperature,
+            max_tokens: ap.max_tokens,
+            max_total_tokens: ap.max_total_tokens,
+            stream: ap.stream,
+            hl_keywords: ap.hl_keywords,
+            system_prompt: ap.system_prompt,
+            image_data: chatImageBase64,
+            image_name: chatImageName,
+          });
+
+          // 发送到聊天 API
+          const res = await fetch(`/rag-api/api/v1/knowledge-bases/${kbId}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+          });
+
+          const rawText = await res.text();
+          let data;
+          try {
+            data = JSON.parse(rawText);
+          } catch (parseErr) {
+            addChatMessage('ai', '❌ 服务错误: ' + (rawText || `HTTP ${res.status}`));
+            return;
+          }
+
+          if (!res.ok) {
+            addChatMessage('ai', '❌ 服务错误: ' + (data.detail || JSON.stringify(data)));
+          } else {
+            addChatMessage('ai', data.answer || '(回答为空)');
+            // 显示图片（仅展示必要的证据图片）
+            if (data.images && data.images.length > 0) {
+              const imgContainer = document.createElement('div');
+              imgContainer.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;padding:8px 0 0;';
+              data.images.slice(0, 4).forEach(imgObj => {
+                const url = imgObj.url || imgObj;
+                const caption = imgObj.caption || '';
+                const imgWrap = document.createElement('div');
+                imgWrap.style.cssText = 'text-align:center;';
+                const img = document.createElement('img');
+                img.src = url;
+                img.style.cssText = 'max-width:140px;max-height:100px;border-radius:8px;border:1px solid var(--line);cursor:pointer;object-fit:cover;';
+                img.onclick = () => openImageDetail(url, caption);
+                imgWrap.appendChild(img);
+                if (caption) {
+                  const capDiv = document.createElement('div');
+                  capDiv.style.cssText = 'font-size:10px;color:var(--muted);margin-top:3px;max-width:140px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                  capDiv.textContent = caption.slice(0, 50) + (caption.length > 50 ? '...' : '');
+                  imgWrap.appendChild(capDiv);
+                }
+                imgContainer.appendChild(imgWrap);
+              });
+              document.getElementById('chatMessages').appendChild(imgContainer);
+              document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+            }
+          }
+
+          // 同时获取证据
+          try {
+            const evRes = await fetch(`/rag-api/api/v1/knowledge-bases/${kbId}/retrieve`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ question, mode: chatMode, vlm_enhanced: chatVlm, enable_rerank: false }),
+            });
+            const evData = await evRes.json();
+          if (evData.evidence) updateEvidence(evData.evidence);
+          if (evData.images && evData.images.length > 0) {
+            const evList = document.getElementById('evidenceList');
+            const imgTitle = document.createElement('div');
+            imgTitle.style.cssText = 'font-size:13px;font-weight:600;color:var(--accent);padding:8px 0 4px;border-top:1px solid var(--line);margin-top:4px;';
+            imgTitle.textContent = '🖼 相关图片 ' + Math.min(evData.images.length, 4) + ' 张';
+            evList.appendChild(imgTitle);
+            const imgRow = document.createElement('div');
+            imgRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;padding:4px 0;';
+            evData.images.slice(0, 4).forEach(imgObj => {
+              const url = imgObj.url || imgObj;
+              const caption = imgObj.caption || '';
+              const imgWrap = document.createElement('div');
+              imgWrap.style.cssText = 'text-align:center;';
+              const img = document.createElement('img');
+              img.src = url;
+              img.style.cssText = 'width:100px;height:75px;border-radius:8px;border:1px solid var(--line);object-fit:cover;cursor:pointer;';
+              img.onclick = () => openImageDetail(url, caption);
+              imgWrap.appendChild(img);
+              if (caption) {
+                const capDiv = document.createElement('div');
+                capDiv.style.cssText = 'font-size:10px;color:var(--muted);margin-top:2px;max-width:100px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                capDiv.textContent = caption.slice(0, 40) + (caption.length > 40 ? '...' : '');
+                imgWrap.appendChild(capDiv);
+              }
+              imgRow.appendChild(imgWrap);
+              imgRow.appendChild(img);
+            });
+            evList.appendChild(imgRow);
+          }
+        } catch (evErr) {
+          console.error('证据检索失败:', evErr);
+        }
+        }
+
+      } catch (err) {
+        addChatMessage('ai', '❌ 请求失败: ' + err.message);
+      } finally {
+        recordChatTiming(Date.now() - startTime);
+        // 发送后不清除图片
+        setChatLoading(false);
+      }
+    }
+
+    document.getElementById('chatSendBtn').addEventListener('click', handleChatSend);
+    document.getElementById('chatInput').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleChatSend();
+      }
+    });
+  </script>
+</body>
+</html>

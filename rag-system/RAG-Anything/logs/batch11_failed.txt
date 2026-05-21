@@ -1,0 +1,115 @@
+
+================================================================================
+文件：paper-1968-morgan-unknown-45e48066d9-bf7145bfa4bc.pdf
+错误：MineruExecutionError("Mineru command failed with return code 1: ['Error: 1 task(s) failed while processing documents:']")
+Traceback (most recent call last):
+  File "/opt/rag-system/RAG-Anything/scripts/process_batch11.py", line 553, in main
+    await process_one_document(rag, pdf_path, output_dir)
+  File "/opt/rag-system/RAG-Anything/scripts/process_batch11.py", line 212, in process_one_document
+    await rag.process_document_complete(
+  File "/opt/rag-system/RAG-Anything/raganything/processor.py", line 1703, in process_document_complete
+    content_list, content_based_doc_id = await self.parse_document(
+  File "/opt/rag-system/RAG-Anything/raganything/processor.py", line 472, in parse_document
+    content_list = await asyncio.to_thread(
+  File "/opt/miniconda3/envs/raganything/lib/python3.10/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+  File "/opt/miniconda3/envs/raganything/lib/python3.10/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "/opt/rag-system/RAG-Anything/raganything/parser.py", line 1117, in parse_pdf
+    self._run_mineru_command(
+  File "/opt/rag-system/RAG-Anything/raganything/parser.py", line 938, in _run_mineru_command
+    raise MineruExecutionError(return_code, error_lines)
+raganything.parser.MineruExecutionError: Mineru command failed with return code 1: ['Error: 1 task(s) failed while processing documents:']
+
+
+================================================================================
+文件：paper-2-laj-unknown-6124d73743-7e729ad61f36.pdf
+错误：MineruExecutionError("Mineru command failed with return code 1: ['Error: 1 task(s) failed while processing documents:']")
+Traceback (most recent call last):
+  File "/opt/rag-system/RAG-Anything/scripts/process_batch11.py", line 553, in main
+    await process_one_document(rag, pdf_path, output_dir)
+  File "/opt/rag-system/RAG-Anything/scripts/process_batch11.py", line 212, in process_one_document
+    await rag.process_document_complete(
+  File "/opt/rag-system/RAG-Anything/raganything/processor.py", line 1703, in process_document_complete
+    content_list, content_based_doc_id = await self.parse_document(
+  File "/opt/rag-system/RAG-Anything/raganything/processor.py", line 472, in parse_document
+    content_list = await asyncio.to_thread(
+  File "/opt/miniconda3/envs/raganything/lib/python3.10/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+  File "/opt/miniconda3/envs/raganything/lib/python3.10/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "/opt/rag-system/RAG-Anything/raganything/parser.py", line 1117, in parse_pdf
+    self._run_mineru_command(
+  File "/opt/rag-system/RAG-Anything/raganything/parser.py", line 938, in _run_mineru_command
+    raise MineruExecutionError(return_code, error_lines)
+raganything.parser.MineruExecutionError: Mineru command failed with return code 1: ['Error: 1 task(s) failed while processing documents:']
+
+
+================================================================================
+文件：paper-dieterich1994-unknown-4f1ae79fec-61466f2e8f7a.pdf
+错误：MineruExecutionError("Mineru command failed with return code 1: ['Error: 1 task(s) failed while processing documents:']")
+Traceback (most recent call last):
+  File "/opt/rag-system/RAG-Anything/scripts/process_batch11.py", line 553, in main
+    await process_one_document(rag, pdf_path, output_dir)
+  File "/opt/rag-system/RAG-Anything/scripts/process_batch11.py", line 212, in process_one_document
+    await rag.process_document_complete(
+  File "/opt/rag-system/RAG-Anything/raganything/processor.py", line 1703, in process_document_complete
+    content_list, content_based_doc_id = await self.parse_document(
+  File "/opt/rag-system/RAG-Anything/raganything/processor.py", line 472, in parse_document
+    content_list = await asyncio.to_thread(
+  File "/opt/miniconda3/envs/raganything/lib/python3.10/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+  File "/opt/miniconda3/envs/raganything/lib/python3.10/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "/opt/rag-system/RAG-Anything/raganything/parser.py", line 1117, in parse_pdf
+    self._run_mineru_command(
+  File "/opt/rag-system/RAG-Anything/raganything/parser.py", line 938, in _run_mineru_command
+    raise MineruExecutionError(return_code, error_lines)
+raganything.parser.MineruExecutionError: Mineru command failed with return code 1: ['Error: 1 task(s) failed while processing documents:']
+
+
+================================================================================
+文件：paper-isacks-oliver-sykes-1968-unknown-2b23756d03-e9767f1a4a18.pdf
+错误：MineruExecutionError("Mineru command failed with return code 1: ['Error: 1 task(s) failed while processing documents:']")
+Traceback (most recent call last):
+  File "/opt/rag-system/RAG-Anything/scripts/process_batch11.py", line 553, in main
+    await process_one_document(rag, pdf_path, output_dir)
+  File "/opt/rag-system/RAG-Anything/scripts/process_batch11.py", line 212, in process_one_document
+    await rag.process_document_complete(
+  File "/opt/rag-system/RAG-Anything/raganything/processor.py", line 1703, in process_document_complete
+    content_list, content_based_doc_id = await self.parse_document(
+  File "/opt/rag-system/RAG-Anything/raganything/processor.py", line 472, in parse_document
+    content_list = await asyncio.to_thread(
+  File "/opt/miniconda3/envs/raganything/lib/python3.10/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+  File "/opt/miniconda3/envs/raganything/lib/python3.10/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "/opt/rag-system/RAG-Anything/raganything/parser.py", line 1117, in parse_pdf
+    self._run_mineru_command(
+  File "/opt/rag-system/RAG-Anything/raganything/parser.py", line 938, in _run_mineru_command
+    raise MineruExecutionError(return_code, error_lines)
+raganything.parser.MineruExecutionError: Mineru command failed with return code 1: ['Error: 1 task(s) failed while processing documents:']
+
+
+================================================================================
+文件：paper-j-geophys-res-1968-le-picho-unknown-f5d13c33d1-43640fd639c9.pdf
+错误：MineruExecutionError("Mineru command failed with return code 1: ['Error: 1 task(s) failed while processing documents:']")
+Traceback (most recent call last):
+  File "/opt/rag-system/RAG-Anything/scripts/process_batch11.py", line 553, in main
+    await process_one_document(rag, pdf_path, output_dir)
+  File "/opt/rag-system/RAG-Anything/scripts/process_batch11.py", line 212, in process_one_document
+    await rag.process_document_complete(
+  File "/opt/rag-system/RAG-Anything/raganything/processor.py", line 1703, in process_document_complete
+    content_list, content_based_doc_id = await self.parse_document(
+  File "/opt/rag-system/RAG-Anything/raganything/processor.py", line 472, in parse_document
+    content_list = await asyncio.to_thread(
+  File "/opt/miniconda3/envs/raganything/lib/python3.10/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+  File "/opt/miniconda3/envs/raganything/lib/python3.10/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "/opt/rag-system/RAG-Anything/raganything/parser.py", line 1117, in parse_pdf
+    self._run_mineru_command(
+  File "/opt/rag-system/RAG-Anything/raganything/parser.py", line 938, in _run_mineru_command
+    raise MineruExecutionError(return_code, error_lines)
+raganything.parser.MineruExecutionError: Mineru command failed with return code 1: ['Error: 1 task(s) failed while processing documents:']
+
