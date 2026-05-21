@@ -1,0 +1,1 @@
+Vue 脚手架依赖 Node.js 和 npm
