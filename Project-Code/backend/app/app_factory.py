@@ -17,6 +17,7 @@ from .geo_ingest_service import (
     get_knowledge_unit_context,
     ingest_geo_document,
     initialize_geo_knowledge,
+    list_geo_documents,
     resolve_geo_document_source,
     save_uploaded_geo_document,
     search_geo_knowledge,
@@ -34,19 +35,21 @@ from .raganything_service import (
     get_raganything_status,
     ingest_document_with_raganything,
     ingest_event_bundle_with_raganything,
+    list_raganything_documents,
     query_raganything as query_raganything_service,
 )
 from .research_service import build_event_research_bundle
 from .schemas import (
-    EventOut,
-    EventQueryParams,
-    EventRagRequest,
-    EventsPageOut,
     DocumentBatchIngestOut,
     DocumentBatchIngestRequest,
     DocumentIngestOut,
     DocumentIngestRequest,
+    DocumentListOut,
     DocumentStatusOut,
+    EventOut,
+    EventQueryParams,
+    EventRagRequest,
+    EventsPageOut,
     KnowledgeContextOut,
     KnowledgeInitOut,
     KnowledgeSearchOut,
@@ -56,6 +59,7 @@ from .schemas import (
     PaperDatabaseResponseOut,
     PaperDetailOut,
     PaperStorageOut,
+    RagAnythingDocumentListOut,
     RagAnythingDocumentRequest,
     RagAnythingEventIngestRequest,
     RagAnythingIngestOut,
@@ -367,6 +371,10 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
     def get_raganything_runtime_status():
         return get_raganything_status()
 
+    @app.get("/api/raganything/documents", response_model=RagAnythingDocumentListOut)
+    async def list_raganything_indexed_documents():
+        return await list_raganything_documents()
+
     @app.post("/api/raganything/events", response_model=RagAnythingIngestOut)
     async def ingest_event_into_raganything(
         payload: RagAnythingEventIngestRequest,
@@ -405,6 +413,10 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
             mode=payload.mode,
             vlm_enhanced=payload.vlmEnhanced,
             only_need_prompt=payload.onlyNeedPrompt,
+            top_k=payload.topK,
+            chunk_top_k=payload.chunkTopK,
+            temperature=payload.temperature,
+            max_tokens=payload.maxTokens,
         )
 
     @app.post("/api/rag/query", response_model=RagResponseOut)
@@ -509,6 +521,15 @@ def create_app(*, create_tables: bool = True, enable_poller: bool = True) -> Fas
             return create_document_import_job(db, payload.model_dump())
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/documents", response_model=DocumentListOut)
+    def list_documents(
+        limit: int = Query(default=20, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+        status: str | None = Query(default=None, max_length=40),
+        db: Session = Depends(get_db),
+    ):
+        return list_geo_documents(db, limit=limit, offset=offset, status=status)
 
     @app.get("/api/documents/import-jobs", response_model=list[DocumentBatchIngestOut])
     def list_import_jobs(limit: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db)):
