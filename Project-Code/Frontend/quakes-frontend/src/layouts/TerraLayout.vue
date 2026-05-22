@@ -27,16 +27,6 @@ const router = useRouter()
       </div>
 
       <div class="scroll-menu">
-        <span class="nav-section">文献流程</span>
-        <div class="nav-item" @click="router.push('/papers')">
-          <span class="icon">⌕</span> <span class="text">论文检索</span>
-        </div>
-        <div class="nav-item" @click="router.push('/knowledge')">
-          <span class="icon">⬡</span> <span class="text">知识库导入</span>
-        </div>
-
-        <div class="divider"></div>
-
         <span class="nav-section">地震数据</span>
         <div class="nav-item" @click="router.push('/dashboard')">
           <span class="icon">◉</span> <span class="text">实时仪表盘</span>
