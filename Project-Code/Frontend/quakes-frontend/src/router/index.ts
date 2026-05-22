@@ -4,9 +4,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 import DashboardView from '../views/DashboardView.vue'
 import HomeView from '../views/HomeView.vue'
 import HistoryData from '../views/HistoryData.vue'
-import KnowledgeView from '../views/KnowledgeView.vue'
-import PaperDetailView from '../views/PaperDetailView.vue'
-import PapersView from '../views/PapersView.vue'
 
 // --- 2. 新增的 Terra 组件 (Sider 风格) ---
 import TerraLayout from '../layouts/TerraLayout.vue'
@@ -34,22 +31,6 @@ const router = createRouter({
       name: 'history',
       component: HistoryData // 访问 /history 还能看到表格
     },
-    {
-      path: '/papers',
-      name: 'papers',
-      component: PapersView
-    },
-    {
-      path: '/knowledge',
-      name: 'knowledge',
-      component: KnowledgeView
-    },
-    {
-      path: '/papers/:paperId',
-      name: 'paper-detail',
-      component: PaperDetailView
-    },
-
     // =========== RAG 知识库 ===========
     {
       path: '/rag',
