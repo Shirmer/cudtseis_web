@@ -421,6 +421,46 @@ class RagAnythingQueryRequest(BaseModel):
     mode: str | None = Field(default=None, max_length=30)
     vlmEnhanced: bool | None = None
     onlyNeedPrompt: bool = False
+    topK: int | None = Field(default=None, ge=1, le=100)
+    chunkTopK: int | None = Field(default=None, ge=1, le=100)
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    maxTokens: int | None = Field(default=None, ge=1, le=65536)
+
+
+class RagAnythingDocumentItemOut(BaseModel):
+    docId: str
+    title: str = ""
+    fileName: str = ""
+    status: str = ""
+    summary: str = ""
+    createdAt: str = ""
+    updatedAt: str = ""
+
+
+class RagAnythingDocumentListOut(BaseModel):
+    items: list[RagAnythingDocumentItemOut]
+    total: int
+
+
+class DocumentListItemOut(BaseModel):
+    documentId: str
+    paperId: str
+    title: str
+    fileName: str
+    status: str
+    parser: str
+    pages: int
+    units: int
+    fileSha256: str
+    createdAt: str
+    updatedAt: str
+
+
+class DocumentListOut(BaseModel):
+    items: list[DocumentListItemOut]
+    total: int
+    limit: int
+    offset: int
 
 
 class RagAnythingStatusOut(BaseModel):

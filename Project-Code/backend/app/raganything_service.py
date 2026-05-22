@@ -661,6 +661,10 @@ async def query_raganything(
     mode: str | None = None,
     vlm_enhanced: bool | None = None,
     only_need_prompt: bool = False,
+    top_k: int | None = None,
+    chunk_top_k: int | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> dict[str, Any]:
     return await _run_on_rag_loop(
         lambda: _with_rag_operation(
@@ -669,6 +673,10 @@ async def query_raganything(
                 mode=mode,
                 vlm_enhanced=vlm_enhanced,
                 only_need_prompt=only_need_prompt,
+                top_k=top_k,
+                chunk_top_k=chunk_top_k,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
         )
     )
@@ -680,6 +688,10 @@ async def _query_raganything_impl(
     mode: str | None = None,
     vlm_enhanced: bool | None = None,
     only_need_prompt: bool = False,
+    top_k: int | None = None,
+    chunk_top_k: int | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> dict[str, Any]:
     rag = await _get_raganything()
     await _ensure_raganything_query_ready(rag)
@@ -702,6 +714,10 @@ async def _query_raganything_impl(
             mode=attempt_mode,
             vlm_enhanced=vlm_enhanced,
             only_need_prompt=only_need_prompt,
+            top_k=top_k,
+            chunk_top_k=chunk_top_k,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
         try:
             result = await rag.aquery(question, **kwargs)
@@ -789,6 +805,10 @@ def _query_kwargs(
     mode: str,
     vlm_enhanced: bool | None,
     only_need_prompt: bool,
+    top_k: int | None = None,
+    chunk_top_k: int | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"mode": mode}
     # RAGAnything auto-enables VLM-enhanced query when a vision model exists.
@@ -798,6 +818,14 @@ def _query_kwargs(
     if only_need_prompt:
         kwargs["only_need_prompt"] = True
         kwargs["vlm_enhanced"] = False
+    if top_k is not None:
+        kwargs["top_k"] = top_k
+    if chunk_top_k is not None:
+        kwargs["chunk_top_k"] = chunk_top_k
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    if max_tokens is not None:
+        kwargs["max_tokens"] = max_tokens
     return kwargs
 
 
@@ -1200,6 +1228,10 @@ def query_raganything_sync(
     vlm_enhanced: bool | None = None,
     only_need_prompt: bool = False,
     fail_on_error: bool = False,
+    top_k: int | None = None,
+    chunk_top_k: int | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> dict[str, Any]:
     if not settings.raganything_enabled:
         if fail_on_error:
@@ -1216,6 +1248,10 @@ def query_raganything_sync(
                 mode=mode,
                 vlm_enhanced=vlm_enhanced,
                 only_need_prompt=only_need_prompt,
+                top_k=top_k,
+                chunk_top_k=chunk_top_k,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
         )
         return {
@@ -1231,6 +1267,42 @@ def query_raganything_sync(
             "engine": "raganything",
             "reason": _exception_detail(exc),
         }
+
+
+async def list_raganything_documents() -> dict[str, Any]:
+    return await _run_on_rag_loop(
+        lambda: _with_rag_operation(
+            lambda: _list_raganything_documents_impl()
+        )
+    )
+
+
+async def _list_raganything_documents_impl() -> dict[str, Any]:
+    rag = await _get_raganything()
+    lightrag = getattr(rag, "lightrag", None)
+    doc_status = getattr(lightrag, "doc_status", None)
+    if doc_status is None:
+        return {"items": [], "total": 0}
+    try:
+        docs, total = await doc_status.get_docs_paginated(page=1, page_size=1000)
+    except Exception:
+        return {"items": [], "total": 0}
+    if not isinstance(docs, list):
+        return {"items": [], "total": 0}
+    items = []
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+        items.append({
+            "docId": str(doc.get("id", doc.get("doc_id", ""))),
+            "title": str(doc.get("title", "")),
+            "fileName": str(doc.get("file_name", "")),
+            "status": str(doc.get("status", "")),
+            "summary": str(doc.get("summary", ""))[:300],
+            "createdAt": str(doc.get("created_at", doc.get("createdAt", ""))),
+            "updatedAt": str(doc.get("updated_at", doc.get("updatedAt", ""))),
+        })
+    return {"items": items, "total": int(total or 0)}
 
 
 async def _run_on_rag_loop(coro_factory):

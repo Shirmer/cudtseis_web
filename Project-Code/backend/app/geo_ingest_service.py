@@ -1315,3 +1315,39 @@ def _evidence_role(section_role: str) -> str:
     if section_role in {"finding"}:
         return "evidence"
     return "context"
+
+
+def list_geo_documents(
+    db: Session,
+    *,
+    limit: int = 20,
+    offset: int = 0,
+    status: str | None = None,
+) -> dict[str, Any]:
+    query = db.query(GeoDocument).order_by(GeoDocument.updated_at.desc())
+    if status:
+        query = query.filter(GeoDocument.status == status)
+    total = query.count()
+    rows = query.offset(offset).limit(limit).all()
+    items = [
+        {
+            "documentId": row.id,
+            "paperId": row.paper_id,
+            "title": row.title,
+            "fileName": row.file_name,
+            "status": row.status,
+            "parser": row.parser,
+            "pages": row.page_count,
+            "units": row.unit_count,
+            "fileSha256": row.file_sha256,
+            "createdAt": row.created_at.isoformat() if row.created_at else "",
+            "updatedAt": row.updated_at.isoformat() if row.updated_at else "",
+        }
+        for row in rows
+    ]
+    return {
+        "items": items,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }

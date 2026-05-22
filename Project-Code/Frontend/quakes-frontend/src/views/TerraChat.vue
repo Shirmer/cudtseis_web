@@ -112,14 +112,20 @@ const userInput = ref('')
 const isSending = ref(false)
 const isUploading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
-const currentModel = ref('hybrid')
+const currentModel = ref('mix')
 const ragStatus = ref<RagAnythingStatus | null>(null)
 const statusLoading = ref(false)
 
 const chatModes: ChatMode[] = [
   {
+    key: 'mix',
+    label: 'Mix (默认)',
+    queryMode: 'mix',
+    placeholder: '自动融合多路检索结果，平衡精度与覆盖度'
+  },
+  {
     key: 'hybrid',
-    label: 'RAGAnything Hybrid',
+    label: 'Hybrid',
     queryMode: 'hybrid',
     placeholder: '问文献证据、地震构造、断层破裂、危险性分析等问题'
   },
@@ -135,6 +141,12 @@ const chatModes: ChatMode[] = [
     queryMode: 'global',
     placeholder: '输入地震现象、区域、断层或构造背景，要求系统给出谨慎分析',
     prefix: '请用地震学和地质学科研分析口径回答，并严格区分文献证据、推断和不确定性。'
+  },
+  {
+    key: 'naive',
+    label: 'Naive',
+    queryMode: 'naive',
+    placeholder: '纯向量检索，不构建知识图谱，适合快速粗略查询'
   }
 ]
 
