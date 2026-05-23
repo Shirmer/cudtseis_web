@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     semantic_scholar_api_key: str = ""
     openalex_email: str = ""
     raganything_enabled: bool = True
-    raganything_source_dir: str = str(BACKEND_DIR.parents[1] / "RAG-Anything-main")
+    raganything_source_dir: str = str(BACKEND_DIR.parents[1] / "rag-system" / "RAG-Anything")
     raganything_working_dir: str = str(DATA_DIR / "raganything")
     raganything_output_dir: str = str(DATA_DIR / "raganything_output")
     raganything_document_dir: str = str(DATA_DIR / "documents")

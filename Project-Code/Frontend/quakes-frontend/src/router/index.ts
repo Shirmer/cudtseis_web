@@ -9,9 +9,6 @@ import HistoryData from '../views/HistoryData.vue'
 import TerraLayout from '../layouts/TerraLayout.vue'
 import TerraChat from '../views/TerraChat.vue'
 
-// --- 3. RAG 知识库 ---
-import RAGDashboard from '../views/RAGDashboard.vue'
-
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -35,7 +32,11 @@ const router = createRouter({
     {
       path: '/rag',
       name: 'rag',
-      component: RAGDashboard
+      component: { template: '' },
+      beforeEnter() {
+        window.location.replace('/rag/index.html')
+        return false
+      }
     },
 
     // =========== 新增路由 (Terra) ===========

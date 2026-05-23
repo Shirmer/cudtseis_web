@@ -29,7 +29,7 @@ _RAG_LOOP_LOCK = threading.Lock()
 _RAG_OPERATION_LOCK: asyncio.Lock | None = None
 WHITESPACE_RE = re.compile(r"\s+")
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-RAGANYTHING_UPSTREAM_ROOT = PROJECT_ROOT / "RAG-Anything-main"
+RAGANYTHING_UPSTREAM_ROOT = PROJECT_ROOT / "rag-system" / "RAG-Anything"
 RAGANYTHING_UPSTREAM_REQUIRED_FILES = [
     "setup.py",
     "requirements.txt",
@@ -249,7 +249,7 @@ def get_raganything_status() -> dict[str, Any]:
         required_actions.append("Configure OPENAI_API_KEY and OPENAI_BASE_URL for the OpenAI-compatible LLM endpoint.")
     upstream = snapshot.get("upstreamSource", {})
     if settings.raganything_source_dir and not upstream.get("complete", False):
-        required_actions.append("Check RAGANYTHING_SOURCE_DIR or keep RAG-Anything-main in the project root.")
+        required_actions.append("Check RAGANYTHING_SOURCE_DIR or keep rag-system/RAG-Anything in the project.")
     return {
         "enabled": settings.raganything_enabled,
         "available": available,

@@ -670,7 +670,7 @@ watch(translateToChinese, () => {
   <div class="dashboard-shell">
     <header class="navbar">
       <div class="brand">
-        <img src="/cdut_logo.png" alt="CDUT Logo" class="school-logo" />
+        <img src="/cdut_seislab_dino.svg" alt="CDUT SEISLAB Dinosaur Logo" class="school-logo" />
         <div class="title-group">
           <h1>CDUT SEIS</h1>
           <small>成都理工大学地震研究中心</small>

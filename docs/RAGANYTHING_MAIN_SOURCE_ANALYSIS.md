@@ -1,10 +1,10 @@
 # RAGAnything-main 源码分析与项目接入说明
 
-本文说明项目根目录 `RAG-Anything-main/` 的作用，以及它如何接入当前网站。
+本文说明项目根目录 `rag-system/RAG-Anything/` 的作用，以及它如何接入当前网站。
 
 ## 1. 结论
 
-`RAG-Anything-main/` 是完整上游源码，当前版本为 `1.3.0`。它应作为本项目文献 RAG 的核心引擎层使用。
+`rag-system/RAG-Anything/` 是完整上游源码，当前版本为 `1.3.0`。它应作为本项目文献 RAG 的核心引擎层使用。
 
 本项目不再复制或重写 RAGAnything 的核心解析、图文表公式处理和 LightRAG 检索逻辑，而是在后端做一层适配：
 
@@ -51,7 +51,7 @@
 ```env
 GEO_RAG_ENGINE=raganything
 RAGANYTHING_ENABLED=true
-RAGANYTHING_SOURCE_DIR=RAG-Anything-main
+RAGANYTHING_SOURCE_DIR=rag-system/RAG-Anything
 RAGANYTHING_WORKING_DIR=Project-Code/backend/.data/raganything
 RAGANYTHING_OUTPUT_DIR=Project-Code/backend/.data/raganything_output
 RAGANYTHING_DOCUMENT_DIR=Project-Code/backend/.data/geo_rag_documents
@@ -71,7 +71,7 @@ curl http://127.0.0.1:8001/api/raganything/status
 重点看：
 
 - `ready` 是否为 `true`
-- `dependencies.raganythingOrigin` 是否指向 `RAG-Anything-main/raganything/__init__.py`
+- `dependencies.raganythingOrigin` 是否指向 `rag-system/RAG-Anything/raganything/__init__.py`
 - `dependencies.version` 是否为 `1.3.0`
 - `sourceSnapshot.upstreamSource.complete` 是否为 `true`
 
@@ -92,5 +92,5 @@ curl http://127.0.0.1:8001/api/raganything/status
 2. 导入进度需要接入 RAGAnything callbacks，显示当前处于解析、正文入库、多模态处理还是完成阶段。
 3. 检索结果需要统一映射回项目自己的文献 ID、页码、原文 URL，保证“查看上下文”和“打开原文”稳定。
 4. 中文问答可以接入 `prompt_manager.py` 和 `prompts_zh.py`，让回答更贴合中文科研场景。
-5. 云端部署时，`RAG-Anything-main/`、PDF 原文目录、RAGAnything 工作目录都应放在服务器同一个项目目录或持久化存储目录下。
+5. 云端部署时，`rag-system/RAG-Anything/`、PDF 原文目录、RAGAnything 工作目录都应放在服务器同一个项目目录或持久化存储目录下。
 

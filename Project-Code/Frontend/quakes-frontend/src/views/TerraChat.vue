@@ -368,7 +368,7 @@ const handleSend = async () => {
     chatHistory.value.push({
       id: Date.now() + 1,
       role: 'ai',
-      content: `RAGAnything 调用失败：${detail}\n请确认后端服务、RAG-Anything-main 依赖、LLM/embedding 配置和 /api/raganything/query 接口已正常启动。`,
+      content: `RAGAnything 调用失败：${detail}\n请确认后端服务、rag-system/RAG-Anything 依赖、LLM/embedding 配置和 /api/raganything/query 接口已正常启动。`,
       modeLabel: mode.label,
       status: 'error'
     })

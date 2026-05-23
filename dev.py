@@ -24,6 +24,7 @@ BACKEND_ENV_EXAMPLE = BACKEND_DIR / ".env.example"
 BACKEND_REQUIREMENTS = BACKEND_DIR / "requirements.txt"
 BACKEND_RAGANYTHING_REQUIREMENTS = BACKEND_DIR / "requirements-raganything.txt"
 FRONTEND_LOCK = FRONTEND_DIR / "package-lock.json"
+RAG_INTEGRITY_CHECK = ROOT / "tools" / "check_rag_integrity.py"
 DEFAULT_DATABASE_URL = "postgresql+psycopg:///quakes"
 DEFAULT_PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
 DEFAULT_PIP_TRUSTED_HOST = "pypi.tuna.tsinghua.edu.cn"
@@ -722,6 +723,11 @@ def test() -> int:
     return 0
 
 
+def check_rag() -> int:
+    run_checked([sys.executable, RAG_INTEGRITY_CHECK], cwd=ROOT)
+    return 0
+
+
 def clean() -> int:
     targets = [
         BACKEND_VENV,
@@ -753,6 +759,7 @@ def print_help() -> None:
   python dev.py setup-raganything  install base dependencies plus RAGAnything stack
   python dev.py up          same as default
   python dev.py test        run backend unit tests and frontend checks
+  python dev.py check-rag   verify RAG engine/workbench wiring
   python dev.py clean       remove local dependency folders and caches
 
 Useful environment variables:
@@ -795,6 +802,8 @@ def main() -> int:
         return backend()
     if command == "test":
         return test()
+    if command == "check-rag":
+        return check_rag()
     if command == "clean":
         return clean()
     error(f"Unknown command: {command}")

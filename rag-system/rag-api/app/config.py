@@ -4,9 +4,19 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# RAG-Anything 项目根目录
+
+def _default_rag_anything_root() -> Path:
+    packaged_root = Path(__file__).resolve().parents[2] / "RAG-Anything"
+    production_root = Path("/opt/rag-system/RAG-Anything")
+    if packaged_root.is_dir():
+        return packaged_root
+    return production_root
+
+
+# RAG-Anything 项目根目录。服务器默认仍支持 /opt/rag-system/RAG-Anything；
+# 本地开发时自动使用仓库内的 rag-system/RAG-Anything。
 RAG_ANYTHING_ROOT = Path(
-    os.getenv("RAG_ANYTHING_ROOT", "/opt/rag-system/RAG-Anything")
+    os.getenv("RAG_ANYTHING_ROOT", str(_default_rag_anything_root()))
 )
 
 # 读取 RAG-Anything 里的 .env
