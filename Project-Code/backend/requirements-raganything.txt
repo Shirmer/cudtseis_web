@@ -1,7 +1,7 @@
 -r app/requirements.txt
 
 # Primary RAG stack. The app imports the full local upstream source tree.
--e ../../RAG-Anything-main
+-e ../../rag-system/RAG-Anything
 
 # RAGAnything's text extra is reportlab. Keep it explicit because some pip
 # versions reject extras on editable local paths in requirements files.

@@ -433,7 +433,7 @@ py dev.py setup-raganything
 ```env
 GEO_RAG_ENGINE=raganything
 RAGANYTHING_ENABLED=true
-RAGANYTHING_SOURCE_DIR=/Users/teki/Downloads/my_project/cudtseis_web/RAG-Anything-main
+RAGANYTHING_SOURCE_DIR=/Users/teki/Downloads/my_project/cudtseis_web/rag-system/RAG-Anything
 OPENAI_API_KEY=你的 API Key
 OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 ```
@@ -447,13 +447,13 @@ GEO_RAG_ENGINE=raganything
 RAGANYTHING_WORKING_DIR=Project-Code/backend/.data/raganything
 RAGANYTHING_OUTPUT_DIR=Project-Code/backend/.data/raganything_output
 RAGANYTHING_DOCUMENT_DIR=Project-Code/backend/.data/geo_rag_documents
-RAGANYTHING_SOURCE_DIR=RAG-Anything-main
+RAGANYTHING_SOURCE_DIR=rag-system/RAG-Anything
 RAGANYTHING_PARSER=mineru
 RAGANYTHING_PARSE_METHOD=auto
 RAGANYTHING_QUERY_MODE=hybrid
 ```
 
-`RAGANYTHING_SOURCE_DIR` 指向项目根目录下的完整上游源码 `RAG-Anything-main`。后端启动时会优先从这里导入 `raganything`，如果该目录不存在，才回退到虚拟环境里通过 pip 安装的包。这样团队可以直接跟随完整 RAGAnything 源码升级，而不是把核心 RAG 逻辑拆碎复制进业务代码。
+`RAGANYTHING_SOURCE_DIR` 指向项目根目录下的完整上游源码 `rag-system/RAG-Anything`。后端启动时会优先从这里导入 `raganything`，如果该目录不存在，才回退到虚拟环境里通过 pip 安装的包。这样团队可以直接跟随完整 RAGAnything 源码升级，而不是把核心 RAG 逻辑拆碎复制进业务代码。
 
 `GEO_RAG_ENGINE=raganything` 后，文献导入不再同时写入旧的自研 chunk 索引；PDF/TXT/MD 会先进入项目的文件存储目录，然后由 RAGAnything/MinerU/LightRAG 完成解析、入库和检索。PostgreSQL 仍然保存文献元数据、原文路径、地震目录和问答记录。
 
@@ -472,7 +472,7 @@ ResolutionImpossible
 
 ### RAGAnything 主源码
 
-项目根目录的 `RAG-Anything-main/` 是当前优先使用的完整上游 RAGAnything 源码。旧的 `references/source-snapshots/` 快照已经清理，不再作为代码或运行时参考；项目只保留 `references/` 中的轻量说明文档。
+项目根目录的 `rag-system/RAG-Anything/` 是当前优先使用的完整上游 RAGAnything 源码。旧的 `references/source-snapshots/` 快照已经清理，不再作为代码或运行时参考；项目只保留 `references/` 中的轻量说明文档。
 
 可以通过这个接口检查当前环境是否真正就绪：
 
@@ -480,9 +480,9 @@ ResolutionImpossible
 curl http://127.0.0.1:8001/api/raganything/status
 ```
 
-如果返回 `ready=false`，优先看 `requiredActions` 和 `dependencies.missing`。如果要确认当前是否真的使用完整源码，看 `dependencies.raganythingOrigin`，它应该指向项目根目录下的 `RAG-Anything-main/raganything/__init__.py`。
+如果返回 `ready=false`，优先看 `requiredActions` 和 `dependencies.missing`。如果要确认当前是否真的使用完整源码，看 `dependencies.raganythingOrigin`，它应该指向项目根目录下的 `rag-system/RAG-Anything/raganything/__init__.py`。
 
-不要把完整的外部仓库、它们自己的 `.venv`、`node_modules`、解析输出、样例 PDF、缓存或前端 `dist/` 提交进本项目。协作开发只需要保留 `RAG-Anything-main/` 主源码和 `references/` 里的轻量说明文档。
+不要把完整的外部仓库、它们自己的 `.venv`、`node_modules`、解析输出、样例 PDF、缓存或前端 `dist/` 提交进本项目。协作开发只需要保留 `rag-system/RAG-Anything/` 主源码和 `references/` 里的轻量说明文档。
 
 ### 地质文献知识库说明
 
@@ -629,6 +629,7 @@ Ctrl+C
 
 ```bash
 python dev.py check   # 检查环境，不安装
+python dev.py check-rag # 检查 RAG 引擎路径、工作台和入口是否完整
 python dev.py setup   # 安装依赖、初始化数据库，不启动
 python dev.py up      # 初始化后启动，等同 python dev.py
 python dev.py test    # 后端测试 + 前端类型检查 + 前端构建
@@ -678,7 +679,7 @@ py dev.py
 - `RAGANYTHING_WORKING_DIR`，RAGAnything/LightRAG 工作目录
 - `RAGANYTHING_OUTPUT_DIR`，MinerU 解析输出目录
 - `RAGANYTHING_DOCUMENT_DIR`，RAGAnything 允许读取的文献目录
-- `RAGANYTHING_SOURCE_DIR`，完整上游源码目录；本项目优先使用根目录的 `RAG-Anything-main`
+- `RAGANYTHING_SOURCE_DIR`，完整上游源码目录；本项目优先使用根目录的 `rag-system/RAG-Anything`
 - `GEO_RAG_STORAGE_BACKEND`，PDF/TXT/MD 原文存储方式；服务器后端模式推荐 `local`
 - `GEO_RAG_STORAGE_ROOT`，原文目录；服务器后端模式建议 `/opt/cudtseis_web/storage/geo_rag_documents`
 - `GEO_RAG_UPLOAD_STAGE_ROOT`，上传暂存目录；服务器后端模式建议 `/opt/cudtseis_web/storage/geo_rag_upload_stage`

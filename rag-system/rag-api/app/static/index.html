@@ -3,62 +3,185 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RAG 文献问答测试界面</title>
+  <title>CDUT SEISLAB | RAG 知识工作台</title>
   <style>
+    :root {
+      color-scheme: light;
+      --ink: #151515;
+      --muted: #62666f;
+      --line: #dedbd2;
+      --paper: #fffdfa;
+      --soft: #f4f2ed;
+      --brand: #b91c1c;
+      --brand-strong: #991b1b;
+      --green: #047857;
+      --amber: #b45309;
+      --shadow: 0 16px 38px rgba(20, 20, 20, 0.08);
+    }
+
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
+      min-height: 100vh;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-      background: #f5f7fb;
-      color: #111827;
+      background: #f4f2ed;
+      color: var(--ink);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(21, 21, 21, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(21, 21, 21, 0.035) 1px, transparent 1px);
+      background-size: 32px 32px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.42), transparent 62%);
     }
 
     .container {
-      max-width: 1100px;
+      position: relative;
+      z-index: 1;
+      max-width: 1240px;
       margin: 0 auto;
-      padding: 36px 20px;
+      padding: 22px 22px 42px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 64px;
+      margin-bottom: 18px;
+      border-bottom: 1px solid rgba(21, 21, 21, 0.14);
+    }
+
+    .brand-lockup {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-lockup img {
+      width: 42px;
+      height: 42px;
+      object-fit: contain;
+      flex: 0 0 auto;
+    }
+
+    .brand-text {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .brand-text span {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--brand);
+      letter-spacing: 0;
+    }
+
+    .brand-text strong {
+      font-size: 17px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .home-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 0 13px;
+      border: 1px solid rgba(21, 21, 21, 0.16);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--ink);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .home-link:hover {
+      border-color: var(--brand);
+      color: var(--brand);
     }
 
     .header {
-      margin-bottom: 22px;
+      display: grid;
+      gap: 14px;
+      margin: 0 0 22px;
+      padding: 24px;
+      border: 1px solid rgba(21, 21, 21, 0.12);
+      border-radius: 8px;
+      background: rgba(255, 253, 250, 0.86);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
     }
 
     h1 {
       margin: 0;
-      font-size: 30px;
+      font-size: clamp(30px, 4vw, 52px);
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: 0;
     }
 
     .subtitle {
-      margin-top: 8px;
-      color: #6b7280;
-      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 14px;
     }
 
     .grid {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 20px;
+      gap: 18px;
+    }
+
+    .grid-two {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
     }
 
     .card {
-      background: #fff;
-      border-radius: 18px;
-      padding: 24px;
-      border: 1px solid #e5e7eb;
-      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+      background: rgba(255, 253, 250, 0.94);
+      border-radius: 8px;
+      padding: 22px;
+      border: 1px solid rgba(21, 21, 21, 0.12);
+      box-shadow: 0 10px 24px rgba(20, 20, 20, 0.06);
     }
 
     h2 {
       margin: 0 0 16px;
-      font-size: 20px;
+      font-size: 19px;
+      line-height: 1.25;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 12px;
+      font-size: 16px;
+      line-height: 1.3;
     }
 
     label {
       display: block;
       margin: 10px 0 8px;
-      font-weight: 600;
-      font-size: 14px;
+      font-weight: 800;
+      font-size: 13px;
+      color: #252525;
     }
 
     textarea,
@@ -66,143 +189,152 @@
     input[type="file"],
     select {
       width: 100%;
-      padding: 12px 14px;
-      border: 1px solid #d1d5db;
-      border-radius: 12px;
-      font-size: 15px;
+      padding: 11px 12px;
+      border: 1px solid #cfcac0;
+      border-radius: 8px;
+      font-size: 14px;
       outline: none;
       background: #fff;
+      color: var(--ink);
     }
 
     textarea {
-      min-height: 120px;
+      min-height: 128px;
       resize: vertical;
-      line-height: 1.6;
+      line-height: 1.65;
     }
 
     textarea:focus,
     input:focus,
     select:focus {
-      border-color: #2563eb;
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.12);
     }
 
     .row {
       display: flex;
-      gap: 12px;
+      gap: 10px;
       align-items: center;
       flex-wrap: wrap;
       margin-top: 12px;
     }
 
     .row > * {
-      flex: 1;
-      min-width: 180px;
+      flex: 1 1 180px;
+      min-width: 0;
     }
 
     .checkbox-label {
       display: flex;
       align-items: center;
       gap: 8px;
-      font-weight: 500;
-      min-width: 130px;
-      flex: 0;
+      font-weight: 700;
+      min-width: 132px;
+      flex: 0 0 auto;
       white-space: nowrap;
     }
 
     button {
       border: none;
-      border-radius: 12px;
-      padding: 12px 18px;
-      background: #2563eb;
+      border-radius: 8px;
+      padding: 11px 15px;
+      background: var(--ink);
       color: white;
-      font-size: 15px;
-      font-weight: 700;
+      font-size: 14px;
+      font-weight: 900;
       cursor: pointer;
-      min-width: 120px;
+      min-width: 118px;
+      min-height: 42px;
+      transition: background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--brand);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(185, 28, 28, 0.18);
     }
 
     button.secondary {
-      background: #111827;
+      background: #3a3a3a;
     }
 
     button.ghost {
-      background: #eef2ff;
-      color: #3730a3;
+      background: #fff;
+      color: var(--brand);
+      border: 1px solid rgba(185, 28, 28, 0.28);
+    }
+
+    button.ghost:hover:not(:disabled) {
+      color: #fff;
     }
 
     button:disabled {
-      background: #9ca3af;
+      background: #9b9b9b;
       cursor: not-allowed;
     }
 
     .status {
       margin-top: 12px;
-      color: #6b7280;
-      font-size: 14px;
+      color: var(--muted);
+      font-size: 13px;
       line-height: 1.6;
     }
 
-    .success { color: #059669; }
+    .success { color: var(--green); }
     .error { color: #dc2626; }
-    .warn { color: #d97706; }
+    .warn { color: var(--amber); }
 
     .answer-box,
     .result-box {
-      margin-top: 16px;
-      background: #0f172a;
-      color: #e5e7eb;
-      border-radius: 14px;
-      padding: 16px;
-      min-height: 120px;
+      margin-top: 14px;
+      background: #151515;
+      color: #f3f4f6;
+      border-radius: 8px;
+      padding: 15px;
+      min-height: 118px;
       white-space: pre-wrap;
       line-height: 1.7;
-      font-size: 14px;
+      font-size: 13px;
       overflow-x: auto;
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
 
     .tag {
-      display: inline-block;
-      background: #eef2ff;
-      color: #3730a3;
-      padding: 4px 8px;
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      background: #fff;
+      color: var(--brand);
+      border: 1px solid rgba(185, 28, 28, 0.2);
+      padding: 3px 8px;
       border-radius: 999px;
       font-size: 12px;
-      margin-right: 6px;
+      font-weight: 800;
     }
 
     .small {
       font-size: 13px;
-      color: #6b7280;
+      color: var(--muted);
       line-height: 1.7;
     }
 
-    .doc-item {
-      padding: 12px;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      margin-top: 10px;
-      background: #f9fafb;
-      font-size: 14px;
-      line-height: 1.7;
-    }
-
-    .doc-item code {
-      background: #eef2ff;
-      color: #3730a3;
-      padding: 2px 5px;
-      border-radius: 5px;
-    }
-
-
+    .doc-item,
     .file-item {
       padding: 12px;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
       margin-top: 10px;
-      background: #f9fafb;
+      background: #fbfaf7;
       font-size: 14px;
       line-height: 1.7;
+    }
+
+    .doc-item code,
+    .file-item code {
+      background: #f2eee7;
+      color: #2f2f2f;
+      padding: 2px 5px;
+      border-radius: 5px;
     }
 
     .file-item.duplicate {
@@ -216,35 +348,28 @@
     }
 
     .file-title {
-      font-weight: 700;
+      font-weight: 800;
       word-break: break-all;
     }
 
     .file-path {
-      color: #6b7280;
+      color: var(--muted);
       font-size: 12px;
       word-break: break-all;
     }
 
-    h3 {
-      margin: 0 0 12px;
-      font-size: 17px;
-    }
-
     hr.soft {
       border: none;
-      border-top: 1px solid #e5e7eb;
+      border-top: 1px solid var(--line);
       margin: 22px 0;
     }
-
-
 
     .progress-panel {
       margin-top: 18px;
       padding: 16px;
-      border: 1px solid #dbeafe;
-      border-radius: 16px;
-      background: #eff6ff;
+      border: 1px solid rgba(185, 28, 28, 0.16);
+      border-radius: 8px;
+      background: #fffaf6;
     }
 
     .progress-head {
@@ -258,57 +383,57 @@
     .progress-title {
       margin: 0;
       font-size: 16px;
-      font-weight: 800;
+      font-weight: 900;
     }
 
     .progress-meta {
       margin-top: 6px;
-      color: #475569;
+      color: var(--muted);
       font-size: 13px;
       line-height: 1.6;
     }
 
     .progress-bar-wrap {
       width: 100%;
-      height: 16px;
+      height: 14px;
       border-radius: 999px;
       overflow: hidden;
-      background: #dbeafe;
+      background: #eee7dc;
       margin-top: 14px;
-      border: 1px solid #bfdbfe;
+      border: 1px solid #ddd3c4;
     }
 
     .progress-bar {
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, #2563eb, #10b981);
+      background: linear-gradient(90deg, var(--brand), #047857);
       transition: width 0.35s ease;
     }
 
     .progress-stats {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
       gap: 10px;
       margin-top: 14px;
     }
 
     .stat-card {
       background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
       padding: 10px 12px;
     }
 
     .stat-value {
       font-size: 22px;
-      font-weight: 800;
+      font-weight: 900;
       line-height: 1.2;
     }
 
     .stat-label {
       margin-top: 2px;
       font-size: 12px;
-      color: #64748b;
+      color: var(--muted);
     }
 
     .task-list {
@@ -316,16 +441,16 @@
       max-height: 360px;
       overflow: auto;
       background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
     }
 
     .task-row {
       display: grid;
-      grid-template-columns: 92px 1fr;
+      grid-template-columns: 92px minmax(0, 1fr);
       gap: 10px;
       padding: 10px 12px;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid #eee9df;
       font-size: 13px;
       line-height: 1.6;
     }
@@ -341,9 +466,9 @@
       padding: 3px 8px;
       border-radius: 999px;
       font-size: 12px;
-      font-weight: 700;
-      background: #e5e7eb;
-      color: #374151;
+      font-weight: 800;
+      background: #e5e5e5;
+      color: #333;
       white-space: nowrap;
       height: 24px;
       margin-top: 2px;
@@ -361,8 +486,8 @@
     }
 
     .task-status-pill.status-inserting {
-      background: #dbeafe;
-      color: #1d4ed8;
+      background: #e0f2fe;
+      color: #075985;
     }
 
     .task-status-pill.status-cloud_running,
@@ -370,8 +495,8 @@
     .task-status-pill.status-cloud_submitting,
     .task-status-pill.status-cloud_downloading,
     .task-status-pill.status-cloud_downloading_result {
-      background: #ede9fe;
-      color: #5b21b6;
+      background: #fae8e8;
+      color: var(--brand-strong);
     }
 
     .task-status-pill.status-queued,
@@ -381,26 +506,68 @@
     }
 
     .task-file-name {
-      font-weight: 700;
+      font-weight: 800;
       word-break: break-all;
     }
 
     .task-message {
-      color: #64748b;
+      color: var(--muted);
       word-break: break-all;
     }
 
     .task-id-text {
-      color: #94a3b8;
+      color: #8b8b8b;
       font-size: 12px;
       word-break: break-all;
     }
 
-    @media (min-width: 900px) {
+    @media (min-width: 980px) {
       .grid-two {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .container {
+        padding: 14px 14px 30px;
+      }
+
+      .topbar {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 20px;
+        grid-template-columns: 1fr;
+        align-items: flex-start;
+        gap: 10px;
+        min-height: 58px;
+      }
+
+      .brand-text strong {
+        white-space: normal;
+        font-size: 15px;
+      }
+
+      .home-link {
+        justify-self: start;
+        padding: 0 10px;
+      }
+
+      .header,
+      .card {
+        padding: 16px;
+      }
+
+      .row > *,
+      button {
+        flex-basis: 100%;
+        width: 100%;
+      }
+
+      .checkbox-label {
+        width: auto;
+        flex-basis: auto;
+      }
+
+      .task-row {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -408,12 +575,23 @@
 
 <body>
   <div class="container">
+    <div class="topbar">
+      <div class="brand-lockup">
+        <img src="/cdut_seislab_dino.svg" alt="CDUT SEISLAB" onerror="this.onerror=null;this.src='/static/cdut_seislab_dino.svg'" />
+        <div class="brand-text">
+          <span>CDUT SEISLAB</span>
+          <strong>地震监测与智能文献平台</strong>
+        </div>
+      </div>
+      <a class="home-link" href="/">返回主页</a>
+    </div>
+
     <div class="header">
-      <h1>RAG 文献问答后台测试台</h1>
+      <h1>RAG 知识工作台</h1>
       <div class="subtitle">
-        当前后端：<span class="tag">FastAPI</span>
-        知识库：<span class="tag">default</span>
-        状态：<span id="healthText">检测中...</span>
+        <span class="tag">FastAPI</span>
+        <span class="tag">default</span>
+        <span>状态：<strong id="healthText">检测中...</strong></span>
       </div>
     </div>
 
@@ -684,10 +862,33 @@
   </div>
 
   <script>
+    const API_BASE = window.location.pathname.startsWith("/rag") ? "/rag-api" : "";
+
+    function apiPath(path) {
+      return `${API_BASE}${path}`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value);
+    }
+
+    function errorMessage(err) {
+      return escapeHtml(err && err.message ? err.message : err);
+    }
+
     async function checkHealth() {
       const el = document.getElementById("healthText");
       try {
-        const res = await fetch("/health");
+        const res = await fetch(apiPath("/health"));
         if (!res.ok) throw new Error("health failed");
         const data = await res.json();
         el.textContent = data.status === "ok" ? "正常" : "异常";
@@ -723,7 +924,7 @@
       answerBox.textContent = "";
 
       try {
-        const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/chat`, {
+        const res = await fetch(apiPath(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/chat`), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -743,7 +944,7 @@
         status.innerHTML = '<span class="success">请求成功。</span>';
         answerBox.textContent = data.answer || pretty(data);
       } catch (err) {
-        status.innerHTML = '<span class="error">请求失败：' + err.message + '</span>';
+        status.innerHTML = '<span class="error">请求失败：' + errorMessage(err) + '</span>';
         answerBox.textContent = "";
       } finally {
         btn.disabled = false;
@@ -776,7 +977,7 @@
       resultBox.textContent = "";
 
       try {
-        const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents`, {
+        const res = await fetch(apiPath(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents`), {
           method: "POST",
           body: formData
         });
@@ -798,7 +999,7 @@
         document.getElementById("listKbId").value = kbId;
         loadDocuments();
       } catch (err) {
-        status.innerHTML = '<span class="error">上传失败：' + err.message + '</span>';
+        status.innerHTML = '<span class="error">上传失败：' + errorMessage(err) + '</span>';
         resultBox.textContent = "";
       } finally {
         btn.disabled = false;
@@ -819,7 +1020,7 @@
       resultBox.textContent = "";
 
       try {
-        const res = await fetch(`/api/v1/documents/${encodeURIComponent(documentId)}/ingest`, {
+        const res = await fetch(apiPath(`/api/v1/documents/${encodeURIComponent(documentId)}/ingest`), {
           method: "POST"
         });
 
@@ -837,7 +1038,7 @@
           document.getElementById("taskId").value = data.task_id;
         }
       } catch (err) {
-        status.innerHTML = '<span class="error">创建任务失败：' + err.message + '</span>';
+        status.innerHTML = '<span class="error">创建任务失败：' + errorMessage(err) + '</span>';
         resultBox.textContent = "";
       }
     }
@@ -855,7 +1056,7 @@
       status.textContent = "正在查询任务状态……";
 
       try {
-        const res = await fetch(`/api/v1/tasks/${encodeURIComponent(taskId)}`);
+        const res = await fetch(apiPath(`/api/v1/tasks/${encodeURIComponent(taskId)}`));
 
         if (!res.ok) {
           const text = await res.text();
@@ -869,12 +1070,12 @@
         if (taskStatus === "success" || taskStatus === "done") colorClass = "success";
         if (taskStatus === "failed") colorClass = "error";
 
-        status.innerHTML = `当前任务状态：<span class="${colorClass}">${taskStatus}</span>`;
+        status.innerHTML = `当前任务状态：<span class="${colorClass}">${escapeHtml(taskStatus)}</span>`;
         resultBox.textContent = pretty(data);
 
         return data;
       } catch (err) {
-        status.innerHTML = '<span class="error">查询任务失败：' + err.message + '</span>';
+        status.innerHTML = '<span class="error">查询任务失败：' + errorMessage(err) + '</span>';
         return null;
       }
     }
@@ -909,7 +1110,7 @@
       list.innerHTML = "";
 
       try {
-        const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents`);
+        const res = await fetch(apiPath(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents`));
 
         if (!res.ok) {
           const text = await res.text();
@@ -928,19 +1129,23 @@
 
         list.innerHTML = items.map(doc => `
           <div class="doc-item">
-            <div><strong>${doc.filename}</strong></div>
-            <div>document_id：<code>${doc.document_id}</code></div>
-            <div>状态：<code>${doc.status}</code></div>
-            <div>路径：${doc.file_path}</div>
-            <div>创建时间：${doc.created_at}</div>
+            <div><strong>${escapeHtml(doc.filename || "未命名文档")}</strong></div>
+            <div>document_id：<code>${escapeHtml(doc.document_id)}</code></div>
+            <div>状态：<code>${escapeHtml(doc.status)}</code></div>
+            <div>路径：${escapeHtml(doc.file_path)}</div>
+            <div>创建时间：${escapeHtml(doc.created_at)}</div>
             <div style="margin-top:8px;">
-              <button class="ghost" onclick="fillDocumentId('${doc.document_id}')">填入导入任务</button>
+              <button class="ghost" data-document-id="${escapeAttr(doc.document_id)}" onclick="fillDocumentIdFromButton(this)">填入导入任务</button>
             </div>
           </div>
         `).join("");
       } catch (err) {
-        status.innerHTML = '<span class="error">加载文档失败：' + err.message + '</span>';
+        status.innerHTML = '<span class="error">加载文档失败：' + errorMessage(err) + '</span>';
       }
+    }
+
+    function fillDocumentIdFromButton(button) {
+      fillDocumentId(button.dataset.documentId || "");
     }
 
     function fillDocumentId(documentId) {
@@ -979,7 +1184,7 @@
   resultBox.textContent = "";
 
   try {
-    const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/content-list/insert`, {
+    const res = await fetch(apiPath(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/content-list/insert`), {
       method: "POST",
       body: formData
     });
@@ -1008,7 +1213,7 @@
     loadDocuments();
 
   } catch (err) {
-    status.innerHTML = '<span class="error">上传失败：' + err.message + '</span>';
+    status.innerHTML = '<span class="error">上传失败：' + errorMessage(err) + '</span>';
     resultBox.textContent = "";
   }
 }
@@ -1060,7 +1265,7 @@
           });
         }
 
-        const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(opts.kbId)}/documents/check-duplicates`, {
+        const res = await fetch(apiPath(`/api/v1/knowledge-bases/${encodeURIComponent(opts.kbId)}/documents/check-duplicates`), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ items })
@@ -1080,7 +1285,7 @@
         resultBox.textContent = pretty(data);
 
       } catch (err) {
-        status.innerHTML = '<span class="error">检查失败：' + err.message + '</span>';
+        status.innerHTML = '<span class="error">检查失败：' + errorMessage(err) + '</span>';
       }
     }
 
@@ -1104,7 +1309,7 @@
 
       for (const file of fileInput.files) {
         if (!file.name.toLowerCase().endsWith(".pdf")) {
-          status.innerHTML = '<span class="error">当前只支持 PDF 文件：' + file.name + '</span>';
+          status.innerHTML = '<span class="error">当前只支持 PDF 文件：' + escapeHtml(file.name) + '</span>';
           return;
         }
         formData.append("files", file);
@@ -1120,7 +1325,7 @@
       resultBox.textContent = "";
 
       try {
-        const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(opts.kbId)}/documents/batch-cloud-ingest`, {
+        const res = await fetch(apiPath(`/api/v1/knowledge-bases/${encodeURIComponent(opts.kbId)}/documents/batch-cloud-ingest`), {
           method: "POST",
           body: formData
         });
@@ -1147,7 +1352,7 @@
         loadDocuments();
 
       } catch (err) {
-        status.innerHTML = '<span class="error">提交失败：' + err.message + '</span>';
+        status.innerHTML = '<span class="error">提交失败：' + errorMessage(err) + '</span>';
       }
     }
 
@@ -1170,7 +1375,7 @@
       resultBox.textContent = "";
 
       try {
-        const url = `/api/v1/admin/server-files?kb_id=${encodeURIComponent(opts.kbId)}&dir=${encodeURIComponent(dir)}`;
+        const url = apiPath(`/api/v1/admin/server-files?kb_id=${encodeURIComponent(opts.kbId)}&dir=${encodeURIComponent(dir)}`);
         const res = await fetch(url);
 
         if (!res.ok) {
@@ -1202,18 +1407,18 @@
             <div class="file-item ${cls}">
               <label class="checkbox-label" style="display:flex;white-space:normal;">
                 <input class="server-file-checkbox" type="checkbox" data-index="${idx}" ${file.is_duplicate ? "" : "checked"} />
-                <span class="file-title">${file.filename}</span>
+                <span class="file-title">${escapeHtml(file.filename)}</span>
               </label>
-              <div>状态：<code>${statusText}</code></div>
+              <div>状态：<code>${escapeHtml(statusText)}</code></div>
               <div>大小：${Math.round((file.size_bytes || 0) / 1024)} KB</div>
-              <div>SHA256：<code>${file.sha256 || "-"}</code></div>
-              <div class="file-path">${file.file_path}</div>
+              <div>SHA256：<code>${escapeHtml(file.sha256 || "-")}</code></div>
+              <div class="file-path">${escapeHtml(file.file_path)}</div>
             </div>
           `;
         }).join("");
 
       } catch (err) {
-        status.innerHTML = '<span class="error">扫描失败：' + err.message + '</span>';
+        status.innerHTML = '<span class="error">扫描失败：' + errorMessage(err) + '</span>';
       }
     }
 
@@ -1250,7 +1455,7 @@
       status.textContent = `正在提交 ${selected.length} 个服务器已有 PDF 到 MinerU 云解析入库任务……`;
 
       try {
-        const res = await fetch(`/api/v1/knowledge-bases/${encodeURIComponent(opts.kbId)}/documents/server-paths-cloud-ingest`, {
+        const res = await fetch(apiPath(`/api/v1/knowledge-bases/${encodeURIComponent(opts.kbId)}/documents/server-paths-cloud-ingest`), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1286,7 +1491,7 @@
         loadDocuments();
 
       } catch (err) {
-        status.innerHTML = '<span class="error">提交失败：' + err.message + '</span>';
+        status.innerHTML = '<span class="error">提交失败：' + errorMessage(err) + '</span>';
       }
     }
 
@@ -1418,7 +1623,7 @@
       const startedAt = currentBatchProgress.created_at ? new Date(currentBatchProgress.created_at).toLocaleString() : "-";
       const updatedAt = currentBatchProgress.updated_at ? new Date(currentBatchProgress.updated_at).toLocaleString() : "-";
 
-      meta.innerHTML = `来源：<strong>${currentBatchProgress.source || "批量任务"}</strong>；知识库：<strong>${currentBatchProgress.kb_id}</strong>；开始：${startedAt}；更新：${updatedAt}；跳过重复：${skippedCount}。`;
+      meta.innerHTML = `来源：<strong>${escapeHtml(currentBatchProgress.source || "批量任务")}</strong>；知识库：<strong>${escapeHtml(currentBatchProgress.kb_id)}</strong>；开始：${escapeHtml(startedAt)}；更新：${escapeHtml(updatedAt)}；跳过重复：${skippedCount}。`;
       bar.style.width = `${summary.percent}%`;
       totalEl.textContent = summary.total;
       successEl.textContent = summary.success;
@@ -1428,11 +1633,11 @@
 
       list.innerHTML = currentBatchProgress.tasks.map((task, index) => `
         <div class="task-row">
-          <span class="task-status-pill ${statusClass(task.status)}">${task.status || "unknown"}</span>
+          <span class="task-status-pill ${statusClass(task.status)}">${escapeHtml(task.status || "unknown")}</span>
           <div>
-            <div class="task-file-name">${index + 1}. ${task.filename || task.document_id || task.task_id}</div>
-            <div class="task-message">${task.message || "-"}</div>
-            <div class="task-id-text">task_id: ${task.task_id}</div>
+            <div class="task-file-name">${index + 1}. ${escapeHtml(task.filename || task.document_id || task.task_id)}</div>
+            <div class="task-message">${escapeHtml(task.message || "-")}</div>
+            <div class="task-id-text">task_id: ${escapeHtml(task.task_id)}</div>
           </div>
         </div>
       `).join("");
@@ -1446,7 +1651,7 @@
         if (!task.task_id || isTerminalTaskStatus(task.status)) continue;
 
         try {
-          const res = await fetch(`/api/v1/tasks/${encodeURIComponent(task.task_id)}`);
+          const res = await fetch(apiPath(`/api/v1/tasks/${encodeURIComponent(task.task_id)}`));
           if (!res.ok) {
             task.message = `查询失败：HTTP ${res.status}`;
             continue;

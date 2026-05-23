@@ -125,8 +125,8 @@ curl http://127.0.0.1:8001/api/raganything/status
 
 - `ready`：是否可以真正执行 RAGAnything 入库和问答。
 - `dependencies.missing`：当前虚拟环境缺哪些运行依赖。
-- `dependencies.raganythingOrigin`：当前后端实际导入的 RAGAnything 来源，优先应指向 `RAG-Anything-main/raganything/__init__.py`。
+- `dependencies.raganythingOrigin`：当前后端实际导入的 RAGAnything 来源，优先应指向 `rag-system/RAG-Anything/raganything/__init__.py`。
 - `sourceSnapshot.upstreamSource.complete`：项目根目录的完整 RAGAnything 上游源码是否完整。
 - `requiredActions`：下一步应该执行什么。
 
-说明：当前运行时优先使用项目根目录的 `RAG-Anything-main` 完整源码；`.venv` 中通过 `python3 dev.py setup-raganything` 安装的包主要提供运行依赖和兜底。旧 `references/source-snapshots` 快照已清理，不再参与开发或运行。
+说明：当前运行时优先使用项目根目录的 `rag-system/RAG-Anything` 完整源码；`.venv` 中通过 `python3 dev.py setup-raganything` 安装的包主要提供运行依赖和兜底。旧 `references/source-snapshots` 快照已清理，不再参与开发或运行。

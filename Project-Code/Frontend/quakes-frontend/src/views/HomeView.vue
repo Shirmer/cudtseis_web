@@ -56,7 +56,7 @@ const newsItems = [
     <!-- 1. 导航 -->
     <nav class="navbar">
       <div class="brand-group">
-        <img src="/cdut_logo.png" alt="CDUT Logo" class="nav-logo" />
+        <img src="/cdut_seislab_dino.svg" alt="CDUT SEISLAB Dinosaur Logo" class="nav-logo" />
         <div class="brand-text">CDUT SEISLAB</div>
       </div>
       
@@ -66,6 +66,8 @@ const newsItems = [
         <a href="#tools">智能工具</a>
 
         <button class="nav-link-button" @click="router.push('/dashboard')">地震目录</button>
+        <button class="nav-link-button" @click="router.push('/history')">历史数据</button>
+        <button class="nav-link-button" @click="router.push('/rag')">RAG 工作台</button>
 
         <a href="#news">最新动态</a>
       </div>
@@ -149,10 +151,19 @@ const newsItems = [
     <section class="tools-section" id="tools">
       <div class="tool-header">INTELLIGENT TOOLBOX</div>
       <div class="tool-grid">
-        <!-- 这里的卡片依旧保持原逻辑，点击进入 Dashboard -->
         <div class="tool-card large" @click="router.push('/dashboard')">
           <h3>地震事件目录可视化</h3>
           <p>基于 WebGL 的实时地震数据监测与可视化平台。</p>
+        </div>
+
+        <div class="tool-card" @click="router.push('/history')">
+          <h3>历史地震数据检索</h3>
+          <p>按时间、震级和区域快速筛选事件记录，支持表格化浏览。</p>
+        </div>
+
+        <div class="tool-card rag-card" @click="router.push('/rag')">
+          <h3>RAG 知识工作台</h3>
+          <p>进入完整文献问答、PDF 入库、批量任务和文档列表管理界面。</p>
         </div>
       </div>
     </section>
@@ -330,12 +341,13 @@ const newsItems = [
 /* Tools */
 .tools-section { padding: 60px 5%; max-width: 1200px; margin: 0 auto; }
 .tool-header { font-weight: bold; font-size: 0.9rem; margin-bottom: 20px; letter-spacing: 1px; color: #999; }
-.tool-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
 .tool-card { padding: 30px; border-radius: 12px; border: 1px solid #eee; background: #fff; transition: all 0.3s; cursor: pointer; position: relative; overflow: hidden; }
 .tool-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.05); border-color: #dc2626; }
 .tool-card h3 { font-size: 1.5rem; margin-bottom: 10px; font-weight: bold; }
 .tool-card p { color: #666; line-height: 1.6; }
 .tool-card.large { background: #f3f4f6; }
+.tool-card.rag-card { border-color: rgba(220, 38, 38, 0.28); background: #fffafa; }
 
 /* Section Title Style */
 .section-divider-title { 
