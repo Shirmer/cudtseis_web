@@ -7,6 +7,7 @@ import os
 import sqlite3
 import uuid
 import shutil
+import time
 
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -28,6 +29,7 @@ from app.local_db import (
     list_tasks,
 )
 from app.rag_engine import get_rag_engine, get_working_dir
+from app.cache import get_cached_graph_stats, set_cached_graph_stats, invalidate_graph_stats
 from app.tasks import ingest_document_task, insert_content_list_task, batch_cloud_ingest_task
 
 
@@ -232,6 +234,17 @@ def check_duplicate_for_item(
 @app.on_event("startup")
 async def startup():
     init_db()
+    # Pre-warm graph stats cache in background (avoids 8s delay on first request)
+    asyncio.create_task(_warm_graph_stats_cache())
+
+
+async def _warm_graph_stats_cache():
+    """Pre-load graph stats into cache during startup."""
+    try:
+        from app.config import DEFAULT_RAG_WORKING_DIR
+        _read_graph_stats(DEFAULT_RAG_WORKING_DIR)
+    except Exception:
+        pass
 
 
 @app.get("/health")
@@ -268,22 +281,60 @@ async def get_knowledge_base(kb_id: str):
     }
 
 
+def _read_graph_stats(working_dir):
+    """Read graph stats from JSON files with in-memory cache."""
+    cached = get_cached_graph_stats()
+    if cached:
+        return cached
+
+    from app.config import DEFAULT_RAG_WORKING_DIR, WORKSPACES_DIR
+    if working_dir is None:
+        working_dir = DEFAULT_RAG_WORKING_DIR
+
+    def json_count(path):
+        try:
+            if path.exists():
+                with open(path) as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        return len(data.get("data", data))
+                    return len(data)
+        except Exception:
+            pass
+        return 0
+
+    result = {
+        "total_entities": json_count(working_dir / "vdb_entities.json"),
+        "total_relations": json_count(working_dir / "vdb_relationships.json"),
+        "total_chunks": json_count(working_dir / "kv_store_text_chunks.json"),
+    }
+    set_cached_graph_stats(result)
+    return result
+
+
+def invalidate_graph_stats():
+    """Clear graph stats cache (call after document indexing)."""
+    from app.cache import invalidate_graph_stats as _inv
+    _inv()
+
+
 @app.get("/api/v1/knowledge-bases/{kb_id}/stats")
 async def knowledge_base_stats(kb_id: str):
     stats = get_document_stats(kb_id)
 
     try:
-        rag = await get_rag_engine(kb_id)
-        if hasattr(rag, "lightrag") and rag.lightrag:
-            lr = rag.lightrag
-            stats["total_entities"] = len(getattr(lr, "entity_names", []) or [])
-            stats["total_relations"] = len(getattr(lr, "relation_names", []) or [])
+        from app.config import DEFAULT_RAG_WORKING_DIR, WORKSPACES_DIR
+        if kb_id == "default":
+            working_dir = DEFAULT_RAG_WORKING_DIR
         else:
-            stats["total_entities"] = 0
-            stats["total_relations"] = 0
+            working_dir = WORKSPACES_DIR / kb_id / "rag_storage"
+
+        g = _read_graph_stats(working_dir)
+        stats.update(g)
     except Exception:
         stats["total_entities"] = 0
         stats["total_relations"] = 0
+        stats["total_chunks"] = 0
 
     return stats
 
@@ -988,6 +1039,21 @@ async def list_kb_tasks(kb_id: str, limit: int = 50):
     return {
         "kb_id": kb_id,
         "items": list_tasks(kb_id, limit),
+    }
+
+
+@app.get("/api/v1/knowledge-bases/{kb_id}/tasks/summary")
+async def kb_tasks_summary(kb_id: str):
+    all_tasks = list_tasks(kb_id, 1000)
+    total = len(all_tasks)
+    failed = sum(1 for t in all_tasks if t["status"] == "failed")
+    active = sum(1 for t in all_tasks if t["status"] in ("cloud_requesting", "inserting", "queued", "waiting_parser"))
+    return {
+        "kb_id": kb_id,
+        "total": total,
+        "failed": failed,
+        "active": active,
+        "failure_rate": round(failed / total * 100) if total > 0 else 0,
     }
 
 

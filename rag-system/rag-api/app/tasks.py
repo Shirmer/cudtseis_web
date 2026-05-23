@@ -28,6 +28,7 @@ from typing import Any, Dict, List
 
 from app.local_db import get_document, update_document_status, update_task
 from app.rag_engine import get_rag_engine
+from app.cache import invalidate_graph_stats
 
 from app.mineru_cloud import (
     submit_batch_local_files_to_mineru,
@@ -209,6 +210,7 @@ async def insert_content_list_task(
             f"content_list 已成功插入 RAG-Anything / LightRAG 知识库 (hash={content_hash[:8]})",
         )
         update_document_status(document_id, "indexed")
+        invalidate_graph_stats()
         # 保存 content_hash 用于后续去重
         try:
             from app.local_db import get_conn
