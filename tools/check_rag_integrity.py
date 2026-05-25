@@ -164,6 +164,21 @@ def check_rag_engine_paths(errors: list[str]) -> None:
             ok(f"{rel(path)} does not reference RAG-Anything-main")
 
 
+def check_frontend_proxy(errors: list[str]) -> None:
+    vite_config = FRONTEND / "vite.config.ts"
+    text = read(vite_config)
+    required = [
+        "'/rag-api'",
+        "target: 'http://127.0.0.1:8010'",
+        "rewrite: (path) => path.replace(/^\\/rag-api/, '')",
+    ]
+    for marker in required:
+        if marker not in text:
+            fail(errors, f"{rel(vite_config)} missing RAG API proxy marker: {marker}")
+        else:
+            ok(f"{rel(vite_config)} RAG API proxy marker present: {marker}")
+
+
 def check_qdrinx_absent(errors: list[str]) -> None:
     ignored = {".git", "node_modules", ".venv", "dist", "__pycache__"}
     hits: list[str] = []
@@ -185,6 +200,7 @@ def main() -> int:
     check_home_entries(errors)
     check_workbench_pair(errors)
     check_rag_engine_paths(errors)
+    check_frontend_proxy(errors)
     check_qdrinx_absent(errors)
     if errors:
         print(f"\nRAG integrity check failed: {len(errors)} issue(s).")
