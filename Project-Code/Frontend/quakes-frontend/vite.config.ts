@@ -26,6 +26,7 @@ export default defineConfig(({ mode }) => {
         '/rag-api': {
           target: 'http://127.0.0.1:8010',
           changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/rag-api/, ''),
         },
       },
     },
