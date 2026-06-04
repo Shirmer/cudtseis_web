@@ -29,16 +29,7 @@ const router = createRouter({
       component: HistoryData // 访问 /history 还能看到表格
     },
     // =========== RAG 知识库 ===========
-    {
-      path: '/rag',
-      name: 'rag',
-      component: { template: '' },
-      beforeEnter() {
-        window.location.replace('/rag/index.html')
-        return false
-      }
-    },
-
+    // /rag/ 路径由 nginx 直接 serve dist/rag/index.html
     // =========== 新增路由 (Terra) ===========
     {
       path: '/terra',

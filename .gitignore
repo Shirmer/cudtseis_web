@@ -46,11 +46,16 @@ dev-out.log
 dev-err.log
 
 # rag-system runtime data
-rag-system/data/
-rag-system/logs/
-rag-system/workspaces/
+rag-system/data
+rag-system/logs
+rag-system/workspaces
+rag-system/deploy
+rag-system/services
 rag-system/.env
 rag-system/**/*.pyc
 rag-system/**/__pycache__/
 rag-system/**/*.bak
 rag-system/**/*.fixed
+
+# Backup files
+*.bak-*
