@@ -67,7 +67,7 @@ const newsItems = [
 
         <button class="nav-link-button" @click="router.push('/dashboard')">地震目录</button>
         <button class="nav-link-button" @click="router.push('/history')">历史数据</button>
-        <button class="nav-link-button" @click="router.push('/rag')">RAG 工作台</button>
+        <button class="nav-link-button" @click="window.open('/rag/', '_self')">RAG 工作台</button>
 
         <a href="#news">最新动态</a>
       </div>
@@ -161,7 +161,7 @@ const newsItems = [
           <p>按时间、震级和区域快速筛选事件记录，支持表格化浏览。</p>
         </div>
 
-        <div class="tool-card rag-card" @click="router.push('/rag')">
+        <div class="tool-card rag-card" @click="window.open('/rag/', '_self')">
           <h3>RAG 知识工作台</h3>
           <p>进入完整文献问答、PDF 入库、批量任务和文档列表管理界面。</p>
         </div>
