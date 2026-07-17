@@ -30,22 +30,29 @@ app = FastAPI(title="QuakeViz")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://43.162.117.155:5173",
-        "http://43.162.117.155",
-    ],
+    allow_origins=[origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-Base.metadata.create_all(bind=engine)
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "service": "cdut-seislab-backend",
+        "time": datetime.now(tz=timezone.utc).isoformat(),
+    }
 
 # 简易 SSE 订阅者队列（单机版）
 subscribers: set[asyncio.Queue] = set()
 
 @app.on_event("startup")
 async def startup():
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        print("database schema init skipped:", e)
     asyncio.create_task(poller())
 
 async def poller():
@@ -108,15 +115,15 @@ def list_events(
 
     # --- 这里修改了查询字段，加入了新列 ---
     stmt = select(
-        Earthquake.id, 
-        Earthquake.time, 
-        Earthquake.updated, 
+        Earthquake.id,
+        Earthquake.time,
+        Earthquake.updated,
         Earthquake.mag,
-        Earthquake.place, 
+        Earthquake.place,
         Earthquake.depth_km,
         ST_X(Earthquake.geom).label("lon"),
         ST_Y(Earthquake.geom).label("lat"),
-        
+
         # 新增字段
         Earthquake.mag_type,
         Earthquake.nst,
@@ -166,7 +173,7 @@ def list_events(
     stmt = stmt.order_by(Earthquake.time.desc()).limit(limit)
 
     rows = db.execute(stmt).all()
-    
+
     # --- 这里修改了返回字典，加入了新字段 ---
     return [{
         "id": r.id,
@@ -177,7 +184,7 @@ def list_events(
         "depth_km": r.depth_km,
         "lon": float(r.lon),
         "lat": float(r.lat),
-        
+
         # 新增字段输出
         "magType": r.mag_type,
         "nst": r.nst,

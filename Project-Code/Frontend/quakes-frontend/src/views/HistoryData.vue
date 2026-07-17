@@ -25,7 +25,7 @@
 
       <div class="query-grid" @keyup.enter="doSearch">
         <div class="query-group">
-          <label class="group-label">时间范围 (UTC)</label>
+          <label class="group-label">时间范围（本地时间）</label>
           <div class="input-row">
             <input 
               type="datetime-local" 
@@ -103,11 +103,21 @@
       </div>
     </div>
 
+    <div v-if="errorMessage" class="query-error" role="status">
+      <div>
+        <strong>历史目录暂时不可用</strong>
+        <span>{{ errorMessage }}</span>
+      </div>
+      <button type="button" @click="doSearch">重新检索</button>
+    </div>
+
     <!-- 结果区域 -->
     <div class="results-panel card">
       <div class="results-header">
         <div class="stats-info" v-if="hasSearched">
           <span class="stat-item">找到 <strong>{{ results.length }}</strong> 条记录</span>
+          <span class="stat-divider">|</span>
+          <span class="source-label">{{ sourceLabel }}</span>
           <span class="stat-divider">|</span>
           <button class="btn-sort" @click="toggleSort">
             <span v-if="sortOrder === 'desc'">⬇️ 时间倒序 (最新在前)</span>
@@ -188,7 +198,7 @@
                 <td class="col-time sticky-col">{{ formatTime(item.time) }}</td>
                 <td><span class="mag-badge" :class="getMagClass(item.mag)">M{{ item.mag }}</span></td>
                 <td class="col-meta">{{ item.magType || '-' }}</td>
-                <td class="col-place">{{ item.place }}</td>
+                <td class="col-place">{{ localizedPlaceName(item.place, 'zh') }}</td>
                 <td class="col-depth">{{ item.depth_km }}</td>
                 <td class="col-geo">{{ item.lon.toFixed(2) }}</td>
                 <td class="col-geo">{{ item.lat.toFixed(2) }}</td>
@@ -220,22 +230,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, onMounted } from 'vue'
+import { ref, reactive, computed, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import MapVisual from '../components/MapVisual.vue'
+import { fetchCatalog, localizedPlaceName, type CatalogSource, type EarthquakeEvent } from '../services/earthquakes'
 
 const router = useRouter()
-const API_BASE = 'http://43.162.117.155:8001'
 
 const loading = ref(false)
 const hasSearched = ref(false)
-const results = ref<any[]>([])
+const results = ref<EarthquakeEvent[]>([])
+const errorMessage = ref('')
+const catalogSource = ref<CatalogSource | null>(null)
 const viewMode = ref<'table' | 'map'>('table')
 const mapVisualRef = ref<any>(null)
 const sortOrder = ref<'desc' | 'asc'>('desc')
 
 const tableWrapperRef = ref<HTMLElement | null>(null)
 const isTableScrolled = ref(false)
+let searchController: AbortController | null = null
+
+const sourceLabel = computed(() => {
+  if (catalogSource.value === 'backend') return '实验室目录服务'
+  if (catalogSource.value === 'usgs') return 'USGS 官方数据'
+  return '等待数据'
+})
 
 function onTableScroll(e: Event) {
   const target = e.target as HTMLElement
@@ -287,6 +306,9 @@ function setQuickTime(days: number) {
 }
 
 function resetParams() {
+  searchController?.abort()
+  searchController = null
+  loading.value = false
   queryParams.start = ''
   queryParams.end = ''
   queryParams.minMag = 3.0
@@ -299,6 +321,8 @@ function resetParams() {
   queryParams.maxLat = null
   hasSearched.value = false
   results.value = []
+  errorMessage.value = ''
+  catalogSource.value = null
   isTableScrolled.value = false
   if (tableWrapperRef.value) tableWrapperRef.value.scrollTop = 0
 }
@@ -346,39 +370,49 @@ function exportCSV() {
   link.setAttribute('href', url)
   link.setAttribute('download', `earthquake_data_${new Date().toISOString().slice(0,10)}.csv`)
   link.click()
+  URL.revokeObjectURL(url)
 }
 
 async function doSearch() {
+  searchController?.abort()
+  const controller = new AbortController()
+  searchController = controller
+  const timeout = window.setTimeout(() => controller.abort(), 20000)
   loading.value = true
   hasSearched.value = true
-  results.value = [] 
+  errorMessage.value = ''
   try {
-    const params = new URLSearchParams()
-    if (queryParams.start) params.append('start', new Date(queryParams.start).toISOString())
-    if (queryParams.end) params.append('end', new Date(queryParams.end).toISOString())
-    params.append('minMag', queryParams.minMag.toString())
-    if (queryParams.maxMag) params.append('maxMag', queryParams.maxMag.toString())
-    if (queryParams.minDepth) params.append('minDepth', queryParams.minDepth.toString())
-    if (queryParams.maxDepth) params.append('maxDepth', queryParams.maxDepth.toString())
-    if (queryParams.minLon) params.append('minLon', queryParams.minLon.toString())
-    if (queryParams.maxLon) params.append('maxLon', queryParams.maxLon.toString())
-    if (queryParams.minLat) params.append('minLat', queryParams.minLat.toString())
-    if (queryParams.maxLat) params.append('maxLat', queryParams.maxLat.toString())
-    params.append('limit', queryParams.limit.toString())
-
-    const url = `${API_BASE}/api/events?${params.toString()}`
-    const res = await fetch(url)
-    if (!res.ok) throw new Error('API Error')
-    results.value = await res.json()
+    const result = await fetchCatalog({
+      start: queryParams.start ? new Date(queryParams.start).toISOString() : undefined,
+      end: queryParams.end ? new Date(queryParams.end).toISOString() : undefined,
+      minMag: queryParams.minMag,
+      maxMag: queryParams.maxMag,
+      minDepth: queryParams.minDepth,
+      maxDepth: queryParams.maxDepth,
+      minLon: queryParams.minLon,
+      maxLon: queryParams.maxLon,
+      minLat: queryParams.minLat,
+      maxLat: queryParams.maxLat,
+      limit: queryParams.limit,
+    }, controller.signal)
+    results.value = result.events
+    catalogSource.value = result.source
     sortOrder.value = 'desc'
     if (viewMode.value === 'map') nextTick(() => mapVisualRef.value?.resize())
-  } catch (e) {
-    console.error(e)
-    alert("查询出错，请检查后端服务")
+  } catch (error) {
+    if (controller.signal.aborted) return
+    errorMessage.value = error instanceof Error ? error.message : '数据请求失败'
   } finally {
-    loading.value = false
+    window.clearTimeout(timeout)
+    if (searchController === controller) {
+      searchController = null
+      loading.value = false
+    }
   }
 }
+
+onMounted(() => setQuickTime(7))
+onBeforeUnmount(() => searchController?.abort())
 </script>
 
 <style scoped>
@@ -650,6 +684,12 @@ async function doSearch() {
 .btn-sort { background: none; border: 1px solid #dcdfe6; border-radius: 4px; padding: 4px 10px; font-size: 13px; color: #606266; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
 .btn-sort:hover { border-color: #409eff; color: #409eff; background-color: #ecf5ff; }
 .sort-indicator { margin-left: 4px; color: #409eff; }
+.source-label { color: #187d79; font-size: 12px; font-weight: 650; }
+.query-error { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 18px; padding: 12px 14px; border: 1px solid rgba(201, 58, 49, 0.28); border-radius: 6px; color: #7d2823; background: #fff8f7; }
+.query-error div { display: grid; gap: 3px; }
+.query-error strong { font-size: 13px; }
+.query-error span { font-size: 11px; opacity: 0.72; }
+.query-error button { min-height: 32px; padding: 0 12px; border: 0; border-radius: 5px; color: white; background: #c93a31; cursor: pointer; font-size: 11px; font-weight: 700; }
 .col-time { font-family: monospace; color: #303133; font-weight: 500; }
 .col-time-sm { font-family: monospace; color: #909399; font-size: 12px; }
 .col-id { color: #909399; font-size: 12px; font-family: monospace; }

@@ -19,16 +19,14 @@ const modelOptions = [
 // --- 样式定制：纯白 Dropdown ---
 const dropdownTheme: GlobalThemeOverrides = {
   Dropdown: {
-    color: '#ffffff',             
-    textColor: '#333333',         
-    borderRadius: '12px',         
-    boxShadow: '0 4px 16px rgba(0,0,0,0.1)', // 稍微明显的阴影
+    color: '#ffffff',
+    optionTextColor: '#333333',
+    borderRadius: '12px',
     padding: '6px',
     optionHeightMedium: '36px',
-    optionColorHover: '#f3f4f6',  
-    optionTextColorHover: '#000', 
-    fontSizeMedium: '14px',
-    border: '1px solid #e5e7eb' // 加个边框
+    optionColorHover: '#f3f4f6',
+    optionTextColorHover: '#000',
+    fontSizeMedium: '14px'
   }
 }
 
@@ -37,14 +35,14 @@ const handleSend = () => {
   chatHistory.value.push({ id: Date.now(), role: 'user', content: userInput.value })
   const question = userInput.value
   userInput.value = ''
-  
+
   nextTick(scrollToBottom)
 
   setTimeout(() => {
-    chatHistory.value.push({ 
-      id: Date.now() + 1, 
-      role: 'ai', 
-      content: '收到："' + question + '"。\n正在调用 RAG 检索...' 
+    chatHistory.value.push({
+      id: Date.now() + 1,
+      role: 'ai',
+      content: '收到："' + question + '"。\n正在整理深地研究辅助回复...'
     })
     nextTick(scrollToBottom)
   }, 600)
@@ -60,7 +58,7 @@ const scrollToBottom = () => {
 
 <template>
   <div class="chat-layout">
-    
+
     <!-- 1. 聊天区域 (白底) -->
     <main class="chat-main" ref="chatContainer">
       <div class="content-width-limiter">
@@ -74,15 +72,15 @@ const scrollToBottom = () => {
     <!-- 2. 底部控制区 (白底) -->
     <footer class="footer-section">
       <div class="content-width-limiter">
-        
+
         <!-- === 悬浮 Header (样式微调为白色风格) === -->
         <div class="floating-header">
-          
+
           <n-config-provider :theme-overrides="dropdownTheme">
-            <n-dropdown 
-              trigger="click" 
-              placement="top-start" 
-              :options="modelOptions" 
+            <n-dropdown
+              trigger="click"
+              placement="top-start"
+              :options="modelOptions"
               @select="(key) => currentModel = key"
             >
               <button class="model-pill">
@@ -102,13 +100,13 @@ const scrollToBottom = () => {
             </button>
           </div>
         </div>
-        
+
         <!-- 输入框区域 (白底阴影) -->
         <div class="input-box">
-          <textarea 
+          <textarea
             v-model="userInput"
             @keydown.enter.prevent="handleSend"
-            placeholder="问任何问题，@ 模型，/ 提示" 
+            placeholder="问任何问题，@ 模型，/ 提示"
             class="chat-textarea"
           ></textarea>
 
@@ -156,9 +154,9 @@ const scrollToBottom = () => {
 
 /* 3. 聊天内容区 */
 .chat-main {
-  flex: 1; 
-  overflow-y: auto; 
-  overflow-x: hidden; 
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px 0;
   display: flex; flex-direction: column;
 }
@@ -167,7 +165,7 @@ const scrollToBottom = () => {
 
 .msg-row { display: flex; gap: 16px; width: 100%; margin-bottom: 24px; }
 .msg-row.user { justify-content: flex-end; }
-.avatar { 
+.avatar {
   width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
   margin-top: 4px;
@@ -176,9 +174,9 @@ const scrollToBottom = () => {
 .bubble { padding: 8px 0; font-size: 15px; line-height: 1.6; color: #1f2329; max-width: 90%; }
 
 /* 用户气泡：浅灰/浅蓝背景 */
-.msg-row.user .bubble { 
+.msg-row.user .bubble {
   background-color: #f3f4f6; /* 浅灰 */
-  padding: 10px 16px; border-radius: 12px; color: #1f2329; 
+  padding: 10px 16px; border-radius: 12px; color: #1f2329;
 }
 
 /* 4. 底部固定区域 */
@@ -190,13 +188,13 @@ const scrollToBottom = () => {
 .floating-header {
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: 12px;
-  padding: 0 4px; 
+  padding: 0 4px;
 }
 
 /* 模型胶囊按钮 (浅色版) */
 .model-pill {
   display: flex; align-items: center; gap: 8px;
-  background-color: #ffffff; 
+  background-color: #ffffff;
   border: 1px solid #e5e7eb; /* 浅色边框 */
   color: #374151; /* 深色文字 */
   padding: 6px 12px; border-radius: 20px; font-size: 14px; font-weight: 500;
@@ -219,11 +217,11 @@ const scrollToBottom = () => {
 
 /* 输入框本体 (白底 + 边框 + 阴影) */
 .input-box {
-  background-color: #ffffff; 
-  border: 1px solid #e5e7eb; 
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
   border-radius: 16px;
   padding: 12px 16px; display: flex; flex-direction: column;
-  transition: border 0.2s; 
+  transition: border 0.2s;
   box-shadow: 0 4px 12px rgba(0,0,0,0.08); /* 柔和阴影 */
 }
 .input-box:focus-within { border-color: #6366f1; /* 聚焦变紫/蓝 */ }

@@ -1,178 +1,203 @@
 <template>
-  <div class="map-container" ref="mapEl"></div>
+  <div class="map-shell">
+    <div ref="mapEl" class="map-container"></div>
+    <div v-if="mapStatus === 'loading' || mapStatus === 'error'" class="map-compliance-notice" :class="mapStatus" role="status">
+      <strong>{{ mapStatus === 'loading' ? '正在加载全球自然影像' : '自然影像暂时不可用' }}</strong>
+      <span v-if="mapStatus === 'error'">当前已切换到无国界经纬网，请检查网络后刷新。</span>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import {
+  addDomesticBaseMap,
+  domesticMapAttribution,
+  type DomesticMapStatus,
+} from '../config/domesticMap'
+import { localizedPlaceName, type EarthquakeEvent } from '../services/earthquakes'
 
-const props = defineProps<{
-  events: any[]
-}>()
+const props = defineProps<{ events: EarthquakeEvent[] }>()
 
 const mapEl = ref<HTMLDivElement | null>(null)
+const mapStatus = ref<DomesticMapStatus>('loading')
 let map: L.Map | null = null
-let layerGroup = L.layerGroup()
-const currentZoom = ref(2)
+let layerGroup: L.LayerGroup | null = null
+let renderer: L.Canvas | null = null
+let renderFrame: number | null = null
+let attributionControl: L.Control.Attribution | null = null
+let currentAttribution = ''
+const markers = new Map<string, L.CircleMarker>()
 
-// Esri 浅灰底图
-const TILE_BASE = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'
-// 高德中文注记
-const TILE_LABEL = 'https://wprd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}'
+function updateMapStatus(status: DomesticMapStatus) {
+  mapStatus.value = status
+  if (!attributionControl) return
+  if (currentAttribution) attributionControl.removeAttribution(currentAttribution)
+  currentAttribution = domesticMapAttribution(status)
+  attributionControl.addAttribution(currentAttribution)
+}
 
-function render() {
-  if (!map) return
-  layerGroup.clearLayers()
+function colorForMagnitude(magnitude: number) {
+  if (magnitude >= 6) return '#c9312f'
+  if (magnitude >= 5) return '#dc673c'
+  if (magnitude >= 4) return '#c99a2e'
+  return '#21877d'
+}
 
-  const zoom = currentZoom.value
-  
-  // 1. 获取当前视野范围
-  const b = map.getBounds()
-  const west = b.getWest()
-  const east = b.getEast()
+function markerRadius(magnitude: number) {
+  return Math.max(4.5, Math.min(17, 3.5 + magnitude * 1.65))
+}
 
-  // 2. 计算当前视野跨越了多少个“地球周期” (360度)
-  // Leaflet 的经度是连续增长的，例如向右拖动可能变成 400, 700...
-  // 我们计算出当前视野覆盖了从第几个地球(kMin)到第几个地球(kMax)
-  const kMin = Math.floor((west + 180) / 360)
-  const kMax = Math.floor((east + 180) / 360)
+function popupContent(event: EarthquakeEvent) {
+  const root = document.createElement('div')
+  root.className = 'history-popup'
+  const header = document.createElement('div')
+  header.className = 'history-popup-head'
+  const magnitude = document.createElement('strong')
+  magnitude.textContent = `M ${event.mag.toFixed(1)}`
+  magnitude.style.color = colorForMagnitude(event.mag)
+  const time = document.createElement('span')
+  time.textContent = new Date(event.time).toISOString().replace('T', ' ').slice(0, 19)
+  header.append(magnitude, time)
 
-  // 动态调整圆点大小
-  let baseRadius = 1.0
-  if (zoom <= 2) baseRadius = 0.8
-  else if (zoom < 5) baseRadius = 1.2
-  else baseRadius = 2.0
+  const place = document.createElement('p')
+  place.textContent = localizedPlaceName(event.place, 'zh') || '未知区域'
+  const meta = document.createElement('small')
+  meta.textContent = `Depth ${event.depth_km === null ? 'N/A' : `${event.depth_km.toFixed(1)} km`} · ${event.lat.toFixed(4)}, ${event.lon.toFixed(4)}`
+  root.append(header, place, meta)
+  return root
+}
 
-  // 3. 多重循环渲染：确保每个可见的“地球副本”上都有点
-  for (let k = kMin; k <= kMax; k++) {
-    // dx 是经度偏移量：0, 360, 720, -360...
-    const dx = 360 * k
+function fitEvents() {
+  if (!map || !props.events.length) return
+  if (props.events.length === 1) {
+    map.setView([props.events[0].lat, props.events[0].lon], 7)
+    return
+  }
+  const bounds = L.latLngBounds(props.events.map((event) => L.latLng(event.lat, event.lon)))
+  map.fitBounds(bounds, { padding: [36, 36], maxZoom: 7, animate: false })
+}
 
-    props.events.forEach(q => {
-      if (!q.lon || !q.lat) return
+function syncMarkers(shouldFit = true) {
+  renderFrame = null
+  if (!map || !layerGroup) return
 
-      // 核心技巧：原始经度 + 偏移量 = 在副本上的正确位置
-      const renderLon = q.lon + dx
-      
-      const mag = q.mag || 0
-      const r = Math.max(3, mag * 2 * baseRadius)
-      const color = mag >= 6 ? '#dc2626' : mag >= 5 ? '#f59e0b' : mag >= 4 ? '#fbbf24' : '#10b981'
-
-      L.circleMarker([q.lat, renderLon], {
-        radius: r,
-        color: '#ffffff',
-        weight: 1, 
-        fillColor: color,
-        fillOpacity: 0.9
-      })
-      .bindPopup(
-        `<div class="custom-popup">
-          <div class="popup-header">
-             <span class="mag-tag" style="background:${color}">M${mag.toFixed(1)}</span>
-             <span class="time">${q.time ? q.time.replace('T', ' ').slice(0,19) : '-'}</span>
-          </div>
-          <div class="popup-body">
-            <div class="row">📍 ${q.place || 'Unknown'}</div>
-            <div class="row">🌊 深度 ${q.depth_km} km</div>
-          </div>
-        </div>`,
-        { minWidth: 200 }
-      )
-      .addTo(layerGroup)
-    })
+  const nextIds = new Set(props.events.map((event) => event.id))
+  for (const [id, marker] of markers) {
+    if (!nextIds.has(id)) {
+      layerGroup.removeLayer(marker)
+      markers.delete(id)
+    }
   }
 
-  layerGroup.addTo(map)
+  for (const event of props.events) {
+    const options: L.CircleMarkerOptions = {
+      renderer: renderer ?? undefined,
+      radius: markerRadius(event.mag),
+      color: '#ffffff',
+      weight: 1.3,
+      fillColor: colorForMagnitude(event.mag),
+      fillOpacity: 0.9,
+    }
+    const existing = markers.get(event.id)
+    if (existing) {
+      existing.setLatLng([event.lat, event.lon])
+      existing.setRadius(markerRadius(event.mag))
+      existing.setStyle(options)
+      existing.setPopupContent(popupContent(event))
+      continue
+    }
+
+    const marker = L.circleMarker([event.lat, event.lon], options)
+      .bindPopup(popupContent(event), { minWidth: 230, closeButton: true })
+      .addTo(layerGroup)
+    markers.set(event.id, marker)
+  }
+
+  if (shouldFit) fitEvents()
+}
+
+function scheduleSync(shouldFit = true) {
+  if (renderFrame !== null) cancelAnimationFrame(renderFrame)
+  renderFrame = requestAnimationFrame(() => syncMarkers(shouldFit))
 }
 
 onMounted(() => {
   if (!mapEl.value) return
-
-  // --- 初始化地图 ---
-  map = L.map(mapEl.value, { 
-    minZoom: 2, 
-    maxZoom: 16, 
-    zoomControl: false, 
+  renderer = L.canvas({ padding: 0.5, tolerance: 6 })
+  map = L.map(mapEl.value, {
+    preferCanvas: true,
+    renderer,
+    minZoom: 2,
+    maxZoom: 16,
+    zoomControl: false,
     attributionControl: false,
-    
-    // 允许无限拖动，不需要 maxBounds
-    // worldCopyJump 不需要开启，因为我们手动实现了更高级的覆盖逻辑
-    
-    // 辅助减少白线
-    zoomSnap: 1,
-    zoomDelta: 1,
-
-    // 🔥【关键修复】限制拖动范围 🔥
-    // 纬度限制在 -85 到 85 之间（去掉了两极的空白区）
-    // 经度设为 Infinity 允许左右无限循环
-    maxBounds: [[-85, -Infinity], [85, Infinity]],
-    
-    // 1.0 表示“硬边界”，一旦碰到边界就完全拖不动，不会有回弹效果
-    maxBoundsViscosity: 1.0 
+    worldCopyJump: true,
+    maxBounds: [[-85, -180], [85, 180]],
+    maxBoundsViscosity: 0.85,
   }).setView([25, 105], 2)
 
+  addDomesticBaseMap(map, updateMapStatus)
+
+  layerGroup = L.layerGroup().addTo(map)
   L.control.zoom({ position: 'topright' }).addTo(map)
-  L.control.attribution({ position: 'bottomright', prefix: false })
-    .addAttribution('Esri, AutoNavi').addTo(map)
+  attributionControl = L.control.attribution({ position: 'bottomright', prefix: false })
+  currentAttribution = domesticMapAttribution(mapStatus.value)
+  attributionControl.addAttribution(currentAttribution).addTo(map)
 
-  // 1. 底图：允许无限循环
-  L.tileLayer(TILE_BASE, { maxZoom: 16 }).addTo(map)
-
-  // 2. 注记：允许无限循环
-  L.tileLayer(TILE_LABEL, {
-    subdomains: ['1', '2', '3', '4'],
-    maxZoom: 16,
-    opacity: 0.85,
-    className: 'label-layer-filter'
-  }).addTo(map)
-
-  // 监听 moveend，因为拖动时需要重新计算视野并补全新的副本点
-  map.on('moveend zoomend', () => {
-    if(map) currentZoom.value = map.getZoom()
-    render()
-  })
-
-  if (props.events.length > 0) render()
+  scheduleSync(true)
 })
 
-watch(() => props.events, () => { render() }, { deep: true })
+watch(() => props.events, () => scheduleSync(true))
+
+onBeforeUnmount(() => {
+  if (renderFrame !== null) cancelAnimationFrame(renderFrame)
+  map?.remove()
+  markers.clear()
+})
 
 defineExpose({
-  resize: () => { nextTick(() => { map?.invalidateSize() }) }
+  resize: () => {
+    nextTick(() => {
+      map?.invalidateSize()
+      fitEvents()
+    })
+  },
 })
 </script>
 
-<!-- 保留您验证过有效的 CSS -->
 <style scoped>
-.map-container {
+.map-shell {
+  position: relative;
   width: 100%;
   height: 600px;
-  background: #e5e5e5;
-  border-radius: 4px;
+}
+
+.map-container {
+  width: 100%;
+  height: 100%;
   z-index: 0;
+  background: #dfe3e1;
+  border-radius: 4px;
 }
 
-/* --- 🔥 核心修复白线代码 🔥 --- */
-:deep(.leaflet-tile-container img) {
-  outline: 1px solid transparent; 
-  clip-path: inset(0 -1px 0 -1px); 
-  transform: translateZ(0); 
-}
+.map-compliance-notice { position: absolute; z-index: 720; top: 14px; left: 50%; display: grid; gap: 3px; max-width: min(430px, calc(100% - 28px)); padding: 9px 13px; transform: translateX(-50%); border: 1px solid rgba(17, 23, 25, 0.16); border-radius: 5px; color: #465355; background: rgba(250, 252, 250, 0.94); box-shadow: 0 8px 20px rgba(17, 23, 25, 0.1); text-align: center; backdrop-filter: blur(8px); }
+.map-compliance-notice strong { font-size: 10px; }
+.map-compliance-notice span { color: #687375; font-size: 8px; line-height: 1.45; }
+.map-compliance-notice.error { border-color: rgba(201, 49, 47, 0.3); color: #8b302c; }
 
-/* 针对 Esri 灰底图的特殊处理 */
-:deep(.leaflet-layer) { background: #d5d5d5; }
-:deep(.leaflet-container) { background: #d5d5d5 !important; }
-
-/* --- 常规样式 --- */
-:deep(.label-layer-filter) { filter: contrast(0.85); }
-:deep(.leaflet-popup-content-wrapper) { border-radius: 4px; padding: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+:deep(.leaflet-container) { background: #dfe3e1; font-family: inherit; }
+:deep(.leaflet-tile-container img) { outline: 1px solid transparent; clip-path: inset(0 -1px 0 -1px); transform: translateZ(0); }
+:deep(.leaflet-popup-content-wrapper) { padding: 0; overflow: hidden; border-radius: 6px; box-shadow: 0 14px 34px rgba(17, 23, 25, 0.18); }
 :deep(.leaflet-popup-content) { margin: 0; }
-:deep(.leaflet-popup-close-button) { top: 8px !important; right: 8px !important; color: #999 !important; font-size: 18px !important; width: 18px !important; height: 18px !important; line-height: 18px !important; z-index: 20; }
-:deep(.popup-header) { display: flex; align-items: center; justify-content: space-between; padding: 8px 34px 8px 12px; background: #f5f5f5; border-bottom: 1px solid #ddd; }
-:deep(.mag-tag) { color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 12px; }
-:deep(.popup-header .time) { color: #666; font-size: 12px; font-family: monospace; }
-:deep(.popup-body) { padding: 12px; font-size: 13px; color: #333; line-height: 1.5; }
-:deep(.popup-body .row) { margin-bottom: 4px; }
-:deep(.id-row) { color: #aaa; font-size: 10px; margin-top: 6px; border-top: 1px dashed #eee; padding-top: 4px; }
+:deep(.leaflet-popup-close-button) { top: 7px !important; right: 7px !important; z-index: 2; color: #687375 !important; }
+:deep(.history-popup) { min-width: 230px; color: #111719; background: white; }
+:deep(.history-popup-head) { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: 8px 34px 8px 12px; background: #f1f3f1; border-bottom: 1px solid #d9dfde; }
+:deep(.history-popup-head strong) { font-family: "Fira Code", monospace; font-size: 13px; }
+:deep(.history-popup-head span) { color: #687375; font-family: "Fira Code", monospace; font-size: 8px; }
+:deep(.history-popup p) { margin: 0; padding: 11px 12px 4px; font-size: 11px; font-weight: 700; line-height: 1.45; }
+:deep(.history-popup small) { display: block; padding: 0 12px 12px; color: #687375; font-family: "Fira Code", monospace; font-size: 8px; }
+:deep(.leaflet-control-attribution) { font-size: 8px; }
 </style>

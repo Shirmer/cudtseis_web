@@ -16,7 +16,14 @@ const router = createRouter({
     {
       path: '/',
       name: 'home',
-      component: HomeView
+      component: HomeView,
+      props: { initialLocale: 'zh' }
+    },
+    {
+      path: '/en',
+      name: 'home-en',
+      component: HomeView,
+      props: { initialLocale: 'en' }
     },
     {
       path: '/dashboard',

@@ -1,0 +1,18 @@
+.DS_Store
+
+# Frontend
+Project-Code/Frontend/quakes-frontend/node_modules/
+Project-Code/Frontend/quakes-frontend/dist/
+Project-Code/Frontend/quakes-frontend/.npm-cache/
+
+# Backend
+Project-Code/backend/.venv/
+Project-Code/backend/shirmer/
+Project-Code/backend/.env
+Project-Code/backend/.data/
+Project-Code/backend/app/__pycache__/
+Project-Code/backend/app/**/*.pyc
+
+# Local runtime
+.data/
+*.log
