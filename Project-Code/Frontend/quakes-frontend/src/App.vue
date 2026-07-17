@@ -7,6 +7,29 @@ import { RouterView } from 'vue-router'
 </template>
 
 <style>
-/* 去掉网页边距，必须加 */
-body { margin: 0; padding: 0; }
+html {
+  scroll-behavior: smooth;
+  background: #f5f6f3;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-width: 320px;
+  background: #f5f6f3;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  color: #fff;
+  background: #9f2c24;
+}
 </style>
