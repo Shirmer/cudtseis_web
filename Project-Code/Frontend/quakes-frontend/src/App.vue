@@ -9,14 +9,14 @@ import { RouterView } from 'vue-router'
 <style>
 html {
   scroll-behavior: smooth;
-  background: #f5f6f3;
+  background: #f6f4ef;
 }
 
 body {
   margin: 0;
   padding: 0;
   min-width: 320px;
-  background: #f5f6f3;
+  background: #f6f4ef;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
@@ -30,6 +30,6 @@ select {
 
 ::selection {
   color: #fff;
-  background: #9f2c24;
+  background: #d97a1c;
 }
 </style>

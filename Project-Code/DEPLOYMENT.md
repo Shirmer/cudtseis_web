@@ -1,94 +1,75 @@
-# CDUT SEISLAB 网站部署说明
+# 深视地球官网部署说明
 
-这个分支是组织网站的干净重启点，当前包含：
+本仓库现为 **深视地球（成都）信息技术有限公司官网**（含 GeoCamera 产品介绍），前端位于
+`Project-Code/Frontend/quakes-frontend`（Vue 3 + Vite + TypeScript）。后端目录
+`Project-Code/backend`（FastAPI + PostGIS）当前不参与官网部署。
 
-- Vue / Vite 前端网站
-- FastAPI 后端接口
-- PostgreSQL + PostGIS 地震数据存储
-- 前端同源 `/api` 调用，方便通过 Nginx 对外发布
+## 1. 站点结构
 
-## 1. 对外访问还需要什么
+| 路径 | 说明 |
+| --- | --- |
+| `/`、`/en` | 官网首页（中/英） |
+| `/privacy`、`/en/privacy` | 隐私政策 |
+| `/terms`、`/en/terms` | 用户协议 |
+| `/contact`、`/en/contact` | 联系我们 |
+| `/admin/` | GeoCamera 管理后台（独立构建，部署在服务器） |
+| `/api/...` | 移动端 App 与管理后台共用的 Java 后端接口 |
 
-你现在已经有服务器 MAC 地址、固定内网 IP、子网掩码、网关。要让网站被公网访问，还需要确认下面这些条件：
+发布前需替换的占位内容：
 
-- 公网 IP：服务器本身有公网 IP，或者上级路由器/防火墙有公网 IP。
-- 端口映射：如果服务器只有内网 IP，需要把公网的 80/443 端口转发到这台服务器的内网 IP。
-- 域名：准备一个域名，并把 DNS 的 A 记录指向公网 IP。
-- 防火墙放行：云安全组、机房防火墙、系统防火墙都要允许 80 和 443。
-- Web 服务：使用 Nginx 或 Caddy 对外提供网站，并把 `/api` 反向代理到后端。
-- HTTPS 证书：建议使用 Let's Encrypt 或服务器面板自带证书。
-- 运行环境：Node.js 20+、Python 3.10+、PostgreSQL、PostGIS。
-- 备案/访问策略：如果使用中国大陆服务器和正式域名，通常需要按服务商要求完成备案。
+- `src/config/site.ts`：ICP 备案号、联系邮箱、公司地址；
+- `src/content/legal.ts` 与 `src/views/LegalView.vue`：隐私政策/用户协议生效日期。
 
-后端服务建议只监听 `127.0.0.1:8001`，不要直接暴露到公网。
-
-## 2. 前端构建
+## 2. 本地开发
 
 ```bash
-cd /opt/cudtseis_web/Project-Code/Frontend/quakes-frontend
+cd Project-Code/Frontend/quakes-frontend
 npm install
-npm run build
+npm run dev        # http://127.0.0.1:5173
 ```
 
-构建产物会生成在：
+开发与预览模式下 `/api` 默认代理到线上后端 `http://8.137.48.168`
+（用于获取 App 最新版本信息等只读接口），可通过 `VITE_API_PROXY` 覆盖。
 
-```text
-/opt/cudtseis_web/Project-Code/Frontend/quakes-frontend/dist
-```
-
-## 3. 后端启动
+类型检查与构建：
 
 ```bash
-cd /opt/cudtseis_web/Project-Code/backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --host 127.0.0.1 --port 8001
+npm run type-check
+npm run build      # 产物在 dist/
 ```
 
-启动前需要创建数据库并启用 PostGIS：
-
-```sql
-CREATE DATABASE quakes;
-\c quakes
-CREATE EXTENSION IF NOT EXISTS postgis;
-```
-
-后端健康检查：
+## 3. 服务器部署（阿里云 8.137.48.168）
 
 ```bash
-curl http://127.0.0.1:8001/health
+rsync -az --delete --exclude '.DS_Store' \
+  -e "ssh -i ~/.ssh/geocamera_ed25519" \
+  Project-Code/Frontend/quakes-frontend/dist/ \
+  root@8.137.48.168:/opt/geocamera/website/
 ```
 
-## 4. Nginx 示例
+服务器目录：
 
-```nginx
-server {
-    listen 80;
-    server_name your-domain.example;
+- `/opt/geocamera/website`：官网静态文件（本仓库产物）；
+- `/opt/geocamera/admin-web`：管理后台静态文件（独立仓库构建）；
+- `/opt/geocamera/backend.jar`：Java 后端（监听 `127.0.0.1:8080`）。
 
-    root /opt/cudtseis_web/Project-Code/Frontend/quakes-frontend/dist;
-    index index.html;
+Nginx 配置 `/etc/nginx/sites-available/geocamera`：
 
-    location /api/ {
-        proxy_pass http://127.0.0.1:8001/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+- `/` 返回官网 SPA（`try_files ... /index.html`）；
+- `/api/` 反向代理到 `127.0.0.1:8080`（App 与管理后台接口）；
+- `/admin/` 静态托管管理后台。
 
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
+修改配置后：
+
+```bash
+nginx -t && systemctl reload nginx
 ```
 
-## 5. 配置说明
+域名与备案完成后，将域名 A 记录解析到服务器 IP，并在该配置中补充
+`server_name`，再按需配置 HTTPS 证书。
 
-- 前端生产环境默认使用同源 `/api`，不用在代码里写服务器 IP。
-- 本地开发时，Vite 会把 `/api` 代理到 `http://127.0.0.1:8001`。
-- 数据库账号、密码、域名等配置写进 `.env`，不要提交到 Git。
-- 如果服务器只有内网 IP，公网访问的关键不是 MAC 地址，而是公网入口和端口映射。
+## 4. GeoCamera 下载入口
+
+官网“下载”按钮实时请求 `/api/release/latest` 获取最新版本与 OSS 临时下载地址
+（后端每次请求重新签名，有效期约 30 分钟），点击后由浏览器直接下载 APK。
+无需在官网侧保存 APK 文件。
