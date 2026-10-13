@@ -1,289 +1,206 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-
-type Locale = 'zh' | 'en'
-
-const props = withDefaults(defineProps<{ initialLocale?: Locale }>(), {
-  initialLocale: 'zh'
-})
+import SiteHeader from '../components/SiteHeader.vue'
+import SiteFooter from '../components/SiteFooter.vue'
+import DownloadButton from '../components/DownloadButton.vue'
+import PlanetHero from '../components/PlanetHero.vue'
+import { SITE, localeFromPath } from '../config/site'
+import { useLatestRelease } from '../composables/useLatestRelease'
+import { usePageMeta } from '../composables/usePageMeta'
 
 const route = useRoute()
 const router = useRouter()
-const locale = ref<Locale>(props.initialLocale)
-const mobileNavOpen = ref(false)
-const navSolid = ref(false)
-const heroEl = ref<HTMLElement | null>(null)
-const currentYear = new Date().getFullYear()
+const locale = computed(() => localeFromPath(route.path))
+
+usePageMeta(() => locale.value, () => (locale.value === 'zh'
+  ? '深视地球 | GeoCamera 地质相机'
+  : 'DeepSeek Earth | GeoCamera'))
+
+const { release, loading } = useLatestRelease()
 
 const copy = {
   zh: {
-    nav: {
-      research: '科学研究',
-      platform: '研究平台',
-      team: '研究团队',
-      translation: '技术转化',
-      updates: '研究进展',
-      workbench: '进入 Terra'
-    },
     hero: {
-      eyebrow: '成都理工大学地震实验室',
-      titleA: '观测地球脉动',
-      titleB: '探索深地结构',
-      text: '连接地震观测、固体地球物理与智能分析方法，建设面向科研、教学和地球科学应用的开放平台。',
-      primary: '进入地震目录',
-      secondary: '了解实验室',
+      eyebrow: '深视地球（成都）信息技术有限公司',
+      titleA: '把每一次野外记录',
+      titleB: '变成可用的地质数据',
+      text: 'GeoCamera 地质相机面向地质调查、工程勘察与地学研究：拍照自动定位，路线清晰可查，数据云端同步，报告一键导出。',
+      primary: '下载 GeoCamera',
+      secondary: '了解产品',
       marker: '四川 · 成都',
-      discipline: '地震学 / 固体地球物理 / 科研智能'
+      discipline: '地质记录 / 位置数据 / 云端协作'
     },
-    intro: {
-      label: '01 / ABOUT',
-      title: '从地表观测到深部认识',
-      lead: 'CDUT SEISLAB 立足成都理工大学地球物理学科基础，围绕地震活动、深部构造和地震数据智能处理开展研究。',
-      body: '我们关注观测数据如何转化为对地球内部结构与动力过程的理解，也持续建设能够被研究人员、学生和合作伙伴真正使用的数据与智能工具。',
-      identityA: '学术研究主体',
-      identityB: '技术转化协作',
-      identityAText: '成都理工大学地震实验室',
-      identityBText: 'DeepSeek Earth / 深视地球（成都）信息技术有限公司'
-    },
-    research: {
-      label: '02 / RESEARCH',
-      title: '以观测为基础，以问题为牵引',
-      text: '围绕区域地震学与深地探测，将现场观测、数据处理、结构成像和智能方法组织成连续的研究链条。',
-      concept: '概念性科学视觉，不代表实测成像结果',
-      fieldConcept: '野外观测场景示意',
-      areas: [
-        { no: '01', title: '区域地震活动', en: 'Regional Seismicity', text: '研究地震活动的时空分布、震源特征及其与活动构造之间的联系。' },
-        { no: '02', title: '深部结构成像', en: 'Deep Earth Imaging', text: '利用地震波传播信息认识地壳与上地幔结构及其横向差异。' },
-        { no: '03', title: '地震波形处理', en: 'Waveform Analysis', text: '面向连续波形与事件目录，开展数据整理、检测、分析与可视化。' },
-        { no: '04', title: '科研智能方法', en: 'Research Intelligence', text: '探索人工智能在资料检索、数据分析与科研协作流程中的可靠应用。' }
+    ticker: ['GEOCAMERA', '地质记录', 'LOCATION DATA', '云端同步', 'FIELD WORK', '路线报告'],
+    product: {
+      label: '01 / PRODUCT',
+      title: 'GeoCamera 地质相机',
+      text: '从野外的第一张照片，到团队共享的路线报告，GeoCamera 覆盖地质记录工作的完整流程。',
+      appSync: '已同步',
+      appCoord: 'N 31.142° / E 103.425° · 海拔 512 m',
+      appCapture: '拍照',
+      appRoute: '路线',
+      appReport: '报告',
+      features: [
+        { title: '拍照即定位', text: '照片自动写入经纬度、海拔与方位信息，位置与影像一一对应。' },
+        { title: '项目与路线', text: '以项目组织野外路线，离线也能持续记录，恢复网络后自动同步。' },
+        { title: '专业地图底图', text: '天地图影像与地形底图，支持叠加断层与地质构造数据。' },
+        { title: '云端同步', text: '数据加密传输至云端存储，多设备增量同步，不怕丢失。' },
+        { title: '路线报告导出', text: '一键将路线照片与轨迹整理为 PDF 报告，支持云端图片回退。' },
+        { title: '团队协作', text: '管理后台统一审核照片、导出数据集，支持团队协作管理。' }
       ]
     },
-    platform: {
-      label: '03 / PLATFORMS',
-      title: '让研究基础设施真正可用',
-      text: '现有地震目录、历史数据与 Terra 工作台继续保留，并作为组织官网最重要的数字入口。',
-      catalog: {
-        kicker: 'EARTHQUAKE CATALOG',
-        title: '地震事件目录',
-        text: '在地图中浏览地震事件，按震级、位置和时间认识区域与全球地震活动。',
-        action: '打开地震目录',
-        history: '检索历史数据'
-      },
-      terra: {
-        kicker: 'RESEARCH WORKBENCH',
-        title: 'Terra 科研工作台',
-        text: '面向地球科学研究过程的统一工作界面，承载问答、研究笔记、资料整理与后续智能工具。',
-        action: '进入工作台',
-        greeting: '准备好开始深地探索了吗？',
-        prompt: '输入研究问题或整理任务'
-      }
-    },
-    translation: {
-      label: '04 / TRANSLATION',
-      title: '从科学问题走向可用技术',
-      lead: 'DeepSeek Earth',
-      company: '深视地球（成都）信息技术有限公司',
-      text: '作为技术转化与应用协作主体，面向地球科学数据、科研软件和智能工具开展工程实现与合作探索。学术研究与商业活动将保持清晰边界，并分别遵循学校与企业的管理要求。',
-      tags: ['地球科学数据', '科研软件', '智能工作流'],
-      visual: '技术研发场景示意'
-    },
-    team: {
-      label: '05 / PEOPLE',
-      title: '研究团队',
-      text: '围绕固体地球物理、地震学及相关智能方法开展研究与人才培养。',
-      people: [
-        { name: '梁春涛', role: '实验室主任', field: '固体地球物理学', image: '/lct.png' },
-        { name: '范兴利', role: '教授', field: '固体地球物理学', image: '/fxl.png' },
-        { name: '林弈', role: '副教授', field: '固体地球物理学', image: '/ly.png' },
-        { name: '刘兴业', role: '教授', field: '固体地球物理学', image: '/lxy.png' }
-      ]
-    },
-    updates: {
-      label: '06 / CURRENT WORK',
-      title: '当前建设',
+    scenarios: {
+      label: '02 / SCENARIOS',
+      title: '为真实野外工作而设计',
+      text: '无论在山地、戈壁还是城市工区，规范的数据从采集源头开始。',
+      mediaCaption: '野外观测场景示意',
       items: [
-        { type: 'DATA', title: '地震目录与历史数据平台', text: '持续完善事件浏览、数据检索和科研展示体验。' },
-        { type: 'RESEARCH', title: '区域地震与深部构造研究', text: '围绕四川盆地及邻区组织观测、分析与科学问题。' },
-        { type: 'TERRA', title: '地球科学智能工作台', text: '逐步整合资料、笔记、写作与研究辅助能力。' }
+        { no: '01', title: '地质调查', text: '露头、剖面与构造现象的影像记录与位置归档。' },
+        { no: '02', title: '工程勘察', text: '勘察点位照片与坐标一一对应，现场记录可追溯。' },
+        { no: '03', title: '科研考察', text: '按项目组织考察路线，为后续研究保留完整原始数据。' },
+        { no: '04', title: '教学实习', text: '标准化的记录流程，让学生在实践中学建立数据规范意识。' }
       ]
+    },
+    about: {
+      label: '03 / ABOUT',
+      title: '关于深视地球',
+      lead: '深视地球（成都）信息技术有限公司专注于地球科学领域的数据产品与智能工具。',
+      body: '我们面向地质调查、工程勘察、地震研究等场景，提供从野外采集、云端管理到数据应用的工具链，让专业数据在采集环节就保持规范、完整、可用。公司同时作为成都理工大学地震实验室的技术转化与应用协作主体，持续推动科研成果走向实际应用。',
+      values: [
+        { title: '专业可靠', text: '扎根地球科学场景，产品贴合野外工作流程。' },
+        { title: '数据安全', text: '加密传输与云端存储，数据权限清晰可控。' },
+        { title: '开放协作', text: '与高校、科研院所和行业单位保持开放合作。' }
+      ],
+      identityA: '学术合作',
+      identityAText: '成都理工大学地震实验室',
+      identityB: '技术转化',
+      identityBText: '深视地球（成都）信息技术有限公司',
+      visual: '研发场景示意'
+    },
+    download: {
+      label: '04 / DOWNLOAD',
+      title: '下载 GeoCamera',
+      text: '支持 Android 7.0 及以上版本，安装后注册账号即可开始记录。',
+      loading: '正在获取最新版本信息…',
+      unavailable: '暂时无法获取版本信息，点击下方按钮重试。',
+      latest: '最新版本',
+      published: '发布于',
+      changelog: '更新内容',
+      note: '若系统提示安全限制，请在设置中允许安装未知来源应用；如需 iOS 版或团队部署方案，欢迎联系我们。'
     },
     contact: {
-      label: 'CONTACT',
-      title: '开放交流与合作',
-      text: '欢迎围绕地震学研究、数据平台、科研工具与地球科学应用开展交流。',
-      addressLabel: '地址',
-      address: '四川省成都市成华区二仙桥东三路 1 号 · 成都理工大学',
-      siteLabel: '网站',
-      site: 'www.cdutseis.com',
-      note: '具体联系方式将在确认后公开。'
-    },
-    footer: {
-      lab: '成都理工大学地震实验室',
-      company: '技术转化协作：DeepSeek Earth',
-      rights: '保留所有权利'
+      title: '需要产品演示或合作洽谈？',
+      text: '欢迎联系我们获取产品资料、试用账号与团队部署方案。',
+      action: '联系我们',
+      emailPrefix: '或发邮件至'
     }
   },
   en: {
-    nav: {
-      research: 'Research',
-      platform: 'Platforms',
-      team: 'People',
-      translation: 'Translation',
-      updates: 'Updates',
-      workbench: 'Open Terra'
-    },
     hero: {
-      eyebrow: 'CDUT Seismology Laboratory',
-      titleA: 'Observe Earth in motion.',
-      titleB: 'Understand the deep.',
-      text: 'Connecting seismic observation, solid Earth geophysics and intelligent analysis to build useful infrastructure for research, education and geoscience applications.',
-      primary: 'Earthquake catalog',
-      secondary: 'About the lab',
+      eyebrow: 'DeepSeek Earth (Chengdu) Information Technology Co., Ltd.',
+      titleA: 'Turn every field record',
+      titleB: 'into usable geological data',
+      text: 'GeoCamera is built for geological surveys, engineering investigation and geoscience research: capture with automatic positioning, organized routes, cloud sync and one-click reports.',
+      primary: 'Get GeoCamera',
+      secondary: 'Explore the product',
       marker: 'Chengdu, Sichuan',
-      discipline: 'Seismology / Solid Earth Geophysics / Research Intelligence'
+      discipline: 'Geological records / Location data / Cloud collaboration'
     },
-    intro: {
-      label: '01 / ABOUT',
-      title: 'From surface observations to the deep Earth',
-      lead: 'CDUT SEISLAB builds on the geophysics discipline at Chengdu University of Technology, with research spanning seismicity, deep structure and intelligent seismic data processing.',
-      body: 'We study how observations become evidence about Earth structure and dynamics, while building data and intelligent tools that researchers, students and partners can genuinely use.',
-      identityA: 'Academic research',
-      identityB: 'Technology translation',
-      identityAText: 'CDUT Seismology Laboratory',
-      identityBText: 'DeepSeek Earth (Chengdu) Information Technology Co., Ltd.'
-    },
-    research: {
-      label: '02 / RESEARCH',
-      title: 'Observation-led, question-driven',
-      text: 'Our work connects field observations, data processing, structural imaging and intelligent methods across regional seismology and deep Earth exploration.',
-      concept: 'Conceptual scientific visual; not measured tomography',
-      fieldConcept: 'Illustrative field-observation scene',
-      areas: [
-        { no: '01', title: 'Regional Seismicity', en: 'EARTHQUAKE PROCESSES', text: 'Investigating the distribution and source characteristics of earthquakes and their relationship with active structures.' },
-        { no: '02', title: 'Deep Earth Imaging', en: 'CRUST & UPPER MANTLE', text: 'Using seismic-wave propagation to understand crustal and upper-mantle structure and lateral variation.' },
-        { no: '03', title: 'Waveform Analysis', en: 'SEISMIC DATA', text: 'Organizing, detecting, analyzing and visualizing continuous waveforms and earthquake catalogs.' },
-        { no: '04', title: 'Research Intelligence', en: 'RELIABLE AI METHODS', text: 'Exploring reliable AI support for literature, data analysis and collaborative research workflows.' }
+    ticker: ['GEOCAMERA', 'GEOLOGICAL RECORDS', 'LOCATION DATA', 'CLOUD SYNC', 'FIELD WORK', 'ROUTE REPORTS'],
+    product: {
+      label: '01 / PRODUCT',
+      title: 'GeoCamera Geological Camera',
+      text: 'From the first photo in the field to a shared route report, GeoCamera covers the complete geological recording workflow.',
+      appSync: 'Synced',
+      appCoord: 'N 31.142° / E 103.425° · 512 m',
+      appCapture: 'Capture',
+      appRoute: 'Routes',
+      appReport: 'Reports',
+      features: [
+        { title: 'Tagged capture', text: 'Photos are automatically tagged with coordinates, elevation and orientation.' },
+        { title: 'Projects & routes', text: 'Organize field routes by project; keep recording offline and sync automatically when back online.' },
+        { title: 'Professional basemaps', text: 'Satellite and terrain basemaps with optional fault and geological structure overlays.' },
+        { title: 'Cloud sync', text: 'Encrypted transfer to cloud storage with incremental multi-device synchronization.' },
+        { title: 'Route report export', text: 'Turn route photos and tracks into PDF reports in one click, with cloud image fallback.' },
+        { title: 'Team collaboration', text: 'Review photos and export datasets from the admin console for your whole team.' }
       ]
     },
-    platform: {
-      label: '03 / PLATFORMS',
-      title: 'Research infrastructure made useful',
-      text: 'The earthquake catalog, historical archive and Terra workbench remain the primary digital entrances of the organization website.',
-      catalog: {
-        kicker: 'EARTHQUAKE CATALOG',
-        title: 'Seismic Event Explorer',
-        text: 'Browse earthquakes on a map and investigate seismic activity through magnitude, location and time.',
-        action: 'Open catalog',
-        history: 'Search archive'
-      },
-      terra: {
-        kicker: 'RESEARCH WORKBENCH',
-        title: 'Terra Workbench',
-        text: 'A unified workspace for geoscience research, bringing together questions, notes, document organization and future intelligent tools.',
-        action: 'Open workbench',
-        greeting: 'Ready to explore the deep Earth?',
-        prompt: 'Ask a research question or organize a task'
-      }
-    },
-    translation: {
-      label: '04 / TRANSLATION',
-      title: 'Turning scientific questions into usable technology',
-      lead: 'DeepSeek Earth',
-      company: 'DeepSeek Earth (Chengdu) Information Technology Co., Ltd.',
-      text: 'As the technology translation and application partner, DeepSeek Earth explores engineering implementation in geoscience data, research software and intelligent tools. Academic and commercial activities will maintain clear boundaries and follow their respective governance requirements.',
-      tags: ['Geoscience data', 'Research software', 'Intelligent workflows'],
-      visual: 'Illustrative technology-development scene'
-    },
-    team: {
-      label: '05 / PEOPLE',
-      title: 'Research team',
-      text: 'Research and education across solid Earth geophysics, seismology and related intelligent methods.',
-      people: [
-        { name: 'Chuntao Liang', role: 'Laboratory Director', field: 'Solid Earth Geophysics', image: '/lct.png' },
-        { name: 'Xingli Fan', role: 'Professor', field: 'Solid Earth Geophysics', image: '/fxl.png' },
-        { name: 'Yi Lin', role: 'Associate Professor', field: 'Solid Earth Geophysics', image: '/ly.png' },
-        { name: 'Xingye Liu', role: 'Professor', field: 'Solid Earth Geophysics', image: '/lxy.png' }
-      ]
-    },
-    updates: {
-      label: '06 / CURRENT WORK',
-      title: 'Work in progress',
+    scenarios: {
+      label: '02 / SCENARIOS',
+      title: 'Designed for real field work',
+      text: 'Mountains, deserts or urban sites — standardized data starts at the moment of capture.',
+      mediaCaption: 'Illustrative field-observation scene',
       items: [
-        { type: 'DATA', title: 'Earthquake catalog and archive', text: 'Improving event browsing, data retrieval and research communication.' },
-        { type: 'RESEARCH', title: 'Regional seismicity and deep structure', text: 'Organizing observations and analysis around Sichuan Basin and adjacent regions.' },
-        { type: 'TERRA', title: 'Geoscience research workbench', text: 'Integrating literature, notes, writing and research-assistance capabilities.' }
+        { no: '01', title: 'Geological survey', text: 'Image records and location archiving for outcrops, sections and structures.' },
+        { no: '02', title: 'Engineering investigation', text: 'Survey points with photos matched to coordinates, fully traceable on site.' },
+        { no: '03', title: 'Research expeditions', text: 'Organize expedition routes by project and preserve complete raw data for research.' },
+        { no: '04', title: 'Field teaching', text: 'A standardized recording workflow that builds data discipline in practice.' }
       ]
+    },
+    about: {
+      label: '03 / ABOUT',
+      title: 'About DeepSeek Earth',
+      lead: 'DeepSeek Earth (Chengdu) Information Technology Co., Ltd. focuses on geoscience data products and intelligent tools.',
+      body: 'For geological surveys, engineering investigation and seismological research, we provide a toolchain from field capture to cloud management and data application, keeping professional data standardized, complete and usable from the very first step. The company also serves as the technology translation and application partner of the CDUT Seismology Laboratory, bringing research outcomes into practical use.',
+      values: [
+        { title: 'Professional', text: 'Rooted in geoscience scenarios and field workflows.' },
+        { title: 'Secure', text: 'Encrypted transfer, cloud storage and clear data permissions.' },
+        { title: 'Collaborative', text: 'Open cooperation with universities, institutes and industry partners.' }
+      ],
+      identityA: 'Academic partner',
+      identityAText: 'CDUT Seismology Laboratory',
+      identityB: 'Technology translation',
+      identityBText: 'DeepSeek Earth (Chengdu) Information Technology Co., Ltd.',
+      visual: 'Illustrative R&D scene'
+    },
+    download: {
+      label: '04 / DOWNLOAD',
+      title: 'Download GeoCamera',
+      text: 'Supports Android 7.0 and above. Register an account after installation to start recording.',
+      loading: 'Fetching the latest version…',
+      unavailable: 'Version information is temporarily unavailable. Click the button below to retry.',
+      latest: 'Latest version',
+      published: 'Published',
+      changelog: "What's new",
+      note: 'If the system blocks the installation, allow installs from unknown sources in settings. For an iOS version or team deployment, please contact us.'
     },
     contact: {
-      label: 'CONTACT',
-      title: 'Open to dialogue and collaboration',
-      text: 'We welcome conversations around seismology, data platforms, research tools and geoscience applications.',
-      addressLabel: 'Address',
-      address: 'No. 1, East Third Road, Erxianqiao, Chenghua District, Chengdu, Sichuan · Chengdu University of Technology',
-      siteLabel: 'Website',
-      site: 'www.cdutseis.com',
-      note: 'Direct contact details will be published after confirmation.'
-    },
-    footer: {
-      lab: 'CDUT Seismology Laboratory',
-      company: 'Technology translation: DeepSeek Earth',
-      rights: 'All rights reserved'
+      title: 'Need a product demo or a partnership?',
+      text: 'Contact us for product materials, trial accounts and team deployment plans.',
+      action: 'Contact us',
+      emailPrefix: 'Or email us at'
     }
   }
 } as const
 
 const c = computed(() => copy[locale.value])
-const waveBars = [14, 20, 10, 24, 18, 30, 22, 42, 64, 38, 78, 52, 92, 68, 44, 72, 35, 58, 28, 48, 24, 38, 18, 30, 14, 24, 12, 19, 9, 15, 8, 12]
-
-function navigate(path: string) {
-  mobileNavOpen.value = false
-  router.push(path)
-}
 
 function scrollToSection(id: string) {
-  mobileNavOpen.value = false
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-function setLocale(next: Locale) {
-  locale.value = next
-  mobileNavOpen.value = false
-  document.documentElement.lang = next === 'zh' ? 'zh-CN' : 'en'
-  router.replace(next === 'en' ? '/en/' : '/')
+function goContact() {
+  router.push(locale.value === 'zh' ? '/contact' : '/en/contact')
 }
 
-function updateScroll() {
-  navSolid.value = window.scrollY > 28
-  const max = document.documentElement.scrollHeight - window.innerHeight
-  const progress = max > 0 ? Math.min(1, window.scrollY / max) : 0
-  document.documentElement.style.setProperty('--page-progress', `${progress * 100}%`)
+function formatDate(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString(locale.value === 'zh' ? 'zh-CN' : 'en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
 }
 
-function moveHero(event: MouseEvent) {
-  if (!heroEl.value || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-  const rect = heroEl.value.getBoundingClientRect()
-  const x = (event.clientX - rect.left) / rect.width - 0.5
-  const y = (event.clientY - rect.top) / rect.height - 0.5
-  heroEl.value.style.setProperty('--hero-x', `${x * 10}px`)
-  heroEl.value.style.setProperty('--hero-y', `${y * 7}px`)
-}
-
-function resetHero() {
-  heroEl.value?.style.setProperty('--hero-x', '0px')
-  heroEl.value?.style.setProperty('--hero-y', '0px')
-}
+const versionText = computed(() => (release.value ? `v${release.value.versionName}` : ''))
+const publishedText = computed(() => (release.value ? formatDate(release.value.publishedAt) : ''))
 
 let revealObserver: IntersectionObserver | null = null
 
-onMounted(() => {
-  document.documentElement.lang = locale.value === 'zh' ? 'zh-CN' : 'en'
-  document.title = locale.value === 'zh'
-    ? 'CDUT SEISLAB | 成都理工大学地震实验室'
-    : 'CDUT SEISLAB | Seismology & Deep Earth Research'
-  updateScroll()
-  window.addEventListener('scroll', updateScroll, { passive: true })
-
+function observeReveals() {
+  revealObserver?.disconnect()
   revealObserver = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
       if (entry.isIntersecting) {
@@ -292,92 +209,25 @@ onMounted(() => {
       }
     })
   }, { threshold: 0.14 })
-
   document.querySelectorAll('[data-reveal]').forEach((element) => revealObserver?.observe(element))
+}
+
+onMounted(() => {
+  observeReveals()
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('scroll', updateScroll)
   revealObserver?.disconnect()
-})
-
-watch(() => props.initialLocale, (next) => {
-  locale.value = next
-})
-
-watch(locale, (next) => {
-  document.title = next === 'zh'
-    ? 'CDUT SEISLAB | 成都理工大学地震实验室'
-    : 'CDUT SEISLAB | Seismology & Deep Earth Research'
-})
-
-watch(() => route.path, (path) => {
-  locale.value = path.startsWith('/en') ? 'en' : 'zh'
 })
 </script>
 
 <template>
   <div class="site-page" :class="{ 'locale-en': locale === 'en' }">
-    <header class="site-header" :class="{ solid: navSolid, open: mobileNavOpen }">
-      <div class="scroll-progress" aria-hidden="true"></div>
-      <div class="header-inner">
-        <button class="brand" type="button" aria-label="CDUT SEISLAB home" @click="navigate(locale === 'en' ? '/en/' : '/')">
-          <img src="/brand/cdut-seislab-mark-512.png" alt="CDUT SEISLAB" />
-          <span class="brand-copy">
-            <strong>CDUT SEISLAB</strong>
-            <span>{{ locale === 'zh' ? '成都理工大学地震实验室' : 'Seismology Laboratory' }}</span>
-          </span>
-        </button>
-
-        <nav class="desktop-nav" :aria-label="locale === 'zh' ? '主导航' : 'Primary navigation'">
-          <button type="button" @click="scrollToSection('research')">{{ c.nav.research }}</button>
-          <button type="button" @click="scrollToSection('platforms')">{{ c.nav.platform }}</button>
-          <button type="button" @click="scrollToSection('team')">{{ c.nav.team }}</button>
-          <button type="button" @click="scrollToSection('translation')">{{ c.nav.translation }}</button>
-          <button type="button" @click="scrollToSection('updates')">{{ c.nav.updates }}</button>
-        </nav>
-
-        <div class="header-actions">
-          <div class="locale-switch" :aria-label="locale === 'zh' ? '语言切换' : 'Language switch'">
-            <button type="button" :class="{ active: locale === 'zh' }" @click="setLocale('zh')">中</button>
-            <button type="button" :class="{ active: locale === 'en' }" @click="setLocale('en')">EN</button>
-          </div>
-          <button class="workbench-link" type="button" @click="navigate('/terra/chat')">
-            <span>{{ c.nav.workbench }}</span><span aria-hidden="true">↗</span>
-          </button>
-          <button
-            class="menu-button"
-            type="button"
-            :aria-expanded="mobileNavOpen"
-            :aria-label="locale === 'zh' ? '打开导航' : 'Open navigation'"
-            @click="mobileNavOpen = !mobileNavOpen"
-          >
-            <span></span><span></span>
-          </button>
-        </div>
-      </div>
-
-      <nav class="mobile-nav" :aria-label="locale === 'zh' ? '移动端导航' : 'Mobile navigation'">
-        <button type="button" @click="scrollToSection('research')">{{ c.nav.research }}</button>
-        <button type="button" @click="scrollToSection('platforms')">{{ c.nav.platform }}</button>
-        <button type="button" @click="scrollToSection('team')">{{ c.nav.team }}</button>
-        <button type="button" @click="scrollToSection('translation')">{{ c.nav.translation }}</button>
-        <button type="button" @click="scrollToSection('updates')">{{ c.nav.updates }}</button>
-        <button type="button" @click="navigate('/terra/chat')">{{ c.nav.workbench }} ↗</button>
-      </nav>
-    </header>
+    <SiteHeader :locale="locale" />
 
     <main>
-      <section
-        ref="heroEl"
-        class="hero"
-        @mousemove="moveHero"
-        @mouseleave="resetHero"
-      >
-        <picture class="hero-media">
-          <source media="(max-width: 720px)" srcset="/media/hero-deep-earth-mobile.jpg" />
-          <img src="/media/hero-deep-earth-desktop.jpg" alt="Mountain landscape and conceptual seismic-wave visualization" />
-        </picture>
+      <section class="hero">
+        <PlanetHero />
         <div class="hero-overlay"></div>
         <div class="hero-grid" aria-hidden="true"></div>
 
@@ -387,10 +237,10 @@ watch(() => route.path, (path) => {
             <h1><span>{{ c.hero.titleA }}</span><span>{{ c.hero.titleB }}</span></h1>
             <p class="hero-text">{{ c.hero.text }}</p>
             <div class="hero-actions">
-              <button class="button primary" type="button" @click="navigate('/dashboard')">
-                {{ c.hero.primary }} <span aria-hidden="true">↗</span>
+              <button class="button primary" type="button" @click="scrollToSection('download')">
+                {{ c.hero.primary }} <span aria-hidden="true">↓</span>
               </button>
-              <button class="button text" type="button" @click="scrollToSection('about')">
+              <button class="button text" type="button" @click="scrollToSection('product')">
                 {{ c.hero.secondary }} <span aria-hidden="true">↓</span>
               </button>
             </div>
@@ -402,218 +252,222 @@ watch(() => route.path, (path) => {
           </div>
         </div>
 
-        <div class="hero-wave" aria-hidden="true">
-          <span
-            v-for="(height, index) in waveBars"
-            :key="index"
-            :style="{ '--bar-height': `${height}%`, '--bar-delay': `${index * 38}ms` }"
-          ></span>
-        </div>
+        <svg class="hero-strata" viewBox="0 0 1440 220" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0,118 C240,76 480,158 720,116 C960,76 1200,148 1440,106 L1440,220 L0,220 Z" fill="rgba(217,122,28,0.82)" />
+          <path d="M0,152 C260,120 520,182 780,146 C1040,112 1240,170 1440,140 L1440,220 L0,220 Z" fill="rgba(138,90,43,0.88)" />
+          <path d="M0,184 C280,160 560,208 840,178 C1120,150 1300,196 1440,172 L1440,220 L0,220 Z" fill="rgba(46,127,168,0.86)" />
+        </svg>
       </section>
 
       <div class="signal-strip" aria-hidden="true">
         <div class="signal-track">
-          <span>SEISMOLOGY</span><i></i><span>DEEP EARTH</span><i></i><span>OBSERVATION</span><i></i><span>DATA INTELLIGENCE</span>
+          <template v-for="(word, index) in c.ticker" :key="word">
+            <span>{{ word }}</span><i v-if="index < c.ticker.length - 1"></i>
+          </template>
         </div>
       </div>
 
-      <section id="about" class="section intro-section">
-        <div class="section-grid">
-          <div class="section-index" data-reveal>{{ c.intro.label }}</div>
-          <div class="intro-main" data-reveal>
-            <h2>{{ c.intro.title }}</h2>
-            <p class="intro-lead">{{ c.intro.lead }}</p>
-            <p class="body-copy">{{ c.intro.body }}</p>
-          </div>
-          <div class="identity-list" data-reveal>
-            <div class="identity-row">
-              <span>{{ c.intro.identityA }}</span>
-              <strong>{{ c.intro.identityAText }}</strong>
-            </div>
-            <div class="identity-row">
-              <span>{{ c.intro.identityB }}</span>
-              <strong>{{ c.intro.identityBText }}</strong>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="research" class="section research-section">
-        <div class="research-heading section-grid">
-          <div class="section-index light" data-reveal>{{ c.research.label }}</div>
-          <div class="research-title" data-reveal>
-            <h2>{{ c.research.title }}</h2>
-            <p>{{ c.research.text }}</p>
+      <section id="product" class="section product-section">
+        <div class="product-heading section-grid">
+          <div class="section-index" data-reveal>{{ c.product.label }}</div>
+          <div data-reveal>
+            <h2>{{ c.product.title }}</h2>
+            <p>{{ c.product.text }}</p>
           </div>
         </div>
 
-        <div class="research-visual" data-reveal>
-          <img src="/media/seismic-fault-editorial.jpg" alt="Conceptual seismic waveform and fault cross-section" loading="lazy" />
-          <div class="research-scan" aria-hidden="true"></div>
-          <span class="visual-note">{{ c.research.concept }}</span>
-        </div>
-
-        <div class="research-content">
-          <div class="field-visual" data-reveal>
-            <img src="/media/field-observation-concept.jpg" alt="Illustrative field seismic observation scene" loading="lazy" />
-            <span>{{ c.research.fieldConcept }}</span>
-          </div>
-          <div class="research-list">
-            <article v-for="area in c.research.areas" :key="area.no" class="research-row" data-reveal>
-              <span class="research-no">{{ area.no }}</span>
-              <div>
-                <h3>{{ area.title }}</h3>
-                <small>{{ area.en }}</small>
+        <div class="product-body">
+          <div class="phone-wrap" data-reveal>
+            <div class="phone">
+              <div class="phone-notch" aria-hidden="true"></div>
+              <div class="phone-screen">
+                <div class="status-bar" aria-hidden="true">
+                  <span>9:41</span>
+                  <span class="status-icons"><i></i><i></i><i></i></span>
+                </div>
+                <div class="app-top">
+                  <img src="/brand/geocamera-icon.png" alt="" />
+                  <strong>GeoCamera</strong>
+                  <span class="app-sync">{{ c.product.appSync }}</span>
+                </div>
+                <div class="app-map" aria-hidden="true">
+                  <svg viewBox="0 0 300 170" preserveAspectRatio="none">
+                    <path d="M-10,120 C60,92 120,140 190,108 C240,86 280,102 310,88" stroke="rgba(217,122,28,0.9)" stroke-width="2" fill="none" stroke-dasharray="6 5" />
+                    <path d="M-10,52 C70,70 150,34 230,58 C270,70 292,60 310,66" stroke="rgba(16,24,29,0.35)" stroke-width="1.5" fill="none" />
+                    <path d="M-10,150 C80,132 170,168 310,138" stroke="rgba(46,127,168,0.55)" stroke-width="1.5" fill="none" />
+                  </svg>
+                  <span class="map-ring"></span>
+                  <span class="map-dot"></span>
+                  <span class="app-coord">{{ c.product.appCoord }}</span>
+                </div>
+                <div class="app-photos" aria-hidden="true">
+                  <span class="photo photo-a"></span>
+                  <span class="photo photo-b"></span>
+                  <span class="photo photo-c"></span>
+                </div>
+                <div class="app-actions" aria-hidden="true">
+                  <span class="active">{{ c.product.appCapture }}</span>
+                  <span>{{ c.product.appRoute }}</span>
+                  <span>{{ c.product.appReport }}</span>
+                </div>
               </div>
-              <p>{{ area.text }}</p>
+            </div>
+          </div>
+
+          <div class="feature-grid">
+            <article v-for="(feature, index) in c.product.features" :key="feature.title" class="feature-card" data-reveal>
+              <span class="feature-icon" aria-hidden="true">
+                <svg v-if="index === 0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 10c0 7-9 12-9 12S3 17 3 10a9 9 0 0 1 18 0Z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                <svg v-else-if="index === 1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="5" cy="6" r="2.4" />
+                  <circle cx="19" cy="18" r="2.4" />
+                  <path d="M7.2 7.2 16.8 16.8" stroke-dasharray="4 3" />
+                </svg>
+                <svg v-else-if="index === 2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m9 4-5 1.5v14L9 18l6 2 5-1.5v-14L15 6 9 4Z" />
+                  <path d="M9 4v14" />
+                  <path d="M15 6v14" />
+                </svg>
+                <svg v-else-if="index === 3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.5 19a4.5 4.5 0 0 0 .4-9A6.5 6.5 0 0 0 5.3 8.6 4 4 0 0 0 6 16.5" />
+                  <path d="M12 12v8" />
+                  <path d="m8.8 16.8 3.2 3.2 3.2-3.2" />
+                </svg>
+                <svg v-else-if="index === 4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" />
+                  <path d="M14 3v6h6" />
+                  <path d="M9 14h6" />
+                  <path d="M9 17.5h4" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="9" cy="8" r="3.2" />
+                  <path d="M3.5 19.5c.8-3 3-4.6 5.5-4.6s4.7 1.6 5.5 4.6" />
+                  <circle cx="17" cy="9.5" r="2.4" />
+                  <path d="M15.6 14.6c2.3.2 4.1 1.6 4.9 4.4" />
+                </svg>
+              </span>
+              <h3>{{ feature.title }}</h3>
+              <p>{{ feature.text }}</p>
             </article>
           </div>
         </div>
       </section>
 
-      <section id="platforms" class="section platform-section">
-        <div class="platform-heading section-grid">
-          <div class="section-index" data-reveal>{{ c.platform.label }}</div>
+      <section id="scenarios" class="section scenarios-section">
+        <div class="scenarios-heading section-grid">
+          <div class="section-index light" data-reveal>{{ c.scenarios.label }}</div>
           <div data-reveal>
-            <h2>{{ c.platform.title }}</h2>
-            <p>{{ c.platform.text }}</p>
+            <h2>{{ c.scenarios.title }}</h2>
+            <p>{{ c.scenarios.text }}</p>
           </div>
         </div>
 
-        <article class="platform-feature catalog-feature">
-          <div class="platform-copy" data-reveal>
-            <span class="platform-kicker">{{ c.platform.catalog.kicker }}</span>
-            <h3>{{ c.platform.catalog.title }}</h3>
-            <p>{{ c.platform.catalog.text }}</p>
-            <div class="platform-actions">
-              <button class="button dark" type="button" @click="navigate('/dashboard')">{{ c.platform.catalog.action }} ↗</button>
-              <button class="button text-dark" type="button" @click="navigate('/history')">{{ c.platform.catalog.history }} →</button>
-            </div>
-          </div>
-          <button class="catalog-preview" type="button" :aria-label="c.platform.catalog.action" @click="navigate('/dashboard')" data-reveal>
-            <div class="map-toolbar">
-              <span>CDUT SEIS</span><span>CATALOG / MAP</span>
-            </div>
-            <div class="map-field">
-              <span v-for="n in 18" :key="n" class="quake-dot" :class="`dot-${n}`"></span>
-              <div class="map-line line-a"></div>
-              <div class="map-line line-b"></div>
-              <div class="map-readout"><strong>M 5.2</strong><span>31.14° N / 103.42° E</span></div>
-            </div>
-          </button>
-        </article>
+        <div class="scenarios-media" data-reveal>
+          <img src="/media/field-observation-concept.jpg" alt="" loading="lazy" />
+          <span>{{ c.scenarios.mediaCaption }}</span>
+        </div>
 
-        <article class="platform-feature terra-feature">
-          <button class="terra-preview" type="button" :aria-label="c.platform.terra.action" @click="navigate('/terra/chat')" data-reveal>
-            <div class="terra-rail">
-              <strong>T</strong>
-              <span class="active"></span><span></span><span></span><span></span>
-            </div>
-            <div class="terra-screen">
-              <div class="terra-top"><span>Terra</span><i></i></div>
-              <div class="terra-greeting"><span>T</span><p>{{ c.platform.terra.greeting }}</p></div>
-              <div class="terra-input"><span>{{ c.platform.terra.prompt }}</span><b>↑</b></div>
-            </div>
-          </button>
-          <div class="platform-copy" data-reveal>
-            <span class="platform-kicker">{{ c.platform.terra.kicker }}</span>
-            <h3>{{ c.platform.terra.title }}</h3>
-            <p>{{ c.platform.terra.text }}</p>
-            <button class="button dark" type="button" @click="navigate('/terra/chat')">{{ c.platform.terra.action }} ↗</button>
-          </div>
-        </article>
-      </section>
-
-      <section id="translation" class="translation-section">
-        <div class="translation-copy" data-reveal>
-          <span class="section-index light">{{ c.translation.label }}</span>
-          <h2>{{ c.translation.title }}</h2>
-          <p class="translation-lead">{{ c.translation.lead }}</p>
-          <h3>{{ c.translation.company }}</h3>
-          <p class="translation-text">{{ c.translation.text }}</p>
-          <div class="tag-list">
-            <span v-for="tag in c.translation.tags" :key="tag">{{ tag }}</span>
-          </div>
-        </div>
-        <div class="translation-visual" data-reveal>
-          <img src="/media/deepseek-earth-lab.jpg" alt="Illustrative geoscience technology development workspace" loading="lazy" />
-          <span>{{ c.translation.visual }}</span>
-        </div>
-      </section>
-
-      <section id="team" class="section team-section">
-        <div class="team-heading section-grid">
-          <div class="section-index" data-reveal>{{ c.team.label }}</div>
-          <div data-reveal>
-            <h2>{{ c.team.title }}</h2>
-            <p>{{ c.team.text }}</p>
-          </div>
-        </div>
-        <div class="team-list">
-          <article v-for="(person, index) in c.team.people" :key="person.name" class="person" data-reveal>
-            <div class="person-image"><img :src="person.image" :alt="person.name" loading="lazy" /></div>
-            <span class="person-index">0{{ index + 1 }}</span>
-            <h3>{{ person.name }}</h3>
-            <p>{{ person.role }}</p>
-            <small>{{ person.field }}</small>
-          </article>
-        </div>
-      </section>
-
-      <section id="updates" class="section updates-section">
-        <div class="updates-heading section-grid">
-          <div class="section-index" data-reveal>{{ c.updates.label }}</div>
-          <h2 data-reveal>{{ c.updates.title }}</h2>
-        </div>
-        <div class="updates-list">
-          <article v-for="(item, index) in c.updates.items" :key="item.type" data-reveal>
-            <span class="update-no">0{{ index + 1 }}</span>
-            <span class="update-type">{{ item.type }}</span>
+        <div class="scenario-grid">
+          <article v-for="item in c.scenarios.items" :key="item.no" class="scenario-card" data-reveal>
+            <span class="scenario-no">{{ item.no }}</span>
             <h3>{{ item.title }}</h3>
             <p>{{ item.text }}</p>
           </article>
         </div>
       </section>
 
-      <section class="contact-section">
-        <div class="contact-inner" data-reveal>
-          <span class="section-index light">{{ c.contact.label }}</span>
-          <h2>{{ c.contact.title }}</h2>
-          <p class="contact-lead">{{ c.contact.text }}</p>
-          <div class="contact-grid">
-            <div><span>{{ c.contact.addressLabel }}</span><p>{{ c.contact.address }}</p></div>
-            <div><span>{{ c.contact.siteLabel }}</span><p>{{ c.contact.site }}</p></div>
+      <section id="about" class="section about-section">
+        <div class="about-copy" data-reveal>
+          <div class="section-index light">{{ c.about.label }}</div>
+          <h2>{{ c.about.title }}</h2>
+          <p class="about-lead">{{ c.about.lead }}</p>
+          <p class="about-body">{{ c.about.body }}</p>
+
+          <div class="value-list">
+            <div v-for="value in c.about.values" :key="value.title" class="value-item">
+              <h3>{{ value.title }}</h3>
+              <p>{{ value.text }}</p>
+            </div>
           </div>
-          <p class="contact-note">{{ c.contact.note }}</p>
+        </div>
+
+        <div class="about-side" data-reveal>
+          <div class="about-visual">
+            <img src="/media/deepseek-earth-lab.jpg" alt="" loading="lazy" />
+            <span>{{ c.about.visual }}</span>
+          </div>
+          <div class="identity-list">
+            <div class="identity-row">
+              <span>{{ c.about.identityA }}</span>
+              <strong>{{ c.about.identityAText }}</strong>
+            </div>
+            <div class="identity-row">
+              <span>{{ c.about.identityB }}</span>
+              <strong>{{ c.about.identityBText }}</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="download" class="download-section">
+        <img class="download-bg" src="/media/deep-structure-concept.jpg" alt="" loading="lazy" />
+        <div class="download-overlay"></div>
+        <div class="download-inner" data-reveal>
+          <div class="section-index light">{{ c.download.label }}</div>
+          <img class="download-icon" src="/brand/geocamera-icon.png" alt="GeoCamera" />
+          <h2>{{ c.download.title }}</h2>
+          <p class="download-text">{{ c.download.text }}</p>
+
+          <div class="release-box">
+            <template v-if="release">
+              <span class="release-pill">{{ c.download.latest }} {{ versionText }}</span>
+              <span v-if="publishedText" class="release-date">{{ c.download.published }} {{ publishedText }}</span>
+              <p v-if="release.changelog" class="release-changelog">
+                <strong>{{ c.download.changelog }}：</strong>{{ release.changelog }}
+              </p>
+            </template>
+            <p v-else-if="loading" class="release-changelog muted">{{ c.download.loading }}</p>
+            <p v-else class="release-changelog muted">{{ c.download.unavailable }}</p>
+          </div>
+
+          <DownloadButton :locale="locale" variant="primary" />
+          <p class="download-note">{{ c.download.note }}</p>
+        </div>
+      </section>
+
+      <section class="contact-band">
+        <div class="contact-inner" data-reveal>
+          <div>
+            <h2>{{ c.contact.title }}</h2>
+            <p>{{ c.contact.text }}</p>
+            <p class="contact-email">{{ c.contact.emailPrefix }} <a :href="`mailto:${SITE.contact.email}`">{{ SITE.contact.email }}</a></p>
+          </div>
+          <button class="button dark" type="button" @click="goContact">
+            {{ c.contact.action }} <span aria-hidden="true">→</span>
+          </button>
         </div>
       </section>
     </main>
 
-    <footer class="site-footer">
-      <div>
-        <img src="/brand/cdut-seislab-mark-512.png" alt="CDUT SEISLAB" />
-        <strong>CDUT SEISLAB</strong>
-      </div>
-      <div class="footer-meta">
-        <span>{{ c.footer.lab }}</span>
-        <span>{{ c.footer.company }}</span>
-      </div>
-      <p>© {{ currentYear }} · {{ c.footer.rights }}</p>
-    </footer>
+    <SiteFooter :locale="locale" />
   </div>
 </template>
 
 <style scoped>
 .site-page {
-  --ink: #111719;
-  --paper: #f5f6f3;
+  --ink: #10181d;
+  --paper: #f6f4ef;
   --white: #ffffff;
-  --red: #d44335;
-  --red-dark: #9f2c24;
-  --teal: #167c7a;
-  --ice: #b9dde0;
-  --muted: #697173;
-  --line: rgba(17, 23, 25, 0.16);
+  --amber: #d97a1c;
+  --amber-dark: #a85a0e;
+  --green: #57923a;
+  --blue: #2e7fa8;
+  --brown: #8a5a2b;
+  --muted: #667072;
+  --line: rgba(16, 24, 29, 0.14);
   --page-progress: 0%;
   min-width: 320px;
   color: var(--ink);
@@ -629,288 +483,86 @@ watch(() => route.path, (path) => {
   letter-spacing: 0;
 }
 
-button,
-a {
+button {
   font: inherit;
 }
 
 button:focus-visible,
 a:focus-visible {
-  outline: 2px solid var(--red);
+  outline: 2px solid var(--amber);
   outline-offset: 3px;
 }
 
-.site-header {
-  position: fixed;
-  inset: 0 0 auto;
-  z-index: 100;
-  height: 78px;
-  color: var(--ink);
-  background: rgba(247, 248, 246, 0.82);
-  border-bottom: 1px solid rgba(17, 23, 25, 0.12);
-  backdrop-filter: blur(16px);
-  transition: background 220ms ease, box-shadow 220ms ease;
+main {
+  padding-top: 0;
 }
 
-.site-header.solid {
-  background: rgba(247, 248, 246, 0.96);
-  box-shadow: 0 8px 26px rgba(17, 23, 25, 0.08);
-}
-
-.scroll-progress {
-  position: absolute;
-  inset: auto auto -1px 0;
-  width: var(--page-progress);
-  height: 2px;
-  background: var(--red);
-}
-
-.header-inner {
-  width: min(1480px, calc(100% - 48px));
-  height: 100%;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 28px;
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 250px;
-  padding: 0;
-  border: 0;
-  color: inherit;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-}
-
-.brand img {
-  width: 46px;
-  height: 46px;
-  object-fit: contain;
-}
-
-.brand-copy {
-  display: grid;
-  gap: 2px;
-}
-
-.brand-copy strong {
-  font-size: 16px;
-  line-height: 1.1;
-}
-
-.brand-copy span {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.25;
-}
-
-.desktop-nav {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 24px;
-  flex: 1;
-}
-
-.desktop-nav button,
-.mobile-nav button {
-  padding: 8px 0;
-  border: 0;
-  color: #42494b;
-  background: transparent;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.desktop-nav button {
-  position: relative;
-}
-
-.desktop-nav button::after {
-  content: "";
-  position: absolute;
-  inset: auto 50% 2px;
-  width: 0;
-  height: 1px;
-  background: var(--red);
-  transition: width 180ms ease, inset 180ms ease;
-}
-
-.desktop-nav button:hover::after {
-  inset-inline: 0;
-  width: 100%;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.locale-switch {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  width: 76px;
-  height: 34px;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.62);
-}
-
-.locale-switch button {
-  border: 0;
-  border-radius: 4px;
-  color: var(--muted);
-  background: transparent;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.locale-switch button.active {
-  color: var(--white);
-  background: var(--ink);
-}
-
-.workbench-link,
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  min-height: 42px;
-  padding: 0 18px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 750;
-  font-size: 13px;
-  transition: transform 180ms ease, background 180ms ease, color 180ms ease, border-color 180ms ease;
-}
-
-.workbench-link {
-  color: white;
-  background: var(--ink);
-}
-
-.workbench-link:hover,
-.button:hover {
-  transform: translateY(-2px);
-}
-
-.menu-button,
-.mobile-nav {
-  display: none;
-}
+/* ---------- Hero ---------- */
 
 .hero {
-  --hero-x: 0px;
-  --hero-y: 0px;
   position: relative;
-  height: calc(100svh - 130px);
-  min-height: 560px;
-  max-height: 920px;
-  margin-top: 78px;
+  min-height: min(92vh, 940px);
+  display: flex;
+  align-items: flex-end;
   overflow: hidden;
-  isolation: isolate;
-}
-
-.hero-media,
-.hero-media img,
-.hero-overlay,
-.hero-grid {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.hero-media {
-  z-index: -3;
-  overflow: hidden;
-  background: #c7d1d4;
-}
-
-.hero-media img {
-  inset: -10px;
-  width: calc(100% + 20px);
-  height: calc(100% + 20px);
-  object-fit: cover;
-  object-position: center;
-  transform: translate3d(var(--hero-x), var(--hero-y), 0) scale(1.025);
-  animation: hero-breathe 16s ease-in-out infinite alternate;
-  transition: transform 240ms ease-out;
+  background: #02040a;
 }
 
 .hero-overlay {
-  z-index: -2;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(245, 247, 245, 0.98) 0%, rgba(245, 247, 245, 0.9) 28%, rgba(245, 247, 245, 0.35) 52%, rgba(8, 14, 16, 0.08) 100%),
-    linear-gradient(0deg, rgba(11, 17, 18, 0.34) 0%, transparent 38%);
+    linear-gradient(88deg, rgba(3, 6, 12, 0.93) 6%, rgba(3, 6, 12, 0.6) 36%, rgba(3, 6, 12, 0.08) 58%, transparent 78%),
+    linear-gradient(0deg, rgba(3, 6, 12, 0.84) 0%, rgba(3, 6, 12, 0.2) 42%, transparent 64%);
 }
 
 .hero-grid {
-  z-index: -1;
-  opacity: 0.26;
+  position: absolute;
+  inset: 0;
   background-image:
-    linear-gradient(rgba(17, 23, 25, 0.16) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(17, 23, 25, 0.16) 1px, transparent 1px);
-  background-size: 72px 72px;
-  mask-image: linear-gradient(90deg, black, transparent 68%);
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 84px 84px;
+  mask-image: linear-gradient(0deg, rgba(0, 0, 0, 0.7), transparent 70%);
+  pointer-events: none;
 }
 
 .hero-content {
   position: relative;
-  width: min(1480px, calc(100% - 96px));
-  height: 100%;
+  z-index: 2;
+  width: min(1480px, calc(100% - 48px));
   margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 44px 0 86px;
-}
-
-.hero-copy {
-  width: min(700px, 60%);
+  padding: 150px 0 190px;
+  color: #fff;
 }
 
 .eyebrow {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 11px;
-  margin: 0 0 24px;
-  color: #31383a;
-  font-size: 13px;
-  font-weight: 800;
+  gap: 12px;
+  margin: 0 0 26px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 14px;
+  letter-spacing: 0.12em;
 }
 
 .eyebrow span {
-  width: 32px;
-  height: 2px;
-  background: var(--red);
-}
-
-.hero h1,
-.section h2,
-.translation-section h2,
-.contact-section h2 {
-  font-family: "Iowan Old Style", "Noto Serif SC", "Songti SC", Georgia, serif;
-  font-weight: 700;
+  width: 34px;
+  height: 1px;
+  background: var(--amber);
 }
 
 .hero h1 {
   margin: 0;
-  font-size: 76px;
-  line-height: 1.05;
-  color: #101617;
+  max-width: 900px;
+  font-size: clamp(40px, 6.4vw, 84px);
+  line-height: 1.04;
+  letter-spacing: -0.015em;
+}
+
+.locale-en .hero h1 {
+  font-size: clamp(34px, 5.2vw, 68px);
 }
 
 .hero h1 span {
@@ -918,1051 +570,867 @@ a:focus-visible {
 }
 
 .hero h1 span:last-child {
-  color: var(--red-dark);
+  color: #f0a54c;
 }
 
 .hero-text {
   max-width: 620px;
-  margin: 28px 0 30px;
-  color: #3b4445;
+  margin: 28px 0 0;
+  color: rgba(255, 255, 255, 0.82);
   font-size: 17px;
-  line-height: 1.8;
+  line-height: 1.9;
 }
 
-.hero-actions,
-.platform-actions {
+.hero-actions {
   display: flex;
-  align-items: center;
-  gap: 12px;
   flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 40px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 26px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 180ms ease, background 180ms ease, color 180ms ease;
+}
+
+.button:hover {
+  transform: translateY(-2px);
 }
 
 .button.primary {
-  color: white;
-  background: var(--red-dark);
+  color: var(--ink);
+  background: #f0a54c;
 }
 
-.button.text,
-.button.text-dark {
-  color: var(--ink);
-  background: rgba(255, 255, 255, 0.42);
-  border-color: var(--line);
+.button.primary:hover {
+  background: #fff;
+}
+
+.button.text {
+  color: #fff;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.button.text:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .button.dark {
-  color: white;
+  color: #fff;
   background: var(--ink);
+}
+
+.button.dark:hover {
+  background: var(--amber-dark);
 }
 
 .hero-coordinates {
-  position: absolute;
-  inset: auto 0 32px;
   display: flex;
-  justify-content: space-between;
-  gap: 24px;
-  color: rgba(255, 255, 255, 0.88);
-  font-family: "Fira Code", monospace;
-  font-size: 11px;
+  flex-wrap: wrap;
+  gap: 26px;
+  margin-top: 56px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.hero-wave {
+.hero-strata {
   position: absolute;
-  right: 6%;
-  bottom: 64px;
-  width: min(36vw, 520px);
-  height: 92px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  opacity: 0.72;
+  inset: auto 0 0;
+  z-index: 1;
+  width: 100%;
+  height: 150px;
   pointer-events: none;
 }
 
-.hero-wave::after {
-  content: "";
-  position: absolute;
-  inset: 50% 0 auto;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.46);
-}
-
-.hero-wave span {
-  width: 2px;
-  height: var(--bar-height);
-  min-height: 5px;
-  background: var(--red);
-  animation: wave-pulse 2.4s ease-in-out var(--bar-delay) infinite alternate;
-}
+/* ---------- Ticker ---------- */
 
 .signal-strip {
-  height: 52px;
   overflow: hidden;
-  color: #d9e6e6;
+  padding: 18px 0;
+  color: #fff;
   background: var(--ink);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .signal-track {
-  width: min(1480px, calc(100% - 48px));
-  height: 100%;
-  margin: 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  font-family: "Fira Code", monospace;
-  font-size: 10px;
+  justify-content: center;
+  gap: 26px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  letter-spacing: 0.3em;
+  opacity: 0.7;
 }
 
 .signal-track i {
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--teal), var(--red), transparent);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--amber);
 }
+
+/* ---------- Shared section scaffolding ---------- */
 
 .section {
   position: relative;
-  padding: 120px max(48px, calc((100vw - 1480px) / 2));
-  scroll-margin-top: 78px;
+  width: min(1480px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 110px 0 0;
 }
 
 .section-grid {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  gap: 42px;
+  grid-template-columns: 300px 1fr;
+  gap: 40px;
+  align-items: start;
 }
 
 .section-index {
-  color: var(--red-dark);
-  font-family: "Fira Code", monospace;
-  font-size: 11px;
-  font-weight: 700;
+  color: var(--amber-dark);
+  font-size: 13px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  padding-top: 10px;
 }
 
 .section-index.light {
-  color: #9cd1d1;
+  color: #f0a54c;
 }
 
-.intro-section {
-  background: var(--paper);
-}
-
-.intro-main {
-  max-width: 980px;
-}
-
-.intro-main h2,
-.research-title h2,
-.platform-heading h2,
-.team-heading h2,
-.updates-heading h2 {
+.section h2 {
   margin: 0;
-  font-size: 52px;
+  font-size: clamp(30px, 3.6vw, 46px);
   line-height: 1.16;
+  letter-spacing: -0.01em;
 }
 
-.intro-lead {
-  max-width: 920px;
-  margin: 38px 0 20px;
-  color: #20292b;
-  font-size: 24px;
-  line-height: 1.65;
-}
-
-.body-copy {
-  max-width: 760px;
-  margin: 0;
+.section-grid p {
+  max-width: 640px;
+  margin: 16px 0 0;
   color: var(--muted);
   font-size: 16px;
-  line-height: 1.9;
+  line-height: 1.85;
 }
 
-.identity-list {
-  grid-column: 2;
-  margin-top: 56px;
-  border-top: 1px solid var(--line);
+/* ---------- Product ---------- */
+
+.product-section {
+  padding-bottom: 120px;
 }
 
-.identity-row {
+.product-body {
   display: grid;
-  grid-template-columns: 180px 1fr;
-  gap: 28px;
-  padding: 20px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.identity-row span {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.identity-row strong {
-  font-size: 15px;
-  line-height: 1.5;
-}
-
-.research-section {
-  padding-inline: 0;
-  color: white;
-  background: #11191a;
-}
-
-.research-heading,
-.research-content {
-  width: min(1480px, calc(100% - 96px));
-  margin: 0 auto;
-}
-
-.research-title {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.65fr);
-  align-items: end;
-  gap: 72px;
-}
-
-.research-title h2 {
-  color: white;
-}
-
-.research-title p {
-  margin: 0;
-  color: #aebabb;
-  line-height: 1.8;
-}
-
-.research-visual {
-  position: relative;
-  width: 100%;
-  height: min(58vw, 760px);
-  min-height: 460px;
+  grid-template-columns: minmax(300px, 420px) 1fr;
+  gap: clamp(40px, 6vw, 96px);
+  align-items: center;
   margin-top: 72px;
-  overflow: hidden;
-  background: white;
 }
 
-.research-visual img {
-  width: 100%;
+.phone-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.phone {
+  position: relative;
+  width: min(320px, 82vw);
+  aspect-ratio: 9 / 18.6;
+  padding: 12px;
+  border-radius: 46px;
+  background: #0d1418;
+  box-shadow:
+    0 40px 80px rgba(16, 24, 29, 0.28),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.08);
+}
+
+.phone-notch {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 110px;
+  height: 22px;
+  border-radius: 0 0 14px 14px;
+  background: #0d1418;
+  z-index: 2;
+}
+
+.phone-screen {
+  position: relative;
   height: 100%;
-  object-fit: cover;
+  border-radius: 36px;
+  background: #f7f6f2;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.research-scan {
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 22px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #10181d;
+}
+
+.status-icons {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.status-icons i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #10181d;
+  opacity: 0.7;
+}
+
+.app-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px 12px;
+}
+
+.app-top img {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+
+.app-top strong {
+  font-size: 14px;
+}
+
+.app-sync {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: #3f7a2a;
+  background: rgba(87, 146, 58, 0.14);
+  font-size: 10px;
+}
+
+.app-map {
+  position: relative;
+  flex: 1.3;
+  margin: 0 14px;
+  border-radius: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 74% 24%, rgba(240, 165, 76, 0.5), transparent 45%),
+    linear-gradient(158deg, #cfe0c9 0%, #e8dfc4 38%, #d9c39a 66%, #c9a976 100%);
+  border: 1px solid rgba(16, 24, 29, 0.08);
+}
+
+.app-map svg {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(41, 161, 158, 0.15) 48%, rgba(212, 67, 53, 0.18) 51%, transparent 54%);
-  transform: translateX(-100%);
-  animation: scan 8s ease-in-out infinite;
-}
-
-.visual-note,
-.field-visual span,
-.translation-visual span {
-  position: absolute;
-  inset: auto 18px 16px auto;
-  padding: 7px 10px;
-  color: rgba(255, 255, 255, 0.88);
-  background: rgba(10, 16, 17, 0.74);
-  border-radius: 4px;
-  font-size: 10px;
-  backdrop-filter: blur(8px);
-}
-
-.research-content {
-  display: grid;
-  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
-  gap: 72px;
-  align-items: start;
-  padding-top: 92px;
-}
-
-.field-visual {
-  position: sticky;
-  top: 110px;
-  height: 520px;
-  overflow: hidden;
-  border-radius: 6px;
-}
-
-.field-visual img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
 }
 
-.research-list {
-  border-top: 1px solid rgba(255, 255, 255, 0.22);
+.map-ring {
+  position: absolute;
+  top: 42%;
+  left: 46%;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 50%;
+  border: 2px solid rgba(217, 122, 28, 0.55);
+  animation: ring-pulse 2.4s ease-out infinite;
 }
 
-.research-row {
+.map-dot {
+  position: absolute;
+  top: 42%;
+  left: 46%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: var(--amber);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(16, 24, 29, 0.35);
+}
+
+@keyframes ring-pulse {
+  0% { transform: scale(0.55); opacity: 0.9; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.app-coord {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: rgba(16, 24, 29, 0.78);
+  color: #fff;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.app-photos {
   display: grid;
-  grid-template-columns: 42px minmax(190px, 0.7fr) minmax(260px, 1fr);
-  gap: 24px;
-  padding: 30px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px 14px 0;
 }
 
-.research-no {
-  color: #72b7b5;
-  font-family: "Fira Code", monospace;
+.photo {
+  aspect-ratio: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(16, 24, 29, 0.08);
+}
+
+.photo-a {
+  background: linear-gradient(160deg, #d8e4c8 0%, #c3b083 46%, #9c7c4b 100%);
+}
+
+.photo-b {
+  background: linear-gradient(200deg, #e8d9b8 0%, #cfa96c 52%, #a5763c 100%);
+}
+
+.photo-c {
+  background: linear-gradient(150deg, #cfe3ea 0%, #8fb7c9 48%, #5b8296 100%);
+}
+
+.app-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  margin: 14px 14px 16px;
+  padding: 9px 8px;
+  border-radius: 999px;
+  background: #10181d;
+  color: rgba(255, 255, 255, 0.62);
   font-size: 11px;
 }
 
-.research-row h3 {
+.app-actions span {
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.app-actions .active {
+  color: #10181d;
+  background: #f0a54c;
+  font-weight: 600;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.feature-card {
+  padding: 26px 24px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--white);
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(217, 122, 28, 0.45);
+  box-shadow: 0 18px 40px rgba(16, 24, 29, 0.1);
+}
+
+.feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 18px;
+  border-radius: 12px;
+  color: var(--amber-dark);
+  background: rgba(217, 122, 28, 0.12);
+}
+
+.feature-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.feature-card h3 {
   margin: 0 0 8px;
-  font-size: 22px;
+  font-size: 17px;
 }
 
-.research-row small {
-  color: #85aaa9;
-  font-family: "Fira Code", monospace;
-  font-size: 9px;
-}
-
-.research-row p {
+.feature-card p {
   margin: 0;
-  color: #aebabb;
+  color: var(--muted);
   font-size: 14px;
   line-height: 1.75;
 }
 
-.platform-section {
-  background: #f8f9f7;
+/* ---------- Scenarios ---------- */
+
+.scenarios-section {
+  padding-bottom: 120px;
 }
 
-.platform-heading > div:last-child,
-.team-heading > div:last-child {
-  display: grid;
-  grid-template-columns: 1fr minmax(320px, 0.55fr);
-  gap: 72px;
-  align-items: end;
+.scenarios-media {
+  position: relative;
+  margin-top: 64px;
+  border-radius: 24px;
+  overflow: hidden;
 }
 
-.platform-heading p,
-.team-heading p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.8;
-}
-
-.platform-feature {
-  display: grid;
-  grid-template-columns: minmax(320px, 0.72fr) minmax(0, 1.28fr);
-  gap: 72px;
-  align-items: center;
-  margin-top: 96px;
-}
-
-.platform-feature.terra-feature {
-  grid-template-columns: minmax(0, 1.28fr) minmax(320px, 0.72fr);
-  padding-top: 96px;
-  border-top: 1px solid var(--line);
-}
-
-.platform-kicker {
+.scenarios-media img {
   display: block;
-  margin-bottom: 18px;
-  color: var(--teal);
-  font-family: "Fira Code", monospace;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.platform-copy h3 {
-  margin: 0;
-  font-family: "Iowan Old Style", "Noto Serif SC", "Songti SC", Georgia, serif;
-  font-size: 42px;
-  line-height: 1.2;
-}
-
-.platform-copy > p {
-  max-width: 520px;
-  margin: 24px 0 30px;
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1.85;
-}
-
-.catalog-preview,
-.terra-preview {
   width: 100%;
-  height: 500px;
-  padding: 0;
-  border: 0;
-  border-radius: 7px;
-  overflow: hidden;
-  cursor: pointer;
-  box-shadow: 0 24px 54px rgba(17, 23, 25, 0.14);
-  transition: transform 220ms ease, box-shadow 220ms ease;
-}
-
-.catalog-preview:hover,
-.terra-preview:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 30px 64px rgba(17, 23, 25, 0.2);
-}
-
-.catalog-preview {
-  display: grid;
-  grid-template-rows: 48px 1fr;
-  color: white;
-  background: #11191a;
-}
-
-.map-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-  font-family: "Fira Code", monospace;
-  font-size: 9px;
-}
-
-.map-field {
-  position: relative;
-  overflow: hidden;
-  background:
-    linear-gradient(rgba(121, 164, 164, 0.13) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(121, 164, 164, 0.13) 1px, transparent 1px),
-    radial-gradient(ellipse at 62% 46%, #365354 0%, #1a292b 36%, #101719 72%);
-  background-size: 46px 46px, 46px 46px, auto;
-}
-
-.map-field::before,
-.map-field::after {
-  content: "";
-  position: absolute;
-  width: 64%;
-  height: 36%;
-  border: 1px solid rgba(152, 196, 194, 0.28);
-  border-radius: 48% 52% 42% 58%;
-  transform: rotate(-16deg);
-}
-
-.map-field::before { left: 8%; top: 16%; }
-.map-field::after { right: -8%; bottom: 10%; transform: rotate(21deg); }
-
-.quake-dot {
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #e05445;
-  box-shadow: 0 0 0 0 rgba(224, 84, 69, 0.46);
-  animation: quake-pulse 2.8s ease-out infinite;
-}
-
-.dot-1 { left: 18%; top: 31%; }.dot-2 { left: 28%; top: 58%; }.dot-3 { left: 36%; top: 42%; }
-.dot-4 { left: 44%; top: 69%; }.dot-5 { left: 51%; top: 34%; }.dot-6 { left: 61%; top: 49%; }
-.dot-7 { left: 69%; top: 29%; }.dot-8 { left: 77%; top: 61%; }.dot-9 { left: 83%; top: 38%; }
-.dot-10 { left: 24%; top: 76%; }.dot-11 { left: 56%; top: 79%; }.dot-12 { left: 72%; top: 73%; }
-.dot-13 { left: 14%; top: 51%; }.dot-14 { left: 39%; top: 24%; }.dot-15 { left: 88%; top: 75%; }
-.dot-16 { left: 64%; top: 16%; }.dot-17 { left: 47%; top: 54%; }.dot-18 { left: 31%; top: 36%; }
-.dot-3, .dot-6, .dot-11 { width: 11px; height: 11px; background: #f0a34a; animation-delay: 500ms; }
-.dot-5, .dot-8 { width: 13px; height: 13px; animation-delay: 1100ms; }
-
-.map-line {
-  position: absolute;
-  width: 62%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #66aaa8, transparent);
-  transform-origin: center;
-}
-
-.line-a { left: 12%; top: 48%; transform: rotate(18deg); }
-.line-b { right: 2%; top: 58%; transform: rotate(-26deg); }
-
-.map-readout {
-  position: absolute;
-  right: 18px;
-  bottom: 18px;
-  display: grid;
-  gap: 4px;
-  padding: 12px 14px;
-  color: white;
-  background: rgba(8, 13, 14, 0.76);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 4px;
-  text-align: left;
-  backdrop-filter: blur(10px);
-}
-
-.map-readout strong { color: #f06a59; font-size: 18px; }
-.map-readout span { color: #9fb1b2; font-family: "Fira Code", monospace; font-size: 8px; }
-
-.terra-preview {
-  display: grid;
-  grid-template-columns: 82px 1fr;
-  color: var(--ink);
-  background: white;
-  border: 1px solid var(--line);
-  text-align: left;
-}
-
-.terra-rail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 28px;
-  padding: 24px 0;
-  background: #eef1ef;
-  border-right: 1px solid var(--line);
-}
-
-.terra-rail strong {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  color: white;
-  background: var(--teal);
-  border-radius: 5px;
-}
-
-.terra-rail span {
-  width: 22px;
-  height: 2px;
-  background: #a9b2b1;
-}
-
-.terra-rail span.active {
-  width: 30px;
-  background: var(--red);
-}
-
-.terra-screen {
-  position: relative;
-  padding: 26px 30px;
-}
-
-.terra-top {
-  display: flex;
-  justify-content: space-between;
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--line);
-  font-weight: 800;
-}
-
-.terra-top i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #3f9e75;
-}
-
-.terra-greeting {
-  display: flex;
-  gap: 16px;
-  margin-top: 46px;
-}
-
-.terra-greeting > span {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  color: white;
-  background: var(--teal);
-  border-radius: 50%;
-  flex: 0 0 auto;
-  font-size: 12px;
-}
-
-.terra-greeting p {
-  margin: 4px 0;
-  font-family: "Iowan Old Style", "Noto Serif SC", "Songti SC", Georgia, serif;
-  font-size: 24px;
-}
-
-.terra-input {
-  position: absolute;
-  inset: auto 30px 30px;
-  min-height: 76px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 0 20px;
-  color: #8b9495;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-}
-
-.terra-input b {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  color: white;
-  background: var(--ink);
-  border-radius: 5px;
-}
-
-.translation-section {
-  display: grid;
-  grid-template-columns: minmax(360px, 0.78fr) minmax(0, 1.22fr);
-  min-height: 760px;
-  scroll-margin-top: 78px;
-  color: white;
-  background: #101718;
-}
-
-.translation-copy {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 92px max(48px, calc((100vw - 1480px) / 2));
-}
-
-.translation-copy h2 {
-  max-width: 600px;
-  margin: 28px 0 56px;
-  font-size: 50px;
-  line-height: 1.18;
-}
-
-.translation-lead {
-  margin: 0 0 8px;
-  color: #7fc4c2;
-  font-family: "Fira Code", monospace;
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.translation-copy h3 {
-  max-width: 560px;
-  margin: 0;
-  font-size: 19px;
-  line-height: 1.5;
-}
-
-.translation-text {
-  max-width: 580px;
-  margin: 24px 0 30px;
-  color: #aebabb;
-  font-size: 14px;
-  line-height: 1.85;
-}
-
-.tag-list {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.tag-list span {
-  padding: 8px 10px;
-  color: #d9e5e5;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 4px;
-  font-size: 11px;
-}
-
-.translation-visual {
-  position: relative;
-  min-height: 620px;
-  overflow: hidden;
-}
-
-.translation-visual::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(16, 23, 24, 0.58), transparent 30%);
-}
-
-.translation-visual img {
-  width: 100%;
-  height: 100%;
+  height: clamp(260px, 38vw, 440px);
   object-fit: cover;
 }
 
-.translation-visual span { z-index: 1; }
-
-.team-section {
-  background: var(--paper);
+.scenarios-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgba(10, 16, 20, 0.55), transparent 55%);
 }
 
-.team-list {
+.scenarios-media span {
+  position: absolute;
+  left: 24px;
+  bottom: 20px;
+  z-index: 1;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+
+.scenario-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
-  margin-top: 76px;
+  margin-top: 40px;
 }
 
-.person {
-  position: relative;
-  padding-bottom: 24px;
-  border-bottom: 1px solid var(--line);
+.scenario-card {
+  padding: 30px 24px;
+  border-top: 3px solid var(--line);
+  background: transparent;
+  transition: border-color 220ms ease, background 220ms ease, transform 220ms ease;
 }
 
-.person-image {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 4 / 5;
-  overflow: hidden;
-  background: #dfe2df;
+.scenario-card:hover {
+  border-top-color: var(--amber);
+  background: var(--white);
+  transform: translateY(-3px);
 }
 
-.person-image::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(0deg, rgba(17, 23, 25, 0.18), transparent 42%);
-  opacity: 0;
-  transition: opacity 220ms ease;
+.scenario-no {
+  color: var(--amber-dark);
+  font-size: 13px;
+  letter-spacing: 0.2em;
 }
 
-.person:hover .person-image::after { opacity: 1; }
-
-.person img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center top;
-  filter: saturate(0.86);
-  transition: transform 420ms ease, filter 220ms ease;
+.scenario-card h3 {
+  margin: 18px 0 10px;
+  font-size: 19px;
 }
 
-.person:hover img {
-  transform: scale(1.025);
-  filter: saturate(1);
-}
-
-.person-index {
-  display: block;
-  margin-top: 18px;
-  color: var(--red-dark);
-  font-family: "Fira Code", monospace;
-  font-size: 10px;
-}
-
-.person h3 {
-  margin: 10px 0 8px;
-  font-size: 22px;
-}
-
-.person p,
-.person small {
-  display: block;
+.scenario-card p {
   margin: 0;
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.75;
 }
 
-.updates-section {
-  padding-top: 48px;
-  background: var(--paper);
-}
+/* ---------- About ---------- */
 
-.updates-heading h2 {
-  font-size: 42px;
-}
-
-.updates-list {
-  margin-top: 48px;
-  border-top: 1px solid var(--ink);
-}
-
-.updates-list article {
+.about-section {
   display: grid;
-  grid-template-columns: 54px 120px minmax(240px, 0.8fr) minmax(300px, 1.2fr);
-  gap: 24px;
-  align-items: center;
-  padding: 25px 0;
-  border-bottom: 1px solid var(--line);
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 1fr);
+  gap: clamp(40px, 6vw, 96px);
+  align-items: start;
+  width: 100%;
+  max-width: none;
+  margin-top: 40px;
+  padding: 110px max(24px, calc((100% - 1480px) / 2));
+  color: #fff;
+  background: var(--ink);
 }
 
-.update-no,
-.update-type {
-  font-family: "Fira Code", monospace;
-  font-size: 10px;
+.about-section .section-index {
+  padding-top: 0;
+  margin-bottom: 26px;
 }
 
-.update-no { color: var(--red-dark); }
-.update-type { color: var(--teal); font-weight: 700; }
-.updates-list h3 { margin: 0; font-size: 18px; }
-.updates-list p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
-
-.contact-section {
-  padding: 120px max(48px, calc((100vw - 1480px) / 2));
-  color: white;
-  background: var(--red-dark);
+.about-section h2 {
+  max-width: 560px;
 }
 
-.contact-inner {
-  max-width: 1100px;
-}
-
-.contact-section h2 {
-  max-width: 820px;
-  margin: 26px 0;
-  font-size: 58px;
-  line-height: 1.15;
-}
-
-.contact-lead {
-  max-width: 680px;
-  margin: 0;
-  color: rgba(255, 255, 255, 0.82);
+.about-lead {
+  max-width: 620px;
+  margin: 24px 0 0;
+  color: rgba(255, 255, 255, 0.88);
   font-size: 18px;
   line-height: 1.8;
 }
 
-.contact-grid {
-  display: grid;
-  grid-template-columns: 1.5fr 0.6fr;
-  gap: 64px;
-  margin-top: 64px;
-  padding-top: 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.34);
-}
-
-.contact-grid span {
+.about-body {
+  max-width: 620px;
+  margin: 18px 0 0;
   color: rgba(255, 255, 255, 0.62);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.contact-grid p {
-  margin: 8px 0 0;
   font-size: 15px;
-  line-height: 1.7;
+  line-height: 1.95;
 }
 
-.contact-note {
-  margin: 34px 0 0;
-  color: rgba(255, 255, 255, 0.58);
-  font-size: 11px;
-}
-
-.site-footer {
-  min-height: 170px;
+.value-list {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 48px;
-  align-items: center;
-  padding: 44px max(48px, calc((100vw - 1480px) / 2));
-  color: #d5dddd;
-  background: #0c1213;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 52px;
 }
 
-.site-footer > div:first-child {
-  display: flex;
-  align-items: center;
+.value-item h3 {
+  margin: 0 0 8px;
+  color: #f0a54c;
+  font-size: 16px;
+}
+
+.value-item p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.about-copy {
+  max-width: 680px;
+}
+
+.about-side {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.about-visual {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.about-visual img {
+  display: block;
+  width: 100%;
+  height: clamp(240px, 26vw, 360px);
+  object-fit: cover;
+}
+
+.about-visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgba(10, 16, 20, 0.5), transparent 50%);
+}
+
+.about-visual span {
+  position: absolute;
+  left: 18px;
+  bottom: 14px;
+  z-index: 1;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
+
+.identity-list {
+  margin-top: 22px;
+  display: grid;
   gap: 12px;
 }
 
-.site-footer img {
-  width: 42px;
-  height: 42px;
-  object-fit: contain;
-  filter: grayscale(1) brightness(2.2);
-}
-
-.site-footer strong { font-size: 15px; }
-
-.footer-meta {
+.identity-row {
   display: grid;
-  gap: 7px;
-  color: #889697;
-  font-size: 11px;
+  gap: 4px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
-.site-footer > p {
-  margin: 0;
-  color: #687677;
-  font-size: 10px;
+.identity-row span {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  letter-spacing: 0.14em;
 }
+
+.identity-row strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ---------- Download ---------- */
+
+.download-section {
+  position: relative;
+  overflow: hidden;
+  margin-top: 120px;
+  color: #fff;
+  background: var(--ink);
+}
+
+.download-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.34;
+}
+
+.download-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 10%, rgba(217, 122, 28, 0.28), transparent 55%),
+    linear-gradient(0deg, rgba(10, 16, 20, 0.92), rgba(10, 16, 20, 0.68));
+}
+
+.download-inner {
+  position: relative;
+  z-index: 1;
+  width: min(760px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 96px 0 104px;
+  text-align: center;
+}
+
+.download-inner .section-index {
+  padding: 0;
+  margin-bottom: 30px;
+}
+
+.download-icon {
+  width: 84px;
+  height: 84px;
+  border-radius: 20px;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.4);
+}
+
+.download-inner h2 {
+  margin: 24px 0 0;
+  font-size: clamp(30px, 4vw, 44px);
+}
+
+.download-text {
+  margin: 16px auto 0;
+  max-width: 520px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 16px;
+  line-height: 1.85;
+}
+
+.release-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 34px 0 30px;
+}
+
+.release-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border: 1px solid rgba(240, 165, 76, 0.5);
+  border-radius: 999px;
+  color: #f0a54c;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.release-date {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+}
+
+.release-changelog {
+  max-width: 620px;
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.release-changelog strong {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.release-changelog.muted {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.download-note {
+  max-width: 560px;
+  margin: 26px auto 0;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+/* ---------- Contact band ---------- */
+
+.contact-band {
+  background: #f0a54c;
+}
+
+.contact-inner {
+  width: min(1480px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 64px 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  color: #10181d;
+}
+
+.contact-inner h2 {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 34px);
+}
+
+.contact-inner p {
+  margin: 10px 0 0;
+  color: rgba(16, 24, 29, 0.75);
+  font-size: 15px;
+}
+
+.contact-email a {
+  color: #10181d;
+  font-weight: 600;
+}
+
+/* ---------- Reveal ---------- */
 
 [data-reveal] {
   opacity: 0;
-  transform: translateY(24px);
-  transition: opacity 700ms ease, transform 700ms cubic-bezier(0.2, 0.72, 0.18, 1);
+  transform: translateY(26px);
+  transition: opacity 700ms ease, transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 [data-reveal].is-visible {
   opacity: 1;
-  transform: translateY(0);
-}
-
-@keyframes hero-breathe {
-  from { filter: saturate(0.9) contrast(0.98); }
-  to { filter: saturate(1.04) contrast(1.02); }
-}
-
-@keyframes wave-pulse {
-  0% { transform: scaleY(0.72); opacity: 0.52; }
-  100% { transform: scaleY(1.18); opacity: 1; }
-}
-
-@keyframes scan {
-  0%, 14% { transform: translateX(-100%); }
-  62%, 100% { transform: translateX(100%); }
-}
-
-@keyframes quake-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(224, 84, 69, 0.5); }
-  70%, 100% { box-shadow: 0 0 0 15px rgba(224, 84, 69, 0); }
-}
-
-@media (max-width: 1180px) {
-  .desktop-nav { display: none; }
-  .header-inner { width: calc(100% - 36px); }
-  .menu-button {
-    width: 42px;
-    height: 42px;
-    display: grid;
-    place-content: center;
-    gap: 6px;
-    padding: 0;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.66);
-    cursor: pointer;
-  }
-  .menu-button span { width: 18px; height: 1px; background: var(--ink); transition: transform 180ms ease; }
-  .site-header.open .menu-button span:first-child { transform: translateY(3.5px) rotate(45deg); }
-  .site-header.open .menu-button span:last-child { transform: translateY(-3.5px) rotate(-45deg); }
-  .mobile-nav {
-    position: absolute;
-    inset: 78px 0 auto;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0;
-    padding: 14px 24px 20px;
-    background: rgba(247, 248, 246, 0.98);
-    border-bottom: 1px solid var(--line);
-    box-shadow: 0 18px 34px rgba(17, 23, 25, 0.1);
-    opacity: 0;
-    visibility: hidden;
-    transform: translateY(-8px);
-    transition: opacity 180ms ease, transform 180ms ease, visibility 180ms ease;
-  }
-  .site-header.open .mobile-nav { opacity: 1; visibility: visible; transform: translateY(0); }
-  .mobile-nav button { padding: 13px 12px; text-align: left; }
-  .hero h1 { font-size: 62px; }
-  .research-title { grid-template-columns: 1fr; gap: 28px; }
-  .research-content { grid-template-columns: 0.72fr 1.28fr; gap: 44px; }
-  .research-row { grid-template-columns: 38px 1fr; }
-  .research-row p { grid-column: 2; }
-  .platform-heading > div:last-child,
-  .team-heading > div:last-child { grid-template-columns: 1fr; gap: 24px; }
-  .platform-feature,
-  .platform-feature.terra-feature { gap: 42px; }
-  .translation-section { grid-template-columns: 0.95fr 1.05fr; }
-  .team-list { grid-template-columns: repeat(2, 1fr); gap: 42px 18px; }
-}
-
-@media (max-width: 820px) {
-  .site-header { height: 68px; }
-  .header-inner { width: calc(100% - 28px); }
-  .brand { min-width: 0; }
-  .brand img { width: 36px; height: 36px; }
-  .brand-copy strong { font-size: 14px; }
-  .brand-copy span { display: none; }
-  .workbench-link { display: none; }
-  .locale-switch { width: 70px; }
-  .mobile-nav { inset-block-start: 68px; grid-template-columns: 1fr 1fr; }
-  .hero { height: calc(100svh - 104px); min-height: 630px; margin-top: 68px; }
-  .hero-content { width: calc(100% - 40px); padding: 52px 0 100px; justify-content: flex-end; }
-  .hero-copy { width: 100%; }
-  .hero h1 { font-size: 48px; }
-  .hero-text { max-width: 560px; font-size: 15px; line-height: 1.7; }
-  .hero-overlay { background: linear-gradient(0deg, rgba(244, 246, 244, 0.98) 0%, rgba(244, 246, 244, 0.87) 45%, rgba(244, 246, 244, 0.18) 80%, rgba(244, 246, 244, 0.05) 100%); }
-  .hero-grid { display: none; }
-  .hero-coordinates { bottom: 18px; color: #50595a; }
-  .hero-coordinates span:last-child { display: none; }
-  .hero-wave { right: -12%; bottom: 128px; width: 58vw; opacity: 0.34; }
-  .signal-track { width: calc(100% - 28px); justify-content: flex-start; overflow: hidden; }
-  .signal-track span:nth-of-type(n+3), .signal-track i:nth-of-type(n+2) { display: none; }
-  .section { padding: 88px 24px; }
-  .section-grid { grid-template-columns: 1fr; gap: 22px; }
-  .intro-main h2,
-  .research-title h2,
-  .platform-heading h2,
-  .team-heading h2 { font-size: 40px; }
-  .intro-lead { font-size: 20px; }
-  .identity-list { grid-column: 1; margin-top: 36px; }
-  .research-heading,
-  .research-content { width: calc(100% - 48px); }
-  .research-visual { height: 66vw; min-height: 360px; margin-top: 52px; }
-  .research-content { grid-template-columns: 1fr; padding-top: 56px; }
-  .field-visual { position: relative; top: auto; height: 460px; }
-  .research-row { grid-template-columns: 38px 1fr; }
-  .platform-feature,
-  .platform-feature.terra-feature { grid-template-columns: 1fr; gap: 42px; margin-top: 68px; }
-  .platform-feature.terra-feature { padding-top: 68px; }
-  .terra-feature .terra-preview { order: 2; }
-  .catalog-preview, .terra-preview { height: 430px; }
-  .translation-section { grid-template-columns: 1fr; min-height: auto; }
-  .translation-copy { padding: 88px 24px; }
-  .translation-copy h2 { margin-bottom: 42px; font-size: 40px; }
-  .translation-visual { min-height: 520px; }
-  .updates-list article { grid-template-columns: 42px 90px 1fr; }
-  .updates-list p { grid-column: 3; }
-  .contact-section { padding: 92px 24px; }
-  .contact-section h2 { font-size: 46px; }
-  .site-footer { grid-template-columns: 1fr 1fr; padding: 40px 24px; }
-  .site-footer > p { grid-column: 1 / -1; }
-}
-
-@media (max-width: 560px) {
-  .mobile-nav { grid-template-columns: 1fr; max-height: calc(100svh - 68px); overflow-y: auto; }
-  .hero { min-height: 660px; }
-  .hero-media img { object-position: center; }
-  .hero h1 { font-size: 40px; line-height: 1.08; }
-  .eyebrow { margin-bottom: 18px; font-size: 11px; }
-  .hero-actions { align-items: stretch; }
-  .hero-actions .button { flex: 1 1 100%; }
-  .signal-strip { height: 44px; }
-  .section { padding: 72px 18px; }
-  .intro-main h2,
-  .research-title h2,
-  .platform-heading h2,
-  .team-heading h2 { font-size: 34px; }
-  .identity-row { grid-template-columns: 1fr; gap: 8px; }
-  .research-heading,
-  .research-content { width: calc(100% - 36px); }
-  .research-visual { min-height: 300px; }
-  .field-visual { height: 390px; }
-  .research-row { gap: 14px; }
-  .research-row h3 { font-size: 19px; }
-  .platform-copy h3 { font-size: 34px; }
-  .catalog-preview, .terra-preview { height: 340px; }
-  .terra-preview { grid-template-columns: 54px 1fr; }
-  .terra-rail { gap: 22px; }
-  .terra-screen { padding: 18px; }
-  .terra-greeting { margin-top: 32px; }
-  .terra-greeting p { font-size: 18px; }
-  .terra-input { inset: auto 18px 18px; min-height: 62px; font-size: 11px; }
-  .translation-copy { padding: 72px 18px; }
-  .translation-copy h2 { font-size: 34px; }
-  .translation-visual { min-height: 380px; }
-  .team-list { grid-template-columns: 1fr 1fr; gap: 32px 12px; }
-  .person h3 { font-size: 18px; }
-  .updates-list article { grid-template-columns: 34px 1fr; gap: 12px; }
-  .update-type { grid-column: 2; }
-  .updates-list h3, .updates-list p { grid-column: 2; }
-  .contact-section { padding: 72px 18px; }
-  .contact-section h2 { font-size: 38px; }
-  .contact-grid { grid-template-columns: 1fr; gap: 28px; margin-top: 44px; }
-  .site-footer { grid-template-columns: 1fr; gap: 26px; padding: 36px 18px; }
-  .site-footer > p { grid-column: 1; }
+  transform: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
   }
-  [data-reveal] { opacity: 1; transform: none; }
+
+  .map-ring {
+    animation: none;
+  }
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 1180px) {
+  .about-section {
+    grid-template-columns: 1fr;
+    padding: 96px 24px;
+  }
+
+  .about-copy {
+    max-width: none;
+  }
+
+  .scenario-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1024px) {
+  .section-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .section-index {
+    padding-top: 0;
+  }
+
+  .product-body {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .hero-content {
+    width: calc(100% - 40px);
+    padding: 130px 0 210px;
+  }
+
+  .section {
+    width: calc(100% - 40px);
+    padding-top: 84px;
+  }
+
+  .product-section,
+  .scenarios-section {
+    padding-bottom: 84px;
+  }
+
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .scenario-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .value-list {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .download-section {
+    margin-top: 84px;
+  }
+
+  .download-inner {
+    width: calc(100% - 40px);
+    padding: 72px 0 80px;
+  }
+
+  .contact-inner {
+    width: calc(100% - 40px);
+    padding: 52px 0;
+  }
 }
 </style>
