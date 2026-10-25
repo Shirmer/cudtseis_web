@@ -13,10 +13,10 @@ const updated = computed(() => (locale.value === 'zh'
   ? '更新日期：2026 年 10 月 13 日'
   : 'Last updated: October 13, 2026'))
 
-usePageMeta(
-  () => locale.value,
-  () => `${doc.value.title} | ${locale.value === 'zh' ? SITE.brandZh : SITE.brandEn}`
-)
+usePageMeta(() => locale.value, () => ({
+  title: `${doc.value.title} | ${locale.value === 'zh' ? SITE.brandZh : SITE.brandEn}`,
+  description: (doc.value.intro[0] ?? '').split(/(?<=[。.])/)[0].slice(0, 140)
+}))
 </script>
 
 <template>
