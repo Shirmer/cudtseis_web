@@ -55,10 +55,13 @@ const copy = computed(() => locale.value === 'zh'
       downloadText: 'The Android version is available for direct download.'
     })
 
-usePageMeta(
-  () => locale.value,
-  () => (locale.value === 'zh' ? `联系我们 | ${SITE.brandZh}` : `Contact | ${SITE.brandEn}`)
-)
+usePageMeta(() => locale.value, () => ({
+  title: locale.value === 'zh' ? `联系我们 | ${SITE.brandZh}` : `Contact | ${SITE.brandEn}`,
+  description:
+    locale.value === 'zh'
+      ? '联系深视地球：产品试用与演示、行业项目合作、高校与科研合作、定制开发与数据服务。也可直接发邮件至 ' + SITE.contact.email + '。'
+      : 'Contact DeepSeek Earth about product trials, industry projects, academic cooperation, custom development and data services. Email ' + SITE.contact.email + '.'
+}))
 </script>
 
 <template>

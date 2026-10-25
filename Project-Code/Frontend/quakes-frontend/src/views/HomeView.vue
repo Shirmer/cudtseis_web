@@ -13,11 +13,19 @@ const route = useRoute()
 const router = useRouter()
 const locale = computed(() => localeFromPath(route.path))
 
-usePageMeta(() => locale.value, () => (locale.value === 'zh'
-  ? '深视地球 | GeoCamera 地质相机'
-  : 'DeepSeek Earth | GeoCamera'))
+usePageMeta(() => locale.value, () => ({
+  title: locale.value === 'zh' ? '深视地球 | GeoCamera 地质相机' : 'DeepSeek Earth | GeoCamera',
+  description:
+    locale.value === 'zh'
+      ? 'GeoCamera 地质相机面向地质调查、工程勘察与地学研究：拍照自动定位，路线清晰可查，数据云端同步，报告一键导出。'
+      : 'GeoCamera is built for geological surveys, engineering investigation and geoscience research: automatic positioning, organized routes, cloud sync and one-click reports.'
+}))
 
 const { release, loading } = useLatestRelease()
+
+function goEarth() {
+  router.push(locale.value === 'en' ? '/en/earth' : '/earth')
+}
 
 const copy = {
   zh: {
@@ -227,7 +235,7 @@ onBeforeUnmount(() => {
 
     <main>
       <section class="hero">
-        <PlanetHero />
+        <PlanetHero @expand="goEarth" />
         <div class="hero-overlay"></div>
         <div class="hero-grid" aria-hidden="true"></div>
 
@@ -535,6 +543,17 @@ main {
   margin: 0 auto;
   padding: 150px 0 190px;
   color: #fff;
+  /* 让右侧地球可以拖拽：容器不拦截指针，只有文案本身可选中 */
+  pointer-events: none;
+}
+
+.hero-copy {
+  max-width: 940px;
+  pointer-events: auto;
+}
+
+.hero-coordinates {
+  pointer-events: auto;
 }
 
 .eyebrow {
@@ -1355,6 +1374,43 @@ main {
 }
 
 /* ---------- Responsive ---------- */
+
+/* 手机横屏：竖向空间很紧，压缩首屏留白与字号，别让标题被裁到首屏外 */
+@media (max-height: 520px) and (orientation: landscape) {
+  .hero {
+    min-height: auto;
+  }
+
+  .hero-content {
+    width: min(1480px, calc(100% - 32px));
+    /* 顶栏是固定定位，留够高度别让标题钻到它下面 */
+    padding: 92px 0 44px;
+  }
+
+  .eyebrow {
+    margin-bottom: 12px;
+    font-size: 12px;
+  }
+
+  .hero h1 {
+    font-size: clamp(24px, 4.4vw, 38px);
+  }
+
+  .locale-en .hero h1 {
+    font-size: clamp(21px, 3.8vw, 32px);
+  }
+
+  .hero-text {
+    max-width: 520px;
+    margin-top: 12px;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+
+  .hero-actions {
+    margin-top: 16px;
+  }
+}
 
 @media (max-width: 1180px) {
   .about-section {
