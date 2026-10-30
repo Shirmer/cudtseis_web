@@ -8,7 +8,7 @@ export const SITE = {
   productName: 'GeoCamera',
   productNameZh: 'GeoCamera 地质相机',
   // ICP 备案号占位：备案完成后替换为正式备案号
-  icp: '蜀ICP备XXXXXXXX号-1',
+  icp: '',
   icpUrl: 'https://beian.miit.gov.cn/',
   // 联系方式占位：发布前替换为正式联系方式
   contact: {

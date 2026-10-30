@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="成都理工大学地震研究中心地震目录界面原型，使用虚构事件展示筛选、位置联动与导出流程。">
+  <title>地震目录 · EARTHQUAKE CENTER</title>
+  <link rel="icon" href="assets/img/seislab-favicon.png">
+  <link rel="stylesheet" href="assets/css/terra.css">
+  <script src="assets/js/terra.js?v=20261027-center" defer></script>
+</head>
+<body data-page="catalog">
+  <a class="skip" href="#workspace">跳到目录内容</a>
+  <div class="app-shell catalog-shell">
+    <header class="topbar catalog-header">
+      <a class="catalog-brand" href="index.html"><img src="assets/img/seislab-mark.png" alt="" width="35" height="35"><span>EARTHQUAKE CENTER<small>成都理工大学地震研究中心</small></span></a>
+      <nav class="catalog-nav" aria-label="站点导航"><a href="index.html">中心首页</a><span id="breadcrumb" aria-current="page">地震目录</span><a href="terra.html">Terra 工作台 ↗</a></nav>
+      <button class="icon-button" id="help-button" aria-label="关于目录预览"><span data-icon="help"></span></button>
+    </header>
+    <main id="workspace" tabindex="-1"></main>
+    <footer class="workspace-footer"><span>EARTHQUAKE CENTER / 地震目录</span><span>独立目录入口 · 虚构示例事件 · 无实时数据连接</span></footer>
+  </div>
+  <dialog id="help-dialog" class="help-dialog"><span class="eyebrow">CATALOG PREVIEW</span><h2>探索目录的使用方式</h2><p>这里使用 4 条虚构地震事件，展示日期与震级筛选、事件选择和 CSV 导出。背景为位置示意，不是实际地理底图。</p><p>页面尚未连接真实地震目录或监测服务。Terra 科研工作台为独立入口，可通过顶部导航进入。</p><form method="dialog"><button class="primary">了解了</button></form></dialog>
+  <div id="toast" class="toast" role="status"></div>
+  <noscript><p class="no-script">请启用 JavaScript 查看目录。<a href="index.html">返回中心首页</a></p></noscript>
+</body>
+</html>

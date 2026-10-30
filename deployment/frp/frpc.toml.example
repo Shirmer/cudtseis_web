@@ -1,0 +1,34 @@
+serverAddr = "162.14.113.163"
+serverPort = 7000
+loginFailExit = false
+auth.method = "token"
+auth.additionalScopes = ["HeartBeats", "NewWorkConns"]
+auth.tokenSource.type = "file"
+auth.tokenSource.file.path = "/etc/frp/token"
+transport.tls.enable = true
+transport.tls.serverName = "frp-gateway.internal"
+transport.tls.certFile = "/etc/frp/tls/client.crt"
+transport.tls.keyFile = "/etc/frp/tls/client.key"
+transport.tls.trustedCaFile = "/etc/frp/tls/ca.crt"
+log.to = "console"
+log.level = "info"
+[[proxies]]
+name = "school-health"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 18080
+remotePort = 18080
+
+[[proxies]]
+name = "geocamera"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 18081
+remotePort = 18081
+
+[[proxies]]
+name = "earthquake-center"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 80
+remotePort = 18082
