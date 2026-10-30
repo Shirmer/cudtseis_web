@@ -103,7 +103,7 @@ function go(path: string) {
 
     <div class="footer-bottom">
       <p>© {{ currentYear }} {{ locale === 'zh' ? SITE.companyZh : SITE.companyEn }} · {{ copy.rights }}</p>
-      <a class="icp" :href="SITE.icpUrl" target="_blank" rel="noopener noreferrer">{{ SITE.icp }}</a>
+      <a v-if="SITE.icp" class="icp" :href="SITE.icpUrl" target="_blank" rel="noopener noreferrer">{{ SITE.icp }}</a>
     </div>
   </footer>
 </template>

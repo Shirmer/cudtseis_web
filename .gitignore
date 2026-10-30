@@ -16,3 +16,20 @@ Project-Code/backend/app/**/*.pyc
 # Local runtime
 .data/
 *.log
+
+# Local handoff notes, drafts and generated delivery artifacts
+/HANDOFF.md
+/deliverables/
+/lab-site-old/
+/lab-site-v3/
+/lab-site/preview/
+/lab-site/design/
+/deployment/websites/proof/
+/deployment/websites/*verification*.json
+
+# Unused assets retained locally from earlier lab designs
+/lab-site/assets/img/team-*.png
+/lab-site/assets/img/hero-*.webp
+/lab-site/assets/img/earth-poster.webp
+/lab-site/assets/img/og-cover.jpg
+/lab-site/assets/img/research-fault.webp
