@@ -17,7 +17,7 @@ import time
 
 ROOT = Path(__file__).resolve().parent
 BACKEND_DIR = ROOT / "Project-Code" / "backend"
-FRONTEND_DIR = ROOT / "Project-Code" / "Frontend" / "quakes-frontend"
+FRONTEND_DIR = ROOT / "Project-Code" / "Frontend" / "research-platform"
 BACKEND_VENV = BACKEND_DIR / ".venv"
 BACKEND_ENV = BACKEND_DIR / ".env"
 BACKEND_ENV_EXAMPLE = BACKEND_DIR / ".env.example"

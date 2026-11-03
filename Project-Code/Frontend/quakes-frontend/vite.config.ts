@@ -1,33 +1,25 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-function parsePort(value: string | undefined, fallback: number): number {
-  const port = Number(value)
-  return Number.isFinite(port) ? port : fallback
+// 本地开发/预览时 /api 默认代理到线上 GeoCamera 后端（仅用于获取发布信息等只读接口）。
+// 生产环境由 Nginx 将 /api 代理到本机 8080 的 Java 后端。
+const apiProxy = {
+  '/api': {
+    target: process.env.VITE_API_PROXY || 'http://8.137.48.168',
+    changeOrigin: true,
+  },
 }
 
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
-  const proxyTarget = env.VITE_PROXY_TARGET || 'http://127.0.0.1:8001'
-  const host = env.FRONTEND_HOST || '127.0.0.1'
-  const port = parsePort(env.FRONTEND_PORT, 5173)
-
-  return {
-    plugins: [vue()],
-    server: {
-      host,
-      port,
-      strictPort: true,
-      proxy: {
-        '/api': {
-          target: proxyTarget,
-          changeOrigin: true,
-        },
-        '/rag-api': {
-          target: 'http://127.0.0.1:8010',
-          changeOrigin: true,
-        },
-      },
-    },
-  }
+export default defineConfig({
+  plugins: [vue()],
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    proxy: apiProxy,
+  },
+  preview: {
+    host: '0.0.0.0',
+    port: 4173,
+    proxy: apiProxy,
+  },
 })

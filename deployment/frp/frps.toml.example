@@ -1,0 +1,16 @@
+bindAddr = "0.0.0.0"
+bindPort = 7000
+proxyBindAddr = "127.0.0.1"
+allowPorts = [{ single = 18080 }, { single = 18081 }, { single = 18082 }]
+maxPortsPerClient = 3
+detailedErrorsToClient = false
+auth.method = "token"
+auth.additionalScopes = ["HeartBeats", "NewWorkConns"]
+auth.tokenSource.type = "file"
+auth.tokenSource.file.path = "/etc/frp/token"
+transport.tls.force = true
+transport.tls.certFile = "/etc/frp/tls/server.crt"
+transport.tls.keyFile = "/etc/frp/tls/server.key"
+transport.tls.trustedCaFile = "/etc/frp/tls/ca.crt"
+log.to = "console"
+log.level = "info"
