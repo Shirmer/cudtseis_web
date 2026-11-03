@@ -24,3 +24,11 @@
 .home-header .site-nav{width:min(1120px,calc(100% - 80px))}
 @media(max-width:1080px){.home-header .site-nav{width:calc(100% - 64px)}}
 @media(max-width:600px){.home-header .site-nav{width:calc(100% - 40px)}}
+
+/* Published news entries on the homepage. */
+.news-item{padding:16px 0 6px}
+.news-item time{display:block;font-size:11px;line-height:1.6;color:#73889a;font-variant-numeric:tabular-nums}
+.news-item h3{margin:10px 0;font-size:16px;line-height:1.8;font-weight:550;color:#15588f}
+.news-item h3 a:hover{text-decoration:underline;text-underline-offset:4px}
+.news-item p{font-size:12px;line-height:1.9;color:#627789}
+.news-item>.text-link{margin-top:14px;font-size:11px}

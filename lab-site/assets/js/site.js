@@ -32,7 +32,9 @@
   });
   window.matchMedia('(max-width: 760px)').addEventListener('change', () => setMenu(false));
   function updateCurrent() {
-    const hash = location.hash || '#top';
+    const hash = document.body.dataset.navSection
+      ? `index.html#${document.body.dataset.navSection}`
+      : location.hash || '#top';
     nav?.querySelectorAll('a').forEach(link => {
       if (link.getAttribute('href') === hash) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
