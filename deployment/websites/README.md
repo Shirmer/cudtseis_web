@@ -32,7 +32,7 @@
 - 使用已有官方 Nginx 镜像的本地标签 `geocamera/nginx:1.28`，无需重新拉取或构建 App 镜像。
 - Nginx 监听学校主机 TCP 80，使用 host 网络，让主机 firewalld 继续控制端口；新增的主机防火墙规则仅为 HTTP 服务。
 - 容器只读文件系统、静态资源只读挂载、工作进程使用 nginx 用户；设置内存上限 96 MiB、CPU 上限 0.5 核、日志轮转和自动重启。
-- 校园网内 `http://202.115.129.74/` 可访问，主页、目录、Terra 及所有实际资源均核实与本地一致；`/health` 返回 `earthquake-center ok`。
+- 初次部署时校园网可通过 IP 访问；2026-11-03 已按用户要求禁止直接通过 IP 或未登记 Host 访问官网。验证回源应显式携带 `Host: seis.cdut.edu.cn`，`/health` 返回 `earthquake-center ok`。
 - 校外腾讯云访问学校 IP 的 HTTP 端口超时，因此不能把校园网内访问成功当成校外可访问。
 - `seis.cdut.edu.cn` 指向学校反代是预期设计，不修改该 DNS。当前 HTTP/HTTPS 请求返回防护校验页（412），浏览器未显示官网，尚未验证学校反代到本站的完整链路。
 - 需由学校管理员核实 `seis.cdut.edu.cn` 的后端目标为 `http://202.115.129.74:80`，反代节点到此地址的访问权限，以及网站防护策略。反代的实际回源地址不一定等于其域名解析 IP。
@@ -43,7 +43,7 @@
 cd /srv/earthquake-center
 docker compose run --rm --no-deps --entrypoint nginx web -t
 docker compose up -d --force-recreate
-curl -f http://127.0.0.1/health
+curl -f -H "Host: seis.cdut.edu.cn" http://127.0.0.1/health
 ```
 
 静态资源使用 `current` 软链只读挂载；切换 release 后要重建此网站容器以重新解析挂载目标，不要仅重启 Nginx 工作进程。无需重建 App、重启 Docker 或修改数据库。
@@ -71,3 +71,13 @@ curl -f http://127.0.0.1/health
 - 临时域名依赖学校网站和 frp 均正常；它不是学校正式域名的反代修复，`seis.cdut.edu.cn` 的入口仍需学校管理员核实。
 
 本地生成的 `lab-mirror-verification-20261030.json`（不提交仓库）记录的是此前短暂使用的静态副本方案，仅供历史参考；当前以 frp 验证记录为准。
+
+## 2026-11-03 网站入口加固
+
+- 默认虚拟主机返回 Nginx 444，拒绝 IP 地址和未登记域名的请求；业务虚拟主机仅匹配 `seis.cdut.edu.cn`、`seis.cdutseis.com`。
+- 静态网站仅接受 GET、HEAD，其他方法返回 405；禁止目录列表和隐藏文件访问。
+- 添加 nosniff、SAMEORIGIN、Referrer-Policy 与 Permissions-Policy 安全响应头。未改学校反代/WAF 策略。
+- 配置备份：学校 `/srv/earthquake-center/config-backups/nginx-before-host-restriction-20261103.conf`。配置预检通过后平滑重载 Nginx，没有重启容器、App 或 frp。
+- 验证：IP/未知 Host 拒绝；两个域名的首页、目录、Terra、资源与健康检查返回 200；POST 返回 405；隐藏文件返回 403。腾讯云经 frp 回源检查通过，App 版本接口正常。
+- 域名白名单不是身份认证或来源 IP 限制：可构造合法 Host 的客户端仍能请求网站。此设置仅阻止普通 IP 直访，不代表 80 端口关闭或网站仅限内网。严格内网范围仍需学校网关/反代按访问来源实施；不能猜测代理回源地址后直接封禁。
+- frp 访问 `/health` 也必须保留合法 Host；原独立 `school-health` 测试服务 18080 不受影响。
