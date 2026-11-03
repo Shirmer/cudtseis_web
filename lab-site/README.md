@@ -1,6 +1,6 @@
 # 成都理工大学地震研究中心官网
 
-中文名称：成都理工大学地震研究中心；英文标识：EARTHQUAKE CENTER。
+中文名称：成都理工大学地震研究中心；英文标识：Earthquake Research Center。
 
 独立的纯静态 HTML/CSS/JS 网站，无第三方依赖、构建步骤、外部字体或 CDN 请求，与公司官网源码分开维护。
 
