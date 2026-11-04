@@ -1,0 +1,24 @@
+/* Keep the independent tools workspace while sharing the center's identity. */
+:root{--bg:#f5f8fc;--ink:#26374a;--muted:#64798b;--line:#dce5ef;--green:#00549d;--green-soft:#edf4fb}
+body{color:var(--ink)}
+.sidebar{background:#f1f6fb;border-right-color:#dce5ef}
+.nav-link{color:#526c83}
+.nav-link:hover{background:#e5eff9}
+.nav-link.active{background:#deebf8;color:#06477f}
+.nav-link.active:after{background:#00549d}
+.search-launch{background:#fff;border-color:#dce5ef;color:#64798b}
+.primary:hover{background:#003f7c}
+.icon-button:hover{background:#e5eff9}
+.local-state{color:#526c83}
+.local-state i,.preview-badge i{background:#00549d}
+.sidebar-bottom{border-color:#dce5ef}
+.tool-center-brand{line-height:1.65;color:#06477f}
+.sidebar-bottom>a.tool-center-brand{gap:10px;margin:16px 0 0;font-size:12px}
+.tool-center-brand>img{width:32px;height:32px;flex-shrink:0}
+.tool-center-brand small{display:block;font-size:9px;color:#647e96;letter-spacing:.3px;line-height:1.6;margin-top:4px}
+.catalog-brand>span{font-size:15px;color:#06477f}
+.catalog-brand small{font-size:10px;color:#647e96;letter-spacing:.5px}
+.workspace-footer{color:#64798b;line-height:1.9;gap:12px;flex-wrap:wrap}
+button:focus-visible,a:focus-visible{outline-color:#00549d}
+input:focus,select:focus,textarea:focus{outline-color:#00549d}
+@media(max-width:600px){.catalog-brand>span{font-size:13px}.catalog-brand small{font-size:9px}.catalog-nav{gap:12px;flex-wrap:wrap}.workspace-footer{font-size:10px}}

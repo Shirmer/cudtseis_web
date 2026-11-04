@@ -1,0 +1,135 @@
+/* Homepage composition; loaded independently from article and tool pages. */
+.home-header .header-inner{min-height:84px}
+.home-header .brand{gap:15px}
+.home-header .brand img{width:48px;height:48px}
+.home-header .brand-copy{gap:7px}
+.home-header .brand-copy strong{font-size:22px}
+.home-header .site-nav>a{min-height:44px}
+.home-header~main section[id],.home-header~main .news-column{scroll-margin-top:152px}
+.intro{gap:64px;padding-block:38px 32px}
+.intro-description{font-size:16px;line-height:1.9;color:#526579;max-width:470px}
+.intro .text-link{font-size:14px}
+.intro-figure figcaption{font-size:11px;color:#647589}
+.platform-section{padding-bottom:32px}
+.platform-entry{padding:19px 24px}
+.platform-entry p{font-size:14px;color:#526c83}
+.entry-status{font-size:12px}
+.section-heading>span{font-size:11px;color:#708296;letter-spacing:.3px}
+.section{padding-block:36px 40px}
+.prose p{font-size:15px;line-height:2;color:#526579}
+.lab-facts{font-size:14px}
+.lab-facts dt{color:#6b7e90}
+.lab-facts>div{grid-template-columns:72px 1fr;gap:12px}
+.news-hub{grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:44px;padding:0 0 42px;align-items:start}
+.news-primary,.news-secondary{display:flex;flex-direction:column;gap:34px;min-width:0}
+.news-column .section-heading{margin-bottom:4px;padding-bottom:14px}
+.news-column .section-heading h2{font-size:23px}
+.news-item{padding:23px 0 0}
+.news-item time{font-size:12px;color:#6c7e91}
+.news-item h3{font-size:20px;font-weight:600;line-height:1.65;margin:9px 0 12px;text-wrap:balance}
+.news-item p{font-size:14px;line-height:1.9;color:#526579}
+.news-item>.text-link{font-size:13px;margin-top:14px}
+.news-item+.news-item{margin-top:22px;padding-top:22px}
+.news-item-illustrated{display:grid;grid-template-columns:minmax(0,1fr) 160px;column-gap:22px;grid-template-areas:"date figure" "title figure" "description figure" "more figure"}
+.news-item-illustrated time{grid-area:date}
+.news-item-illustrated h3{grid-area:title}
+.news-item-illustrated>p{grid-area:description}
+.news-item-illustrated>.text-link{grid-area:more;justify-self:start}
+.news-thumbnail{grid-area:figure;align-self:center;padding:8px;border:1px solid #e3eaf1;background:white}
+.news-thumbnail img{width:100%;height:132px;object-fit:contain}
+.news-secondary{background:#f5f8fc;border:1px solid #e0e8f1;padding:24px;gap:28px}
+.news-secondary .section-heading h2{font-size:20px}
+.news-secondary .section-heading>span{font-size:10px}
+.news-secondary .column-intro{font-size:14px;line-height:1.9;min-height:0;margin-top:15px;color:#526579}
+.news-empty{font-size:14px;color:#6b7e90;padding:14px 0 16px}
+.news-column>.text-link{font-size:13px}
+.wechat-science{margin:0;padding:20px 0 18px;background:transparent;border:0;border-bottom:1px solid var(--line)}
+.wechat-label{font-size:12px;color:#597b9b}
+.wechat-science h3{font-size:19px;font-weight:550;line-height:1.8;margin:9px 0 12px;color:#164e7d;text-wrap:balance}
+.wechat-science .wechat-source{font-size:12px;color:#6c7e91;line-height:1.9}
+.wechat-read-link{font-size:14px;margin-top:17px}
+.wechat-reading-options{margin-top:18px}
+.wechat-reading-options>summary{display:inline-list-item;font-size:13px;line-height:1.8;color:#5f7489;cursor:pointer;padding:4px 0}
+.wechat-reading-options>summary:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+.wechat-reading-options .wechat-actions{gap:12px 18px}
+.wechat-reading-options .wechat-copy{font-size:13px}
+.wechat-reading-options .wechat-qr-content{align-items:flex-start}
+.wechat-reading-options .wechat-qr-content img{width:160px;height:160px}
+.wechat-science .wechat-reading-help{font-size:12px}
+.science-list summary{font-size:14px;padding:15px 0}
+.science-list details p{font-size:14px;line-height:1.9;color:#526579}
+.station-section{padding-top:34px}
+.station-grid h3{font-size:18px}
+.station-links strong{font-size:15px}
+.station-links small{font-size:12px;color:#657b90;line-height:1.6}
+.research-item h3{font-size:18px}
+.research-item p{font-size:14px;color:#526579}
+.research-item small{font-size:12px;color:#617b94;line-height:1.7}
+.team-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:0;border-top:1px solid var(--line)}
+.person{border-left:0;border-bottom:1px solid var(--line);padding:18px 12px}
+.person h3{font-size:17px;margin:0;font-weight:500;line-height:1.7}
+.contact-copy h3{font-size:17px}
+.contact-copy p,.contact-address p{font-size:14px;line-height:1.95;color:#526579}
+.contact-address>span{font-size:12px}
+.footer-inner strong{font-size:13px}
+.footer-inner p,.footer-inner>a{font-size:12px}
+@media(min-width:761px) and (max-width:1050px){
+  .home-header .header-inner{min-height:78px}
+  .home-header .brand-copy strong{font-size:20px}
+  .home-header .site-nav>a{font-size:12px}
+  .intro{gap:32px}
+  .news-hub{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:28px}
+  .news-item-illustrated{grid-template-columns:minmax(0,1fr) 110px;column-gap:16px}
+  .news-thumbnail img{height:100px}
+  .news-secondary{padding:20px}
+  .section-heading>span{font-size:10px}
+}
+@media(max-width:760px){
+  .home-header .header-inner{min-height:82px}
+  .home-header .brand{gap:10px}
+  .home-header .brand img{width:37px;height:37px}
+  .home-header .brand-copy{gap:6px}
+  .home-header .brand-copy strong{font-size:15px}
+  .home-header .site-nav>a{font-size:13px}
+  .home-header~main section[id],.home-header~main .news-column{scroll-margin-top:108px}
+  .intro{gap:26px}
+  .intro-description{font-size:15px}
+  .section{padding-block:30px 34px}
+  .news-hub{grid-template-columns:1fr;gap:30px;padding-bottom:32px}
+  .news-item-illustrated{grid-template-columns:minmax(0,1fr) 140px}
+  .news-primary{gap:30px}
+  .news-secondary{padding:22px}
+  .team-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .person{padding:15px 8px}
+}
+@media(max-width:600px){
+  .intro{padding-block:28px 24px}
+  .intro-description{line-height:1.9;margin-block:17px 20px}
+  .intro-figure img{height:180px}
+  .intro-figure figcaption{font-size:10px}
+  .platform-section{padding-bottom:30px}
+  .platform-entry{padding:17px 18px}
+  .platform-entry h2{font-size:16px}
+  .platform-entry p{font-size:13px}
+  .entry-status{font-size:11px}
+  .section-heading h2,.news-column .section-heading h2{font-size:22px}
+  .section-heading>span{font-size:10px}
+  .news-item h3{font-size:19px}
+  .news-item p{font-size:14px}
+  .news-item-illustrated{grid-template-columns:minmax(0,1fr) 92px;column-gap:16px;grid-template-areas:"date figure" "title figure" "description description" "more more"}
+  .news-thumbnail{padding:5px;align-self:start;margin-top:4px}
+  .news-thumbnail img{height:84px}
+  .news-item-illustrated>p{margin-top:2px}
+  .prose p{font-size:15px}
+  .lab-facts{font-size:13px}
+  .news-secondary{padding:20px}
+  .wechat-science h3{font-size:19px}
+  .research-grid{column-gap:0}
+  .footer-inner p,.footer-inner>a{font-size:11px}
+}
+@media(max-width:360px){
+  .home-header .brand-copy strong{font-size:13px}
+  .home-header .brand img{width:32px;height:32px}
+  .news-item-illustrated{grid-template-columns:minmax(0,1fr) 76px;column-gap:12px}
+  .news-thumbnail img{height:72px}
+}

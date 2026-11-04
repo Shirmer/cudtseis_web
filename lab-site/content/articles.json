@@ -1,0 +1,29 @@
+[
+  {
+    "slug": "mantle-iron-heterogeneity",
+    "legacy": "news-mantle-iron-heterogeneity.html",
+    "title": "基于矿物电导率揭示下地幔铁含量不均一性新机制",
+    "date": "2026-11-04",
+    "summary": "韩奎博士研究团队结合高温高压矿物电导率实验与全球地磁观测，研究下地幔铁含量空间分布。",
+    "journal": "Science Advances",
+    "image": "mantle-iron-distribution.webp"
+  },
+  {
+    "slug": "hydrogen-grain-boundary",
+    "legacy": "news-hydrogen-grain-boundary.html",
+    "title": "氢增强矿物晶界导电为跨岩石圈剪切带高导电异常提供新解释",
+    "date": "2026-11-04",
+    "summary": "韩奎老师研究团队通过分子动力学模拟，研究氢对橄榄石晶界导电的影响。",
+    "journal": "Geophysical Research Letters",
+    "image": "hydrogen-grain-conductivity.webp"
+  },
+  {
+    "slug": "microseismic-detection",
+    "legacy": "news-microseismic-detection.html",
+    "title": "利用计算机视觉迁移学习实现微地震事件实时检测",
+    "date": "2026-11-03",
+    "summary": "梁春涛教授研究团队提出 YOLOv5-Msed 多台站微地震事件检测方法。",
+    "journal": "Geophysical Journal International",
+    "image": "microseismic-method.webp"
+  }
+]

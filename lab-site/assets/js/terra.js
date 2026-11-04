@@ -135,7 +135,7 @@
     current=byId[id]?id:'overview';
     if(id!==current){history.replaceState(null,'',`#${current}`);toast('未找到该工具，已返回概览。');}
     const t=byId[current];
-    document.title=catalogPage?'地震目录 · EARTHQUAKE CENTER':`${t.name} · Terra 科研工作台`;
+    document.title=catalogPage?'地震目录 · Earthquake Research Center':`${t.name} · Terra 科研工作台`;
     document.getElementById('breadcrumb').textContent=t.name;
     document.querySelectorAll('.nav-link').forEach(a=>{const active=a.dataset.tool===current;a.classList.toggle('active',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
     workspace.innerHTML=current==='overview'?home():heading(t)+renderTool(t);
