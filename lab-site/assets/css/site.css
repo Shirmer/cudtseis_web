@@ -32,3 +32,14 @@
 .news-item h3 a:hover{text-decoration:underline;text-underline-offset:4px}
 .news-item p{font-size:12px;line-height:1.9;color:#627789}
 .news-item>.text-link{margin-top:14px;font-size:11px}
+
+.news-item+.news-item{margin-top:18px;padding-top:22px;border-top:1px solid var(--line)}
+.wechat-science{margin:20px 0 24px;padding:20px;background:#f4f8fc;border-left:3px solid #00549d}
+.wechat-label{font-size:11px;color:#647f97}
+.wechat-science h3{margin:7px 0 9px;font-size:18px;line-height:1.6;color:#15588f}
+.wechat-science p{font-size:12px;line-height:1.9;color:#627789}
+.wechat-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;margin-top:14px}
+.wechat-actions .text-link{font-size:12px}
+.wechat-copy{padding:5px 0;background:none;border:0;border-bottom:1px solid #8da9c0;color:#315b80;font:inherit;font-size:12px;cursor:pointer}
+.wechat-feedback:not(:empty){margin-top:12px}
+.wechat-feedback:empty{display:none}

@@ -89,3 +89,10 @@ curl -f -H "Host: seis.cdut.edu.cn" http://127.0.0.1/health
 - 本次更新直接写入学校现有挂载目录，先发布配图、样式和正文，再更新首页；无需重启网站容器、App 或 frp。旧首页、公共样式和脚本备份于 `/srv/earthquake-center/content-backups/20261103-lab-news/`。
 - 学校网站及腾讯云本机经 frp 读取的七个更新文件均返回 200，响应内容与本地文件 SHA-256 一致。腾讯云仍仅转发，不保存实验室网站静态副本。
 - 正式域名 `https://seis.cdut.edu.cn/news-microseismic-detection.html` 实测仍返回 412 防护校验页；网站内容已发布，不代表学校网关入口问题已解决。
+
+## 2026-11-04 科研快报与微信公众号入口
+
+- “科研快报”新增下地幔铁含量、氢增强晶界导电两篇成果简报，正文采用提供的韩奎团队材料，共四张研究配图；页面发布日期为本站发布日。独立正文为 `news-mantle-iron-heterogeneity.html`、`news-hydrogen-grain-boundary.html`。
+- “地震科普”增加 **Geo Camera Group** 微信公众号入口，使用用户提供的文章链接，并提供复制账号名称的按钮。尚未提供官网版科普正文及关注二维码；不生成假标题、二维码或虚构的站内文章。微信原文在当前工具环境未能读取，已核对站内外链目标与用户提供的地址一致。
+- 后续同一科普条目可同时链接官网版全文与微信公众号原文，两种版本分别维护。现阶段采用人工精选链接，无需向浏览器提供公众号凭证。
+- 九个更新文件已在学校本机和腾讯云经 frp 逐一核对 HTTP 200 与 SHA-256；只更新现有静态目录，没有重启应用。原首页、CSS、JavaScript 备份于 `/srv/earthquake-center/content-backups/20261104-papers-wechat/`。

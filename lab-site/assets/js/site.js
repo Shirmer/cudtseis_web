@@ -43,4 +43,15 @@
   window.addEventListener('hashchange', updateCurrent);
   updateCurrent();
   document.querySelectorAll('[data-year]').forEach(el => { el.textContent = String(new Date().getFullYear()); });
+  document.querySelectorAll('[data-copy-wechat]').forEach(copyButton => {
+    copyButton.addEventListener('click', async () => {
+      const feedback = copyButton.closest('.wechat-science')?.querySelector('[data-wechat-feedback]');
+      try {
+        await navigator.clipboard.writeText(copyButton.dataset.copyWechat);
+        if (feedback) feedback.textContent = '已复制，可在微信中搜索并关注。';
+      } catch {
+        if (feedback) feedback.textContent = '请选中或长按上方公众号名称，复制后在微信中搜索。';
+      }
+    });
+  });
 })();
