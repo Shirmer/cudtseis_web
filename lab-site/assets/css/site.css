@@ -43,3 +43,11 @@
 .wechat-copy{padding:5px 0;background:none;border:0;border-bottom:1px solid #8da9c0;color:#315b80;font:inherit;font-size:12px;cursor:pointer}
 .wechat-feedback:not(:empty){margin-top:12px}
 .wechat-feedback:empty{display:none}
+.wechat-science .wechat-article-title{font-size:14px;line-height:1.8;color:#315b80;margin-bottom:6px}
+.wechat-feedback{overflow-wrap:anywhere}
+.wechat-qr{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+.wechat-qr summary{font-size:12px;color:#315b80;cursor:pointer}
+.wechat-qr-content{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:14px}
+.wechat-qr img{width:180px;height:180px;max-width:100%;background:#fff}
+.wechat-qr-content p{flex:1 1 160px}
+.wechat-science .wechat-reading-help{font-size:11px;margin-top:14px;line-height:1.9}

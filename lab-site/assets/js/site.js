@@ -48,9 +48,11 @@
       const feedback = copyButton.closest('.wechat-science')?.querySelector('[data-wechat-feedback]');
       try {
         await navigator.clipboard.writeText(copyButton.dataset.copyWechat);
-        if (feedback) feedback.textContent = '已复制，可在微信中搜索并关注。';
+        if (feedback) feedback.textContent = copyButton.dataset.copySuccess || '已复制，可在微信中搜索并关注。';
       } catch {
-        if (feedback) feedback.textContent = '请选中或长按上方公众号名称，复制后在微信中搜索。';
+        if (feedback) feedback.textContent = copyButton.dataset.copyFallback
+          ? `${copyButton.dataset.copyFallback} ${copyButton.dataset.copyWechat}`
+          : '请选中或长按上方公众号名称，复制后在微信中搜索。';
       }
     });
   });
