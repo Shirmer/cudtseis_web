@@ -136,3 +136,4 @@ curl -f -H "Host: seis.cdut.edu.cn" http://127.0.0.1/health
 - Nginx 配置与原 release 记录备份于 `/srv/deepseek-earth/config-backups/20261105-split-sites/`；公司 Nginx 配置 SHA-256 仍为 `4398e90abd5f8b568a4152c0d87b5cf9899ca6c8663f718d26bcbe4fdd5bdec8`。
 - TypeScript 检查、生产构建及差异格式检查通过；浏览器核对正式公司/产品页面，390px 下中英文页面无横向溢出。公网两站首页、联系页、英文路由和版本接口均成功，版本为 1.0.31。原 IP App 版本接口、实验室 frp 回源仍返回 200；未修改 App、数据库、OSS 或 frp。
 - 下载按钮点击时重新读取版本接口，以获取新签名链接。此次未执行安装包安装及账号写入测试。
+- 证书续期后由 `/etc/letsencrypt/renewal-hooks/deploy/reload-nginx` 先检查配置，再平滑重载 Nginx；脚本模板为 `renew-nginx-certificate.sh`，避免仅更新磁盘证书而运行进程仍使用旧证书。
