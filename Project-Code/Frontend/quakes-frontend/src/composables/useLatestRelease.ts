@@ -36,11 +36,8 @@ export function useLatestRelease() {
 
 export function useApkDownload() {
   async function download(): Promise<ReleaseAsset | undefined> {
-    let current = release.value
-    if (!current) {
-      await load()
-      current = release.value
-    }
+    await load()
+    const current = release.value
     const asset = current ? pickApk(current) : undefined
     if (asset?.url) window.location.assign(asset.url)
     return asset

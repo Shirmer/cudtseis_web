@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import SiteHeader from './SiteHeader.vue'
 import SiteFooter from './SiteFooter.vue'
-import type { Locale } from '../config/site'
+import { isProductSite, type Locale } from '../config/site'
+import ProductHeader from './ProductHeader.vue'
+import ProductFooter from './ProductFooter.vue'
 
 defineProps<{
   locale: Locale
@@ -13,8 +15,8 @@ defineProps<{
 </script>
 
 <template>
-  <div class="page-shell">
-    <SiteHeader :locale="locale" />
+  <div class="page-shell" :class="{ 'company-shell': !isProductSite }">
+    <component :is="isProductSite ? ProductHeader : SiteHeader" :locale="locale" />
 
     <main class="page-main">
       <section class="page-hero">
@@ -32,7 +34,7 @@ defineProps<{
       </div>
     </main>
 
-    <SiteFooter :locale="locale" />
+    <component :is="isProductSite ? ProductFooter : SiteFooter" :locale="locale" />
   </div>
 </template>
 

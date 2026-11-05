@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { SITE, localizedPath, type Locale } from '../config/site'
+import { SITE, productUrl, localizedPath, type Locale } from '../config/site'
 
 const props = defineProps<{ locale: Locale }>()
 
@@ -12,28 +12,28 @@ const solid = ref(false)
 
 const copy = computed(() => props.locale === 'zh'
   ? {
-      product: '产品',
+      product: '业务方向',
       scenarios: '应用场景',
       about: '关于我们',
       contact: '联系我们',
-      download: '下载 GeoCamera',
+      download: 'GeoCamera 官网',
       openNav: '打开导航',
       navLabel: '主导航',
       mobileNavLabel: '移动端导航',
       localeLabel: '语言切换',
-      brandSub: 'GeoCamera 地质相机'
+      brandSub: '地球科学数据与软件'
     }
   : {
-      product: 'Product',
+      product: 'Our work',
       scenarios: 'Scenarios',
       about: 'About',
       contact: 'Contact',
-      download: 'Get GeoCamera',
+      download: 'GeoCamera',
       openNav: 'Open navigation',
       navLabel: 'Primary navigation',
       mobileNavLabel: 'Mobile navigation',
       localeLabel: 'Language switch',
-      brandSub: 'GeoCamera'
+      brandSub: 'GEOSCIENCE DATA & SOFTWARE'
     })
 
 const homePath = computed(() => localizedPath(props.locale, '/'))
@@ -86,15 +86,15 @@ onBeforeUnmount(() => {
     <div class="scroll-progress" aria-hidden="true"></div>
     <div class="header-inner">
       <button class="brand" type="button" :aria-label="locale === 'zh' ? '返回首页' : 'Back to home'" @click="goHome">
-        <img src="/brand/geocamera-icon.png" :alt="SITE.productName" />
+        <span class="company-logo"><img src="/brand/deepseek-earth-logo.png" alt="深视地球" /></span>
         <span class="brand-copy">
-          <strong>{{ locale === 'zh' ? SITE.brandZh : SITE.brandEn }}</strong>
+          <strong>{{ locale === 'zh' ? '深视地球' : 'DeepSeek Earth' }}</strong>
           <span>{{ copy.brandSub }}</span>
         </span>
       </button>
 
       <nav class="desktop-nav" :aria-label="copy.navLabel">
-        <button type="button" @click="goSection('product')">{{ copy.product }}</button>
+        <button type="button" @click="goSection('capabilities')">{{ copy.product }}</button>
         <button type="button" @click="goSection('scenarios')">{{ copy.scenarios }}</button>
         <button type="button" @click="goSection('about')">{{ copy.about }}</button>
         <button type="button" @click="goContact">{{ copy.contact }}</button>
@@ -105,9 +105,9 @@ onBeforeUnmount(() => {
           <button type="button" :class="{ active: locale === 'zh' }" @click="switchLocale('zh')">中</button>
           <button type="button" :class="{ active: locale === 'en' }" @click="switchLocale('en')">EN</button>
         </div>
-        <button class="download-link" type="button" @click="goSection('download')">
-          <span>{{ copy.download }}</span><span aria-hidden="true">↓</span>
-        </button>
+        <a class="download-link" :href="productUrl(locale)" :aria-label="copy.download">
+          <span>{{ copy.download }}</span><span aria-hidden="true">↗</span>
+        </a>
         <button
           class="menu-button"
           type="button"
@@ -121,11 +121,11 @@ onBeforeUnmount(() => {
     </div>
 
     <nav class="mobile-nav" :aria-label="copy.mobileNavLabel">
-      <button type="button" @click="goSection('product')">{{ copy.product }}</button>
+      <button type="button" @click="goSection('capabilities')">{{ copy.product }}</button>
       <button type="button" @click="goSection('scenarios')">{{ copy.scenarios }}</button>
       <button type="button" @click="goSection('about')">{{ copy.about }}</button>
       <button type="button" @click="goContact">{{ copy.contact }}</button>
-      <button type="button" @click="goSection('download')">{{ copy.download }} ↓</button>
+      <a class="company-link" :href="productUrl(locale)">{{ copy.download }} ↗</a>
     </nav>
   </header>
 </template>
@@ -208,6 +208,8 @@ onBeforeUnmount(() => {
   gap: 6px;
   margin-left: auto;
 }
+
+.company-link { color: inherit; text-decoration: none; padding: 9px 15px; font-size: 14px; }
 
 .desktop-nav button {
   padding: 9px 15px;
@@ -362,4 +364,12 @@ onBeforeUnmount(() => {
     padding: 10px 14px;
   }
 }
+.company-logo { display: block; width: 50px; height: 50px; overflow: hidden; flex-shrink: 0; }
+.company-logo img { width: 90px; height: 60px; max-width: none; transform: translate(-19px, -5px); border-radius: 0; }
+a.download-link { text-decoration: none; }
+.header-inner { width: min(1280px, calc(100% - 80px)); gap: 20px; }
+.site-header { background: rgba(250,249,246,.94); }
+.download-link { border-radius: 8px; }
+button:focus-visible, a:focus-visible { outline: 2px solid #a9793e; outline-offset: 4px; }
+@media(max-width:800px) { .header-inner { width: calc(100% - 32px); gap: 10px; } .brand { min-width: 0; } }
 </style>

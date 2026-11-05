@@ -5,7 +5,7 @@ import vue from '@vitejs/plugin-vue'
 // 生产环境由 Nginx 将 /api 代理到本机 8080 的 Java 后端。
 const apiProxy = {
   '/api': {
-    target: process.env.VITE_API_PROXY || 'http://8.137.48.168',
+    target: process.env.VITE_API_PROXY || 'https://deepseek-earth.cdutseis.com',
     changeOrigin: true,
   },
 }

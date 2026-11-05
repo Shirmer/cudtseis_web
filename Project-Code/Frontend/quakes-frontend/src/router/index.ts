@@ -1,6 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import HomeView from '../views/HomeView.vue'
+import ProductHomeView from '../views/ProductHomeView.vue'
+import { isProductSite } from '../config/site'
+const LandingView = isProductSite ? ProductHomeView : HomeView
 import EarthView from '../views/EarthView.vue'
 import LegalView from '../views/LegalView.vue'
 import ContactView from '../views/ContactView.vue'
@@ -15,8 +18,8 @@ const router = createRouter({
     return { top: 0 }
   },
   routes: [
-    { path: '/', name: 'home', component: HomeView },
-    { path: '/en', name: 'home-en', component: HomeView },
+    { path: '/', name: 'home', component: LandingView },
+    { path: '/en', name: 'home-en', component: LandingView },
     { path: '/earth', name: 'earth', component: EarthView },
     { path: '/en/earth', name: 'earth-en', component: EarthView },
     { path: '/privacy', name: 'privacy', component: LegalView, meta: { doc: 'privacy' } },

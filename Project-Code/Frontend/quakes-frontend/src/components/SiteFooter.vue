@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { SITE, localizedPath, type Locale } from '../config/site'
+import { SITE, productUrl, localizedPath, type Locale } from '../config/site'
 
 const props = defineProps<{ locale: Locale }>()
 
@@ -64,8 +64,8 @@ function go(path: string) {
     <div class="footer-inner">
       <div class="footer-brand">
         <div class="brand-row">
-          <img src="/brand/geocamera-icon.png" :alt="SITE.productName" />
-          <strong>{{ locale === 'zh' ? SITE.brandZh : SITE.brandEn }}</strong>
+          <span class="company-logo"><img src="/brand/deepseek-earth-logo.png" alt="深视地球" /></span>
+          <strong>{{ locale === 'zh' ? '深视地球' : 'DeepSeek Earth' }}</strong>
         </div>
         <p class="tagline">{{ copy.tagline }}</p>
         <p class="company">{{ locale === 'zh' ? SITE.companyZh : SITE.companyEn }}</p>
@@ -84,12 +84,13 @@ function go(path: string) {
       <div class="footer-columns">
         <div class="footer-column">
           <h3>{{ copy.product }}</h3>
-          <button type="button" @click="goSection('product')">{{ copy.features }}</button>
+          <a :href="productUrl(locale)">GeoCamera ↗</a>
           <button type="button" @click="goSection('scenarios')">{{ copy.scenarios }}</button>
-          <button type="button" @click="goSection('download')">{{ copy.download }}</button>
+
         </div>
         <div class="footer-column">
           <h3>{{ copy.company }}</h3>
+          <button type="button" @click="goSection('capabilities')">{{ locale === 'zh' ? '业务方向' : 'Our work' }}</button>
           <button type="button" @click="goSection('about')">{{ copy.about }}</button>
           <button type="button" @click="go('/contact')">{{ copy.contact }}</button>
         </div>
@@ -206,6 +207,8 @@ function go(path: string) {
   text-transform: uppercase;
 }
 
+.footer-column > a { color: rgba(255,255,255,.66); text-decoration: none; padding: 6px 0; font-size: 14px; }
+
 .footer-column button {
   padding: 6px 0;
   border: 0;
@@ -264,4 +267,8 @@ function go(path: string) {
     grid-template-columns: 1fr 1fr;
   }
 }
+.company-logo { display: block; width: 50px; height: 50px; overflow: hidden; flex-shrink: 0; background: #fff; border-radius: 10px; }
+.company-logo img { width: 90px; height: 60px; max-width: none; transform: translate(-19px, -5px); border-radius: 0; }
+.footer-inner,.footer-bottom { width: min(1280px,calc(100% - 80px)); }
+@media(max-width:720px) { .footer-inner,.footer-bottom { width: calc(100% - 40px); } }
 </style>

@@ -114,3 +114,25 @@ curl -f -H "Host: seis.cdut.edu.cn" http://127.0.0.1/health
 - 腾讯云请求临时 HTTPS 域名 `https://seis.cdutseis.com/research-bulletin/` 返回 200 且包含本次版本标记。学校正式域名 `https://seis.cdut.edu.cn/research-bulletin/` 从本地及腾讯云实测均返回 412；本次完成内容发布，不代表学校统一反代或防护入口问题已经解决。
 - 本地网络请求临时域名的 HTTPS 握手仍失败（`SSL_ERROR_SYSCALL`）；腾讯云本机请求成功不能代表所有外部网络可访问，仍需处理此前未备案域名及公网入口的可用性问题。
 - 团队工具接入建议见 `lab-site/docs/tool-integration.md`；目前仅形成方案，未开放新端口、创建新服务或改变地震台入口。
+
+## 2026-11-05 公司官网 ICP 备案号上线
+
+- 用户确认 ICP 审核通过，提供正式号码 `蜀ICP备2026068507号-1`。已写入公司站 `SITE.icp`，中英文页面的共用页脚链接至 `https://beian.miit.gov.cn/`；未编造或添加公安联网备案号。
+- `SITE.websiteUrl` 使用 `https://deepseek-earth.cdutseis.com`；中英文联系页移除“备案办理中”，显示可点击的正式官网地址。修正长邮箱、网址在手机上的换行。
+- 发布目录 `/srv/deepseek-earth/releases/20261105-icp-mobile`，`current` 已切换。保留原始 `20261030-website` 及本次首版 `20261105-icp` 作为回退，并保留旧哈希资源供已打开的页面使用。21 个公开文件逐一核对 SHA-256，未发布源码、部署文档或凭据。
+- 两台 DNSPod 权威服务器均返回公司域名 A 记录 `162.14.113.163`；HTTP 跳转 HTTPS，证书验证通过。域名已绑定，无需重复修改 DNS 或 Nginx；本次 Nginx 配置 SHA-256 保持不变。
+- TypeScript 检查、生产构建通过；正式域名主页、联系页及英文路由返回 200。浏览器确认备案号及工信部链接；390px 下中英文联系页无横向溢出，桌面页脚显示正常。
+- 未修改 App、数据库、OSS、学校网站或腾讯云域名反代。独立 SSH 通道部署另见 `../frp/SSH.md`。
+
+## 2026-11-05 公司与 GeoCamera 独立官网上线
+
+- 公司官网 `https://deepseek-earth.cdutseis.com/` 使用用户提供的深视地球图标，以交互地球、业务方向、应用场景、公司介绍和合作联系为主；旗下产品链接至独立产品站。
+- 产品官网 `https://geocamera.deepseek-earth.cdutseis.com/` 使用用户提供的 GeoCamera 相机图标，采用浅色手机示意首屏，展示功能、应用场景、版本信息与 Android 下载。手机图形已标记为界面示意。
+- 同一 Vue 构建按正式 hostname 选择首页与公共导航；生成独立 `geocamera.html`，用于产品站首屏元信息及 SPA 回退。两个站点的中英文首页、联系页、隐私政策和用户协议继续可用。
+- 两个官网页脚展示网站备案号 `蜀ICP备2026068507号-1`，产品下载区单独展示用户提供的 APP 备案号 `蜀ICP备2026068507号-2A`，均链接工信部查询页面。
+- 本次发布目录 `/srv/deepseek-earth/releases/20261105-company-product`，原 `20261105-icp-mobile` 保留为回退；此前已打开页面所需的哈希资源继续保留。24 个本次公开文件已核对 SHA-256，未发布源码、文档或凭据。
+- 新增腾讯云 Nginx 配置 `/etc/nginx/sites-available/geocamera-website`（仓库模板 `geocamera.nginx.conf`）。产品站仅转发公开 `/api/release/latest`，其余 API 返回 404；公司域名及 IP 上已有 App API 配置保持原样，不以仓库旧版 `company.nginx.conf` 覆盖线上配置。
+- 产品域名 HTTPS 证书由 Let's Encrypt 签发，到期日 2027-02-03；webroot 验证目录 `/var/lib/letsencrypt`，系统已有 certbot.timer 自动续期。HTTP 308 跳转 HTTPS。
+- Nginx 配置与原 release 记录备份于 `/srv/deepseek-earth/config-backups/20261105-split-sites/`；公司 Nginx 配置 SHA-256 仍为 `4398e90abd5f8b568a4152c0d87b5cf9899ca6c8663f718d26bcbe4fdd5bdec8`。
+- TypeScript 检查、生产构建及差异格式检查通过；浏览器核对正式公司/产品页面，390px 下中英文页面无横向溢出。公网两站首页、联系页、英文路由和版本接口均成功，版本为 1.0.31。原 IP App 版本接口、实验室 frp 回源仍返回 200；未修改 App、数据库、OSS 或 frp。
+- 下载按钮点击时重新读取版本接口，以获取新签名链接。此次未执行安装包安装及账号写入测试。

@@ -3,10 +3,8 @@ import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SiteHeader from '../components/SiteHeader.vue'
 import SiteFooter from '../components/SiteFooter.vue'
-import DownloadButton from '../components/DownloadButton.vue'
 import PlanetHero from '../components/PlanetHero.vue'
-import { SITE, localeFromPath } from '../config/site'
-import { useLatestRelease } from '../composables/useLatestRelease'
+import { SITE, localeFromPath, productUrl } from '../config/site'
 import { usePageMeta } from '../composables/usePageMeta'
 
 const route = useRoute()
@@ -14,14 +12,14 @@ const router = useRouter()
 const locale = computed(() => localeFromPath(route.path))
 
 usePageMeta(() => locale.value, () => ({
-  title: locale.value === 'zh' ? '深视地球 | GeoCamera 地质相机' : 'DeepSeek Earth | GeoCamera',
+  title: locale.value === 'zh' ? '深视地球 | 地球科学数据与软件' : 'DeepSeek Earth | Geoscience Data & Software',
   description:
     locale.value === 'zh'
-      ? 'GeoCamera 地质相机面向地质调查、工程勘察与地学研究：拍照自动定位，路线清晰可查，数据云端同步，报告一键导出。'
-      : 'GeoCamera is built for geological surveys, engineering investigation and geoscience research: automatic positioning, organized routes, cloud sync and one-click reports.'
+      ? '深视地球专注地球科学领域的数据产品与专业软件，连接野外观测、数据管理与研究应用。'
+      : 'DeepSeek Earth develops geoscience data products and professional software, connecting field observations, data management and research.'
 }))
 
-const { release, loading } = useLatestRelease()
+
 
 function goEarth() {
   router.push(locale.value === 'en' ? '/en/earth' : '/earth')
@@ -30,34 +28,16 @@ function goEarth() {
 const copy = {
   zh: {
     hero: {
-      eyebrow: '深视地球（成都）信息技术有限公司',
-      titleA: '把每一次野外记录',
-      titleB: '变成可用的地质数据',
-      text: 'GeoCamera 地质相机面向地质调查、工程勘察与地学研究：拍照自动定位，路线清晰可查，数据云端同步，报告一键导出。',
-      primary: '下载 GeoCamera',
-      secondary: '了解产品',
+      eyebrow: 'DEEPSEEK EARTH · 深视地球',
+      titleA: '探索地球的深度',
+      titleB: '连接数据的价值',
+      text: '深视地球专注地球科学领域的数据产品与专业软件，连接野外观测、数据管理与研究应用。',
+      primary: '了解我们的业务',
+      secondary: '旗下产品',
       marker: '四川 · 成都',
-      discipline: '地质记录 / 位置数据 / 云端协作'
+      discipline: '地球科学 / 数据应用 / 专业软件'
     },
-    ticker: ['GEOCAMERA', '地质记录', 'LOCATION DATA', '云端同步', 'FIELD WORK', '路线报告'],
-    product: {
-      label: '01 / PRODUCT',
-      title: 'GeoCamera 地质相机',
-      text: '从野外的第一张照片，到团队共享的路线报告，GeoCamera 覆盖地质记录工作的完整流程。',
-      appSync: '已同步',
-      appCoord: 'N 31.142° / E 103.425° · 海拔 512 m',
-      appCapture: '拍照',
-      appRoute: '路线',
-      appReport: '报告',
-      features: [
-        { title: '拍照即定位', text: '照片自动写入经纬度、海拔与方位信息，位置与影像一一对应。' },
-        { title: '项目与路线', text: '以项目组织野外路线，离线也能持续记录，恢复网络后自动同步。' },
-        { title: '专业地图底图', text: '天地图影像与地形底图，支持叠加断层与地质构造数据。' },
-        { title: '云端同步', text: '数据加密传输至云端存储，多设备增量同步，不怕丢失。' },
-        { title: '路线报告导出', text: '一键将路线照片与轨迹整理为 PDF 报告，支持云端图片回退。' },
-        { title: '团队协作', text: '管理后台统一审核照片、导出数据集，支持团队协作管理。' }
-      ]
-    },
+    ticker: ['GEOSCIENCE', '地球科学', 'DATA', '数据应用', 'SOFTWARE', '专业软件'],
     scenarios: {
       label: '02 / SCENARIOS',
       title: '为真实野外工作而设计',
@@ -67,73 +47,44 @@ const copy = {
         { no: '01', title: '地质调查', text: '露头、剖面与构造现象的影像记录与位置归档。' },
         { no: '02', title: '工程勘察', text: '勘察点位照片与坐标一一对应，现场记录可追溯。' },
         { no: '03', title: '科研考察', text: '按项目组织考察路线，为后续研究保留完整原始数据。' },
-        { no: '04', title: '教学实习', text: '标准化的记录流程，让学生在实践中学建立数据规范意识。' }
+        { no: '04', title: '教学实习', text: '标准化的记录流程，让学生在实践中建立数据规范意识。' }
       ]
     },
     about: {
       label: '03 / ABOUT',
       title: '关于深视地球',
       lead: '深视地球（成都）信息技术有限公司专注于地球科学领域的数据产品与智能工具。',
-      body: '我们面向地质调查、工程勘察、地震研究等场景，提供从野外采集、云端管理到数据应用的工具链，让专业数据在采集环节就保持规范、完整、可用。公司同时作为成都理工大学地震实验室的技术转化与应用协作主体，持续推动科研成果走向实际应用。',
+      body: '我们面向地质调查、工程勘察、地震研究等场景，提供从野外采集、云端管理到数据应用的工具链，让专业数据在采集环节就保持规范、完整、可用。我们重视与高校、科研团队和行业单位的交流合作。',
       values: [
         { title: '专业可靠', text: '扎根地球科学场景，产品贴合野外工作流程。' },
         { title: '数据安全', text: '加密传输与云端存储，数据权限清晰可控。' },
         { title: '开放协作', text: '与高校、科研院所和行业单位保持开放合作。' }
       ],
       identityA: '学术合作',
-      identityAText: '成都理工大学地震实验室',
-      identityB: '技术转化',
+      identityAText: '成都理工大学地震研究中心',
+      identityB: '公司主体',
       identityBText: '深视地球（成都）信息技术有限公司',
       visual: '研发场景示意'
     },
-    download: {
-      label: '04 / DOWNLOAD',
-      title: '下载 GeoCamera',
-      text: '支持 Android 7.0 及以上版本，安装后注册账号即可开始记录。',
-      loading: '正在获取最新版本信息…',
-      unavailable: '暂时无法获取版本信息，点击下方按钮重试。',
-      latest: '最新版本',
-      published: '发布于',
-      changelog: '更新内容',
-      note: '若系统提示安全限制，请在设置中允许安装未知来源应用；如需 iOS 版或团队部署方案，欢迎联系我们。'
-    },
     contact: {
-      title: '需要产品演示或合作洽谈？',
-      text: '欢迎联系我们获取产品资料、试用账号与团队部署方案。',
+      title: '与我们讨论你的项目',
+      text: '欢迎就专业工具开发、数据可视化与团队产品部署和我们交流。',
       action: '联系我们',
       emailPrefix: '或发邮件至'
     }
   },
   en: {
     hero: {
-      eyebrow: 'DeepSeek Earth (Chengdu) Information Technology Co., Ltd.',
-      titleA: 'Turn every field record',
-      titleB: 'into usable geological data',
-      text: 'GeoCamera is built for geological surveys, engineering investigation and geoscience research: capture with automatic positioning, organized routes, cloud sync and one-click reports.',
-      primary: 'Get GeoCamera',
-      secondary: 'Explore the product',
+      eyebrow: 'DEEPSEEK EARTH · CHENGDU',
+      titleA: 'Explore the Earth.',
+      titleB: 'Connect the data.',
+      text: 'We build geoscience data products and professional software, connecting field observations, data management and research.',
+      primary: 'Explore our work',
+      secondary: 'Our products',
       marker: 'Chengdu, Sichuan',
-      discipline: 'Geological records / Location data / Cloud collaboration'
+      discipline: 'Geoscience / Data / Software'
     },
-    ticker: ['GEOCAMERA', 'GEOLOGICAL RECORDS', 'LOCATION DATA', 'CLOUD SYNC', 'FIELD WORK', 'ROUTE REPORTS'],
-    product: {
-      label: '01 / PRODUCT',
-      title: 'GeoCamera Geological Camera',
-      text: 'From the first photo in the field to a shared route report, GeoCamera covers the complete geological recording workflow.',
-      appSync: 'Synced',
-      appCoord: 'N 31.142° / E 103.425° · 512 m',
-      appCapture: 'Capture',
-      appRoute: 'Routes',
-      appReport: 'Reports',
-      features: [
-        { title: 'Tagged capture', text: 'Photos are automatically tagged with coordinates, elevation and orientation.' },
-        { title: 'Projects & routes', text: 'Organize field routes by project; keep recording offline and sync automatically when back online.' },
-        { title: 'Professional basemaps', text: 'Satellite and terrain basemaps with optional fault and geological structure overlays.' },
-        { title: 'Cloud sync', text: 'Encrypted transfer to cloud storage with incremental multi-device synchronization.' },
-        { title: 'Route report export', text: 'Turn route photos and tracks into PDF reports in one click, with cloud image fallback.' },
-        { title: 'Team collaboration', text: 'Review photos and export datasets from the admin console for your whole team.' }
-      ]
-    },
+    ticker: ['GEOSCIENCE', 'FIELD OBSERVATION', 'SPATIAL DATA', 'VISUALIZATION', 'SOFTWARE'],
     scenarios: {
       label: '02 / SCENARIOS',
       title: 'Designed for real field work',
@@ -150,28 +101,17 @@ const copy = {
       label: '03 / ABOUT',
       title: 'About DeepSeek Earth',
       lead: 'DeepSeek Earth (Chengdu) Information Technology Co., Ltd. focuses on geoscience data products and intelligent tools.',
-      body: 'For geological surveys, engineering investigation and seismological research, we provide a toolchain from field capture to cloud management and data application, keeping professional data standardized, complete and usable from the very first step. The company also serves as the technology translation and application partner of the CDUT Seismology Laboratory, bringing research outcomes into practical use.',
+      body: 'For geological surveys, engineering investigation and seismological research, we provide a toolchain from field capture to cloud management and data application, keeping professional data standardized, complete and usable from the very first step. We welcome collaboration with universities, research teams and industry partners.',
       values: [
         { title: 'Professional', text: 'Rooted in geoscience scenarios and field workflows.' },
         { title: 'Secure', text: 'Encrypted transfer, cloud storage and clear data permissions.' },
         { title: 'Collaborative', text: 'Open cooperation with universities, institutes and industry partners.' }
       ],
       identityA: 'Academic partner',
-      identityAText: 'CDUT Seismology Laboratory',
-      identityB: 'Technology translation',
+      identityAText: 'CDUT Earthquake Research Center',
+      identityB: 'Company',
       identityBText: 'DeepSeek Earth (Chengdu) Information Technology Co., Ltd.',
       visual: 'Illustrative R&D scene'
-    },
-    download: {
-      label: '04 / DOWNLOAD',
-      title: 'Download GeoCamera',
-      text: 'Supports Android 7.0 and above. Register an account after installation to start recording.',
-      loading: 'Fetching the latest version…',
-      unavailable: 'Version information is temporarily unavailable. Click the button below to retry.',
-      latest: 'Latest version',
-      published: 'Published',
-      changelog: "What's new",
-      note: 'If the system blocks the installation, allow installs from unknown sources in settings. For an iOS version or team deployment, please contact us.'
     },
     contact: {
       title: 'Need a product demo or a partnership?',
@@ -182,6 +122,34 @@ const copy = {
   }
 } as const
 
+const companyCopy = {
+  zh: {
+    label: '01 / WHAT WE DO', title: '围绕地学场景，构建专业工具',
+    text: '从现场记录到数据应用，让软件服务于真实的科研与业务需求。',
+    features: [
+      { title: '野外数据采集', text: '组织影像、位置与路线信息，让地质调查与野外观测形成清晰、可追溯的项目记录。' },
+      { title: '地学数据可视化', text: '通过地图与三维地球呈现空间信息，为理解地质构造与地震活动提供直观入口。' },
+      { title: '专业软件开发', text: '围绕团队实际工作，开展科研工具开发、数据管理与服务集成。' }
+    ],
+    productLabel: '04 / OUR PRODUCT', productTitle: 'GeoCamera 地质相机',
+    productText: '把野外照片、位置与路线汇集为有条理的地质记录。了解功能、版本与下载，请访问独立产品官网。',
+    productAction: '访问 GeoCamera 官网', identityA: '业务领域', identityAText: '地球科学 · 数据应用 · 软件开发'
+  },
+  en: {
+    label: '01 / WHAT WE DO', title: 'Practical tools for geoscience',
+    text: 'From observations to applications, software built around scientific and operational needs.',
+    features: [
+      { title: 'Field data collection', text: 'Organize images, locations and routes into traceable project records for surveys and field observations.' },
+      { title: 'Geoscience visualization', text: 'Use maps and a 3D Earth to explore spatial information, geological structures and earthquake activity.' },
+      { title: 'Professional software', text: 'Develop research tools, data workflows and service integrations around the way your team works.' }
+    ],
+    productLabel: '04 / OUR PRODUCT', productTitle: 'GeoCamera',
+    productText: 'Bring field photos, locations and routes together as organized geological records. Explore features, releases and downloads on our dedicated product website.',
+    productAction: 'Visit the GeoCamera website', identityA: 'Our focus', identityAText: 'Geoscience · Data · Software'
+  }
+} as const
+const company = computed(() => companyCopy[locale.value])
+
 const c = computed(() => copy[locale.value])
 
 function scrollToSection(id: string) {
@@ -191,19 +159,6 @@ function scrollToSection(id: string) {
 function goContact() {
   router.push(locale.value === 'zh' ? '/contact' : '/en/contact')
 }
-
-function formatDate(iso: string): string {
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleDateString(locale.value === 'zh' ? 'zh-CN' : 'en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
-}
-
-const versionText = computed(() => (release.value ? `v${release.value.versionName}` : ''))
-const publishedText = computed(() => (release.value ? formatDate(release.value.publishedAt) : ''))
 
 let revealObserver: IntersectionObserver | null = null
 
@@ -235,7 +190,7 @@ onBeforeUnmount(() => {
 
     <main>
       <section class="hero">
-        <PlanetHero @expand="goEarth" />
+        <PlanetHero :locale="locale" @expand="goEarth" />
         <div class="hero-overlay"></div>
         <div class="hero-grid" aria-hidden="true"></div>
 
@@ -245,10 +200,10 @@ onBeforeUnmount(() => {
             <h1><span>{{ c.hero.titleA }}</span><span>{{ c.hero.titleB }}</span></h1>
             <p class="hero-text">{{ c.hero.text }}</p>
             <div class="hero-actions">
-              <button class="button primary" type="button" @click="scrollToSection('download')">
+              <button class="button primary" type="button" @click="scrollToSection('capabilities')">
                 {{ c.hero.primary }} <span aria-hidden="true">↓</span>
               </button>
-              <button class="button text" type="button" @click="scrollToSection('product')">
+              <button class="button text" type="button" @click="scrollToSection('products')">
                 {{ c.hero.secondary }} <span aria-hidden="true">↓</span>
               </button>
             </div>
@@ -275,55 +230,18 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <section id="product" class="section product-section">
+      <section id="capabilities" class="section product-section">
         <div class="product-heading section-grid">
-          <div class="section-index" data-reveal>{{ c.product.label }}</div>
+          <div class="section-index" data-reveal>{{ company.label }}</div>
           <div data-reveal>
-            <h2>{{ c.product.title }}</h2>
-            <p>{{ c.product.text }}</p>
+            <h2>{{ company.title }}</h2>
+            <p>{{ company.text }}</p>
           </div>
         </div>
 
         <div class="product-body">
-          <div class="phone-wrap" data-reveal>
-            <div class="phone">
-              <div class="phone-notch" aria-hidden="true"></div>
-              <div class="phone-screen">
-                <div class="status-bar" aria-hidden="true">
-                  <span>9:41</span>
-                  <span class="status-icons"><i></i><i></i><i></i></span>
-                </div>
-                <div class="app-top">
-                  <img src="/brand/geocamera-icon.png" alt="" />
-                  <strong>GeoCamera</strong>
-                  <span class="app-sync">{{ c.product.appSync }}</span>
-                </div>
-                <div class="app-map" aria-hidden="true">
-                  <svg viewBox="0 0 300 170" preserveAspectRatio="none">
-                    <path d="M-10,120 C60,92 120,140 190,108 C240,86 280,102 310,88" stroke="rgba(217,122,28,0.9)" stroke-width="2" fill="none" stroke-dasharray="6 5" />
-                    <path d="M-10,52 C70,70 150,34 230,58 C270,70 292,60 310,66" stroke="rgba(16,24,29,0.35)" stroke-width="1.5" fill="none" />
-                    <path d="M-10,150 C80,132 170,168 310,138" stroke="rgba(46,127,168,0.55)" stroke-width="1.5" fill="none" />
-                  </svg>
-                  <span class="map-ring"></span>
-                  <span class="map-dot"></span>
-                  <span class="app-coord">{{ c.product.appCoord }}</span>
-                </div>
-                <div class="app-photos" aria-hidden="true">
-                  <span class="photo photo-a"></span>
-                  <span class="photo photo-b"></span>
-                  <span class="photo photo-c"></span>
-                </div>
-                <div class="app-actions" aria-hidden="true">
-                  <span class="active">{{ c.product.appCapture }}</span>
-                  <span>{{ c.product.appRoute }}</span>
-                  <span>{{ c.product.appReport }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <div class="feature-grid">
-            <article v-for="(feature, index) in c.product.features" :key="feature.title" class="feature-card" data-reveal>
+            <article v-for="(feature, index) in company.features" :key="feature.title" class="feature-card" data-reveal>
               <span class="feature-icon" aria-hidden="true">
                 <svg v-if="index === 0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21 10c0 7-9 12-9 12S3 17 3 10a9 9 0 0 1 18 0Z" />
@@ -409,8 +327,8 @@ onBeforeUnmount(() => {
           </div>
           <div class="identity-list">
             <div class="identity-row">
-              <span>{{ c.about.identityA }}</span>
-              <strong>{{ c.about.identityAText }}</strong>
+              <span>{{ company.identityA }}</span>
+              <strong>{{ company.identityAText }}</strong>
             </div>
             <div class="identity-row">
               <span>{{ c.about.identityB }}</span>
@@ -420,29 +338,15 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section id="download" class="download-section">
+      <section id="products" class="download-section">
         <img class="download-bg" src="/media/deep-structure-concept.jpg" alt="" loading="lazy" />
         <div class="download-overlay"></div>
         <div class="download-inner" data-reveal>
-          <div class="section-index light">{{ c.download.label }}</div>
+          <div class="section-index light">{{ company.productLabel }}</div>
           <img class="download-icon" src="/brand/geocamera-icon.png" alt="GeoCamera" />
-          <h2>{{ c.download.title }}</h2>
-          <p class="download-text">{{ c.download.text }}</p>
-
-          <div class="release-box">
-            <template v-if="release">
-              <span class="release-pill">{{ c.download.latest }} {{ versionText }}</span>
-              <span v-if="publishedText" class="release-date">{{ c.download.published }} {{ publishedText }}</span>
-              <p v-if="release.changelog" class="release-changelog">
-                <strong>{{ c.download.changelog }}：</strong>{{ release.changelog }}
-              </p>
-            </template>
-            <p v-else-if="loading" class="release-changelog muted">{{ c.download.loading }}</p>
-            <p v-else class="release-changelog muted">{{ c.download.unavailable }}</p>
-          </div>
-
-          <DownloadButton :locale="locale" variant="primary" />
-          <p class="download-note">{{ c.download.note }}</p>
+          <h2>{{ company.productTitle }}</h2>
+          <p class="download-text">{{ company.productText }}</p>
+          <a class="button primary" :href="productUrl(locale)">{{ company.productAction }} <span aria-hidden="true">↗</span></a>
         </div>
       </section>
 
@@ -755,203 +659,6 @@ main {
   gap: clamp(40px, 6vw, 96px);
   align-items: center;
   margin-top: 72px;
-}
-
-.phone-wrap {
-  display: flex;
-  justify-content: center;
-}
-
-.phone {
-  position: relative;
-  width: min(320px, 82vw);
-  aspect-ratio: 9 / 18.6;
-  padding: 12px;
-  border-radius: 46px;
-  background: #0d1418;
-  box-shadow:
-    0 40px 80px rgba(16, 24, 29, 0.28),
-    inset 0 0 0 2px rgba(255, 255, 255, 0.08);
-}
-
-.phone-notch {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 110px;
-  height: 22px;
-  border-radius: 0 0 14px 14px;
-  background: #0d1418;
-  z-index: 2;
-}
-
-.phone-screen {
-  position: relative;
-  height: 100%;
-  border-radius: 36px;
-  background: #f7f6f2;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.status-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 22px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #10181d;
-}
-
-.status-icons {
-  display: inline-flex;
-  gap: 3px;
-}
-
-.status-icons i {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #10181d;
-  opacity: 0.7;
-}
-
-.app-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 18px 12px;
-}
-
-.app-top img {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-}
-
-.app-top strong {
-  font-size: 14px;
-}
-
-.app-sync {
-  margin-left: auto;
-  padding: 4px 10px;
-  border-radius: 999px;
-  color: #3f7a2a;
-  background: rgba(87, 146, 58, 0.14);
-  font-size: 10px;
-}
-
-.app-map {
-  position: relative;
-  flex: 1.3;
-  margin: 0 14px;
-  border-radius: 16px;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at 74% 24%, rgba(240, 165, 76, 0.5), transparent 45%),
-    linear-gradient(158deg, #cfe0c9 0%, #e8dfc4 38%, #d9c39a 66%, #c9a976 100%);
-  border: 1px solid rgba(16, 24, 29, 0.08);
-}
-
-.app-map svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.map-ring {
-  position: absolute;
-  top: 42%;
-  left: 46%;
-  width: 44px;
-  height: 44px;
-  margin: -22px 0 0 -22px;
-  border-radius: 50%;
-  border: 2px solid rgba(217, 122, 28, 0.55);
-  animation: ring-pulse 2.4s ease-out infinite;
-}
-
-.map-dot {
-  position: absolute;
-  top: 42%;
-  left: 46%;
-  width: 12px;
-  height: 12px;
-  margin: -6px 0 0 -6px;
-  border-radius: 50%;
-  background: var(--amber);
-  border: 3px solid #fff;
-  box-shadow: 0 2px 8px rgba(16, 24, 29, 0.35);
-}
-
-@keyframes ring-pulse {
-  0% { transform: scale(0.55); opacity: 0.9; }
-  100% { transform: scale(1.6); opacity: 0; }
-}
-
-.app-coord {
-  position: absolute;
-  left: 10px;
-  bottom: 10px;
-  padding: 5px 9px;
-  border-radius: 8px;
-  background: rgba(16, 24, 29, 0.78);
-  color: #fff;
-  font-size: 9px;
-  letter-spacing: 0.04em;
-}
-
-.app-photos {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  padding: 10px 14px 0;
-}
-
-.photo {
-  aspect-ratio: 1;
-  border-radius: 10px;
-  border: 1px solid rgba(16, 24, 29, 0.08);
-}
-
-.photo-a {
-  background: linear-gradient(160deg, #d8e4c8 0%, #c3b083 46%, #9c7c4b 100%);
-}
-
-.photo-b {
-  background: linear-gradient(200deg, #e8d9b8 0%, #cfa96c 52%, #a5763c 100%);
-}
-
-.photo-c {
-  background: linear-gradient(150deg, #cfe3ea 0%, #8fb7c9 48%, #5b8296 100%);
-}
-
-.app-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  margin: 14px 14px 16px;
-  padding: 9px 8px;
-  border-radius: 999px;
-  background: #10181d;
-  color: rgba(255, 255, 255, 0.62);
-  font-size: 11px;
-}
-
-.app-actions span {
-  padding: 3px 10px;
-  border-radius: 999px;
-}
-
-.app-actions .active {
-  color: #10181d;
-  background: #f0a54c;
-  font-weight: 600;
 }
 
 .feature-grid {
@@ -1488,5 +1195,51 @@ main {
     width: calc(100% - 40px);
     padding: 52px 0;
   }
+}
+/* Company overview uses the original page rhythm without a product phone demo. */
+.product-body { display: block; }
+.feature-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.feature-card { padding: 32px; }
+a.button { text-decoration: none; }
+@media (max-width: 760px) { .feature-grid { grid-template-columns: 1fr; } }
+/* A quieter company identity, built around the interactive Earth. */
+.hero { min-height: 780px; min-height: min(94svh, 900px); }
+.hero-content, .section, .contact-inner { width: min(1280px, calc(100% - 80px)); }
+.hero-content { padding: 164px 0 170px; }
+.hero-copy { max-width: 700px; }
+.hero h1 { font-size: clamp(42px, 5.2vw, 72px); line-height: 1.16; }
+.hero h1 span:last-child { color: #e8ba7b; }
+.hero-text { max-width: 520px; font-size: 16px; }
+.hero-strata { height: 86px; opacity: .55; }
+.hero-coordinates { margin-top: 44px; font-size: 12px; }
+.signal-strip { padding: 22px 0; }
+.section-grid { grid-template-columns: 240px minmax(0,1fr); }
+.section h2 { font-size: clamp(28px, 3vw, 40px); line-height: 1.3; }
+.product-body { margin-top: 48px; }
+.feature-card { border-radius: 10px; padding: 32px; box-shadow: none; }
+.feature-card:hover { transform: translateY(-3px); box-shadow: 0 12px 30px #10181d08; }
+.about-section { width: 100%; padding-inline: max(40px, calc((100vw - 1280px) / 2)); }
+.scenarios-media { margin-top: 40px; border-radius: 10px; }
+.download-section { margin-top: 0; }
+.download-inner { padding: 90px 0; }
+.contact-band { background: #eae5dc; }
+.button { border-radius: 8px; }
+@media(max-width:1024px) { .section-grid { grid-template-columns: 1fr; } }
+@media(max-width:720px) {
+ .hero { min-height: 760px; }
+ .hero-content,.section,.contact-inner { width: calc(100% - 40px); }
+ .hero-content { padding: 132px 0 180px; }
+ .hero h1 { font-size: clamp(34px,8.4vw,48px); }
+ .hero-text { font-size: 15px; }
+ .hero-strata { height: 70px; }
+ .hero-actions { margin-top: 28px; gap: 10px; }
+ .hero-actions .button { padding: 13px 18px; font-size: 14px; }
+ .about-section { width: 100%; padding-inline: 20px; }
+ .feature-card { padding: 26px; }
+}
+@media(max-height:520px) and (orientation:landscape) {
+ .hero { min-height: auto; }
+ .hero-content { padding: 108px 0 112px; }
+ .hero h1 { font-size: 34px; }
 }
 </style>

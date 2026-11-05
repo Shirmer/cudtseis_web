@@ -1,5 +1,5 @@
 import { watchEffect } from 'vue'
-import { SITE, type Locale } from '../config/site'
+import { SITE, isProductSite, type Locale } from '../config/site'
 
 export interface PageMeta {
   /** 浏览器标题 */
@@ -59,13 +59,15 @@ export function usePageMeta(locale: () => Locale, meta: () => PageMeta) {
     const fallbackImage = new URL(`${import.meta.env.BASE_URL}${OG_IMAGE}`, origin).toString()
     const image = info.image ? new URL(info.image, origin).toString() : fallbackImage
 
+    upsertLink('icon', isProductSite ? '/brand/geocamera-icon.png' : '/brand/deepseek-earth-logo.png')
+    upsertLink('apple-touch-icon', isProductSite ? '/brand/geocamera-icon.png' : '/brand/deepseek-earth-logo.png')
     document.title = info.title
     upsertMeta('name', 'description', info.description)
     upsertMeta('name', 'robots', info.noindex ? 'noindex,nofollow' : 'index,follow')
     // noindex 的页面（如 404）不要给 canonical，避免把错误地址登记为标准地址
     upsertLink('canonical', info.noindex ? undefined : canonical)
 
-    upsertMeta('property', 'og:site_name', isZh ? SITE.brandZh : SITE.brandEn)
+    upsertMeta('property', 'og:site_name', isProductSite ? SITE.productName : (isZh ? SITE.brandZh : SITE.brandEn))
     upsertMeta('property', 'og:type', 'website')
     upsertMeta('property', 'og:locale', isZh ? 'zh_CN' : 'en_US')
     upsertMeta('property', 'og:url', canonical)

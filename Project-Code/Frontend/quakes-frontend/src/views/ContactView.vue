@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import PageShell from '../components/PageShell.vue'
 import DownloadButton from '../components/DownloadButton.vue'
-import { SITE, localeFromPath } from '../config/site'
+import { SITE, localeFromPath, isProductSite, productUrl } from '../config/site'
 import { usePageMeta } from '../composables/usePageMeta'
 
 const route = useRoute()
@@ -12,25 +12,24 @@ const locale = computed(() => localeFromPath(route.path))
 const copy = computed(() => locale.value === 'zh'
   ? {
       label: 'CONTACT',
-      title: '联系我们',
-      subtitle: '欢迎围绕产品、合作与技术支持与我们联系，我们会在收到消息后尽快回复。',
+      title: isProductSite ? '联系我们' : '合作联系',
+      subtitle: '欢迎围绕专业软件、数据可视化与产品部署，与我们交流具体需求。',
       direct: '联系方式',
       emailNote: '产品咨询、合作洽谈与技术支持统一通过以下邮箱受理。',
       directions: '合作方向',
       items: [
-        { title: '产品试用与演示', text: '申请试用账号，了解 GeoCamera 在真实野外场景中的工作方式。' },
-        { title: '行业项目合作', text: '面向地质调查、工程勘察单位的项目合作与团队部署。' },
+        { title: '专业工具开发', text: '围绕地球科学的具体工作流程，讨论软件工具与服务集成需求。' },
+        { title: '数据可视化', text: '面向地学与空间数据，讨论地图展示、三维表达与可视化应用。' },
         { title: '高校与科研合作', text: '面向高校与科研院所的教学、实习与科研数据场景合作。' },
-        { title: '定制开发与数据服务', text: '围绕野外数据采集与管理的定制开发、数据整理与分析服务。' }
+        { title: '产品与团队部署', text: '了解 GeoCamera 等产品，讨论野外采集、数据管理与团队使用需求。' }
       ],
       company: '公司信息',
       companyName: '公司名称',
       address: '地址',
       email: '邮箱',
       site: '官网',
-      siteValue: '域名备案办理中，暂通过当前地址访问',
-      downloadTitle: '下载 GeoCamera',
-      downloadText: '安卓版可直接下载安装。'
+      downloadTitle: isProductSite ? '下载 GeoCamera' : '旗下产品 · GeoCamera',
+      downloadText: isProductSite ? '安卓版可直接下载安装。' : '产品功能、版本信息与下载，请访问独立产品站。'
     }
   : {
       label: 'CONTACT',
@@ -40,19 +39,18 @@ const copy = computed(() => locale.value === 'zh'
       emailNote: 'Product inquiries, partnerships and technical support are handled through the email below.',
       directions: 'How we can work together',
       items: [
-        { title: 'Trials & demos', text: 'Request a trial account and see how GeoCamera works in real field scenarios.' },
-        { title: 'Industry projects', text: 'Project cooperation and team deployment for geological survey and engineering units.' },
+        { title: 'Professional software', text: 'Discuss tools and service integrations for specific geoscience workflows.' },
+        { title: 'Data visualization', text: 'Explore mapping, 3D presentation and visualization of geoscience and spatial data.' },
         { title: 'Academic cooperation', text: 'Collaboration with universities and institutes on teaching, field practice and research data.' },
-        { title: 'Custom development & data services', text: 'Customized field data collection and management, data organization and analysis.' }
+        { title: 'Products & team deployment', text: 'Discuss GeoCamera, field capture, data management and deployments for your team.' }
       ],
       company: 'Company information',
       companyName: 'Company',
       address: 'Address',
       email: 'Email',
       site: 'Website',
-      siteValue: 'Domain filing in progress — temporarily available at the current address',
-      downloadTitle: 'Get GeoCamera',
-      downloadText: 'The Android version is available for direct download.'
+      downloadTitle: isProductSite ? 'Get GeoCamera' : 'Our product · GeoCamera',
+      downloadText: isProductSite ? 'The Android version is available for direct download.' : 'Explore features, release information and downloads on the product website.'
     })
 
 usePageMeta(() => locale.value, () => ({
@@ -71,7 +69,7 @@ usePageMeta(() => locale.value, () => ({
     :title="copy.title"
     :subtitle="copy.subtitle"
   >
-    <div class="contact-layout">
+    <div class="contact-layout" :class="{ 'company-contact': !isProductSite }">
       <div class="contact-main">
         <section class="contact-block">
           <h2>{{ copy.direct }}</h2>
@@ -119,7 +117,7 @@ usePageMeta(() => locale.value, () => ({
             </div>
             <div>
               <dt>{{ copy.site }}</dt>
-              <dd>{{ copy.siteValue }}</dd>
+              <dd><a :href="isProductSite ? SITE.productUrl : SITE.websiteUrl">{{ isProductSite ? SITE.productUrl : SITE.websiteUrl }}</a></dd>
             </div>
           </dl>
         </section>
@@ -127,7 +125,8 @@ usePageMeta(() => locale.value, () => ({
         <section class="download-card">
           <h2>{{ copy.downloadTitle }}</h2>
           <p>{{ copy.downloadText }}</p>
-          <DownloadButton :locale="locale" variant="primary" />
+          <DownloadButton v-if="isProductSite" :locale="locale" variant="primary" />
+          <a v-else class="product-site-link" :href="productUrl(locale)">{{ locale === 'zh' ? '访问 GeoCamera 产品站 ↗' : 'Visit the GeoCamera website ↗' }}</a>
         </section>
       </aside>
     </div>
@@ -185,6 +184,7 @@ usePageMeta(() => locale.value, () => ({
 
 .email-icon {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   width: 48px;
@@ -201,6 +201,8 @@ usePageMeta(() => locale.value, () => ({
 
 .email-copy {
   display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
   gap: 3px;
 }
 
@@ -276,6 +278,7 @@ usePageMeta(() => locale.value, () => ({
 
 .company-card dd {
   margin: 0;
+  overflow-wrap: anywhere;
   font-size: 14px;
   line-height: 1.7;
 }
@@ -297,6 +300,8 @@ usePageMeta(() => locale.value, () => ({
   background: #10181d;
 }
 
+.product-site-link { color: #bce5e5; font-size: 14px; text-decoration: none; }
+
 .download-card p {
   margin: 0 0 22px;
   color: rgba(255, 255, 255, 0.66);
@@ -306,7 +311,7 @@ usePageMeta(() => locale.value, () => ({
 
 @media (max-width: 1024px) {
   .contact-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
