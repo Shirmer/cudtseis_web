@@ -1,9 +1,10 @@
-name: earthquake-center
+# Generic static-site example; adapt privately before deployment.
+name: example-static-site
 services:
   web:
-    image: geocamera/nginx:1.28
-    pull_policy: never
-    container_name: cdut-earthquake-center-web
+    image: nginx:1.28
+    pull_policy: if_not_present
+    container_name: example-static-site-web
     network_mode: host
     entrypoint: ["nginx", "-g", "daemon off;"]
     restart: unless-stopped

@@ -1,8 +1,9 @@
+# Generic example only; configure addresses, ports and credentials privately.
 bindAddr = "0.0.0.0"
 bindPort = 7000
 proxyBindAddr = "127.0.0.1"
-allowPorts = [{ single = 18080 }, { single = 18081 }, { single = 18082 }, { single = 18083 }]
-maxPortsPerClient = 3
+allowPorts = [{ single = 18080 }, { single = 22022 }]
+maxPortsPerClient = 2
 detailedErrorsToClient = false
 auth.method = "token"
 auth.additionalScopes = ["HeartBeats", "NewWorkConns"]

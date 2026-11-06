@@ -1,5 +1,5 @@
-# 独立 SSH 客户端；凭据路径沿用已部署的 frpc，不含实际凭据。
-serverAddr = "162.14.113.163"
+# Generic example only; provision credentials and allocate ports privately.
+serverAddr = "203.0.113.10"
 serverPort = 7000
 loginFailExit = false
 auth.method = "token"
@@ -7,7 +7,7 @@ auth.additionalScopes = ["HeartBeats", "NewWorkConns"]
 auth.tokenSource.type = "file"
 auth.tokenSource.file.path = "/etc/frp/token"
 transport.tls.enable = true
-transport.tls.serverName = "frp-gateway.internal"
+transport.tls.serverName = "frp.example.internal"
 transport.tls.certFile = "/etc/frp/tls/client.crt"
 transport.tls.keyFile = "/etc/frp/tls/client.key"
 transport.tls.trustedCaFile = "/etc/frp/tls/ca.crt"
@@ -15,8 +15,8 @@ log.to = "console"
 log.level = "info"
 
 [[proxies]]
-name = "cdut-seis-ssh"
+name = "example-ssh"
 type = "tcp"
 localIP = "127.0.0.1"
 localPort = 22
-remotePort = 18083
+remotePort = 22022

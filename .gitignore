@@ -91,3 +91,14 @@ Project-Code/backend/app/**/*.pyc
 /lab-site/assets/img/earth-poster.webp
 /lab-site/assets/img/og-cover.jpg
 /lab-site/assets/img/research-fault.webp
+
+# Private operational notes and authentication material
+/deployment/private/
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+.env.*
+!.env.example
+!.env.*.example
