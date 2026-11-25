@@ -13,7 +13,7 @@
     const submenu = group.querySelector('.nav-submenu');
     if (!toggle || !submenu) return;
     toggle.setAttribute('aria-expanded', String(open));
-    toggle.setAttribute('aria-label', open ? '收起资讯栏目' : '展开资讯栏目');
+    toggle.setAttribute('aria-label', (open ? '收起' : '展开') + toggle.dataset.label);
     submenu.hidden = !open;
   }
   function closeGroups() { groups.forEach(group => setGroup(group, false)); }

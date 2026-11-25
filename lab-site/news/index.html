@@ -4,18 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>新闻资讯 · 成都理工大学地震研究中心</title>
-  <meta name="description" content="研究成果、实验室动态、地震信息与科普内容。">
+  <meta name="description" content="浏览大震信息、地震目录与每周快报。">
   <meta name="theme-color" content="#00549d">
   <meta property="og:title" content="新闻资讯">
-  <meta property="og:description" content="研究成果、实验室动态、地震信息与科普内容。">
+  <meta property="og:description" content="浏览大震信息、地震目录与每周快报。">
   <meta property="og:type" content="website">
   <meta property="og:image" content="/assets/img/field-observation.webp">
   <link rel="icon" type="image/png" href="/assets/img/seislab-favicon.png">
-  <link rel="stylesheet" href="/assets/css/site.css?v=20261104-structure2">
-  <link rel="stylesheet" href="/assets/css/news.css?v=20261104-structure2">
-  <link rel="stylesheet" href="/assets/css/sections.css?v=20261104-structure2">
-  <link rel="stylesheet" href="/assets/css/navigation.css?v=20261104-structure2">
-  <script src="/assets/js/site.js?v=20261104-structure2" defer></script>
+  <link rel="stylesheet" href="/assets/css/site.css?v=20261124-navigation">
+  <link rel="stylesheet" href="/assets/css/news.css?v=20261124-navigation">
+  <link rel="stylesheet" href="/assets/css/sections.css?v=20261124-navigation">
+  <link rel="stylesheet" href="/assets/css/navigation.css?v=20261124-navigation">
+  <script src="/assets/js/site.js?v=20261124-navigation" defer></script>
 </head>
 <body data-page="section" data-nav-section="news" data-category="">
   <a class="skip-link" href="#main">跳到主要内容</a>
@@ -31,51 +31,49 @@
   </div>
   <div class="primary-nav-bar">
     <nav class="site-nav container" id="site-nav" aria-label="主导航">
-      <span class="nav-mobile-label">了解中心</span>
       <a href="/#top" data-section="top">首页</a>
       <a href="/#about" data-section="about">中心概况</a>
-      <a href="/#station" data-section="station">地震台</a>
-      <a href="/#research" data-section="research">研究方向</a>
-      <a href="/#team" data-section="team">研究团队</a>
+      <div class="nav-group" data-nav-group>
+        <div class="nav-group-heading">
+          <a href="/#research" data-section="research">科学研究</a>
+          <button type="button" class="nav-group-toggle" data-nav-toggle data-label="科学研究" aria-label="展开科学研究" aria-expanded="false" aria-controls="research-menu"><span aria-hidden="true">⌄</span></button>
+        </div>
+        <div class="nav-submenu" id="research-menu" hidden>
+          <a href="/#research">研究方向</a>
+          <a href="/#team">研究团队</a>
+          <a href="/research-bulletin/">科研快报</a>
+          <a href="/academic-exchange/">学术交流</a>
+          <a href="/terra.html">Terra 工作台</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group>
+        <div class="nav-group-heading">
+          <a href="/education/" data-section="education">人才培养</a>
+          <button type="button" class="nav-group-toggle" data-nav-toggle data-label="人才培养" aria-label="展开人才培养" aria-expanded="false" aria-controls="education-menu"><span aria-hidden="true">⌄</span></button>
+        </div>
+        <div class="nav-submenu" id="education-menu" hidden>
+          <a href="https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/tch?courseid=81984413&amp;clazzid=151864748&amp;cpi=8881610&amp;enc=3dd4e545d3e6f9f4af30ec97f157b3d9&amp;t=1795328835561&amp;pageHeader=-1&amp;v=2&amp;hideHead=0&amp;perspectiveType=" target="_blank" rel="noopener noreferrer">一流课程</a>
+          <a href="https://www.ilab-x.com/details/page?id=5788&amp;isView=true" target="_blank" rel="noopener noreferrer">虚拟仿真实验</a>
+        </div>
+      </div>
+      <a href="/earthquake-science/" data-section="science">科学传播</a>
       <div class="nav-group" data-nav-group>
         <div class="nav-group-heading">
           <a href="/news/" data-section="news" aria-current="page">新闻资讯</a>
-          <button type="button" class="nav-group-toggle" data-nav-toggle aria-label="展开资讯栏目" aria-expanded="false" aria-controls="news-menu"><span aria-hidden="true">⌄</span></button>
+          <button type="button" class="nav-group-toggle" data-nav-toggle data-label="新闻资讯" aria-label="展开新闻资讯" aria-expanded="false" aria-controls="news-menu"><span aria-hidden="true">⌄</span></button>
         </div>
         <div class="nav-submenu" id="news-menu" hidden>
-          <a href="/research-bulletin/" data-category="research-bulletin">科研快报</a>
-          <a href="/lab-news/" data-category="lab-news">实验室快讯</a>
-          <a href="/major-earthquakes/" data-category="major-earthquakes">大震信息</a>
-          <a href="/earthquake-science/" data-category="earthquake-science">地震科普</a>
+          <a href="/major-earthquakes/">大震信息</a>
+          <a href="/catalog.html">地震目录</a>
+          <a href="/lab-news/">每周快报</a>
         </div>
       </div>
-      <span class="nav-mobile-label">数据工具</span>
-      <a href="/catalog.html" data-section="catalog">地震目录</a>
-      <a href="/terra.html" data-section="terra">Terra 工作台 <span aria-hidden="true">↗</span></a>
     </nav>
   </div>
 </header>
 
     <main id="main" tabindex="-1">
-<div class="archive-shell" id="top"><nav class="article-breadcrumb" aria-label="当前位置"><a href="/">首页</a><span aria-hidden="true">/</span><a href="/news/">新闻资讯</a><span aria-hidden="true">/</span><span aria-current="page">资讯总览</span></nav><header class="archive-header"><p class="article-category">News & updates</p><h1>新闻资讯</h1><p>浏览研究成果、实验室动态、地震信息与科普内容。</p></header><nav class="category-links" aria-label="资讯栏目"><a href="/research-bulletin/">科研快报</a><a href="/lab-news/">实验室快讯</a><a href="/major-earthquakes/">大震信息</a><a href="/earthquake-science/">地震科普</a></nav><h2 class="archive-section-title">最新科研快报</h2><div class="archive-list">
-<article class="archive-entry">
-  <div class="archive-entry-copy"><div class="archive-meta"><time datetime="2026-11-04">2026-11-04</time><span>Science Advances</span></div>
-  <h2><a href="/research-bulletin/mantle-iron-heterogeneity/">基于矿物电导率揭示下地幔铁含量不均一性新机制</a></h2><p>韩奎博士研究团队结合高温高压矿物电导率实验与全球地磁观测，研究下地幔铁含量空间分布。</p>
-  <a class="text-link" href="/research-bulletin/mantle-iron-heterogeneity/">阅读全文 <span aria-hidden="true">→</span></a></div>
-  <img src="/assets/img/news/mantle-iron-distribution.webp" alt="基于矿物电导率揭示下地幔铁含量不均一性新机制的研究配图" width="240" height="160" loading="lazy" decoding="async">
-</article>
-<article class="archive-entry">
-  <div class="archive-entry-copy"><div class="archive-meta"><time datetime="2026-11-04">2026-11-04</time><span>Geophysical Research Letters</span></div>
-  <h2><a href="/research-bulletin/hydrogen-grain-boundary/">氢增强矿物晶界导电为跨岩石圈剪切带高导电异常提供新解释</a></h2><p>韩奎老师研究团队通过分子动力学模拟，研究氢对橄榄石晶界导电的影响。</p>
-  <a class="text-link" href="/research-bulletin/hydrogen-grain-boundary/">阅读全文 <span aria-hidden="true">→</span></a></div>
-  <img src="/assets/img/news/hydrogen-grain-conductivity.webp" alt="氢增强矿物晶界导电为跨岩石圈剪切带高导电异常提供新解释的研究配图" width="240" height="160" loading="lazy" decoding="async">
-</article>
-<article class="archive-entry">
-  <div class="archive-entry-copy"><div class="archive-meta"><time datetime="2026-11-03">2026-11-03</time><span>Geophysical Journal International</span></div>
-  <h2><a href="/research-bulletin/microseismic-detection/">利用计算机视觉迁移学习实现微地震事件实时检测</a></h2><p>梁春涛教授研究团队提出 YOLOv5-Msed 多台站微地震事件检测方法。</p>
-  <a class="text-link" href="/research-bulletin/microseismic-detection/">阅读全文 <span aria-hidden="true">→</span></a></div>
-  <img src="/assets/img/news/microseismic-method.webp" alt="利用计算机视觉迁移学习实现微地震事件实时检测的研究配图" width="240" height="160" loading="lazy" decoding="async">
-</article></div></div>
+<div class="archive-shell" id="top"><header class="archive-header"><h1>新闻资讯</h1><p>浏览大震信息、地震目录与每周快报。</p></header><nav class="category-links" aria-label="资讯栏目"><a href="/major-earthquakes/">大震信息</a><a href="/catalog.html">地震目录</a><a href="/lab-news/">每周快报</a></nav></div>
     </main>
 <footer class="site-footer"><div class="container footer-inner"><div><strong>成都理工大学地震研究中心</strong><span>Earthquake Research Center</span></div><p>© <span data-year>2026</span> 成都理工大学地震研究中心</p><a href="#site-top">返回顶部 ↑</a></div></footer>
 
