@@ -7,23 +7,23 @@ import json
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '20261104-structure2'
-ARTICLES = json.loads((ROOT / 'content/articles.json').read_text())
+VERSION = '20261124-navigation'
+ARTICLES = json.loads((ROOT / 'content/articles.json').read_text(encoding='utf-8'))
 CATEGORIES = {
     'research-bulletin': ('科研快报', 'Research bulletin', '论文成果、研究方法与学术进展。'),
-    'lab-news': ('实验室快讯', 'Laboratory news', '学术交流、野外工作与团队活动。'),
+    'lab-news': ('每周快报', 'Weekly bulletin', '学术交流、野外工作与团队活动。'),
     'major-earthquakes': ('大震信息', 'Major earthquakes', '重要地震事件与相关研究资料。'),
-    'earthquake-science': ('地震科普', 'Earthquake science', '认识地震与地球，阅读地学知识。'),
+    'earthquake-science': ('科学传播', 'Science communication', '认识地震与地球，阅读地学知识。'),
 }
 
 
 def article_url(article):
-    return '/research-bulletin/' + article['slug'] + '/'
+    return article.get('external_url') or '/research-bulletin/' + article['slug'] + '/'
 
 
 def root_links(value):
     replacements = {'index.html': '/'}
-    replacements.update({a['legacy']: article_url(a) for a in ARTICLES})
+    replacements.update({a['legacy']: article_url(a) for a in ARTICLES if 'legacy' in a})
     def replace(match):
         attr, url = match.groups()
         path, sep, fragment = url.partition('#')
@@ -35,9 +35,9 @@ def root_links(value):
     return re.sub(r'(href|src)="([^"]+)"', replace, value)
 
 
-def page(title, description, body, *, category='', home=False, article=False, noindex=False):
-    header = (ROOT / 'templates/header.html').read_text()
-    section = 'top' if home else 'news' if category or title == '新闻资讯' else ''
+def page(title, description, body, *, category='', home=False, article=False, noindex=False, nav_section=''):
+    header = (ROOT / 'templates/header.html').read_text(encoding='utf-8')
+    section = 'top' if home else nav_section or ('news' if category or title == '新闻资讯' else '')
     if section:
         header = header.replace('data-section="' + section + '"', 'data-section="' + section + '" aria-current="' + ('location' if home else 'page') + '"')
     if category:
@@ -75,7 +75,7 @@ def page(title, description, body, *, category='', home=False, article=False, no
     <main id="main" tabindex="-1">
 {root_links(body)}
     </main>
-{(ROOT / 'templates/footer.html').read_text()}
+{(ROOT / 'templates/footer.html').read_text(encoding='utf-8')}
   </div>
 </body>
 </html>
@@ -87,9 +87,14 @@ def breadcrumb(label):
 
 
 def category_links(current=''):
+    items = (
+        ('major-earthquakes', '/major-earthquakes/', '大震信息'),
+        ('catalog', '/catalog.html', '地震目录'),
+        ('lab-news', '/lab-news/', '每周快报'),
+    )
     return '<nav class="category-links" aria-label="资讯栏目">' + ''.join(
-        f'<a href="/{slug}/"' + (' aria-current="page"' if slug == current else '') + f'>{data[0]}</a>'
-        for slug, data in CATEGORIES.items()) + '</nav>'
+        f'<a href="{url}"' + (' aria-current="page"' if slug == current else '') + f'>{title}</a>'
+        for slug, url, title in items) + '</nav>'
 
 
 def cards():
@@ -104,32 +109,45 @@ def cards():
 
 def build():
     pages = {}
-    home = (ROOT / 'content/home.html').read_text().replace('{{science}}', (ROOT / 'content/science.html').read_text())
+    home = (ROOT / 'content/home.html').read_text(encoding='utf-8').replace('{{science}}', (ROOT / 'content/science.html').read_text(encoding='utf-8'))
     pages['index.html'] = page('地震观测与深部结构研究', '成都理工大学地震研究中心：研究方向、科研快报、团队与科研工具。', home, home=True)
     for slug, (title, english, description) in CATEGORIES.items():
         if slug == 'research-bulletin':
             content = f'<p class="archive-count">共 {len(ARTICLES)} 篇成果简报，按本站发布日期排列。</p>' + cards()
         elif slug == 'earthquake-science':
-            content = '<div class="science-archive">' + (ROOT / 'content/science.html').read_text() + '</div>'
+            content = (ROOT / 'content/science-series.html').read_text(encoding='utf-8') + '<div class="science-archive">' + (ROOT / 'content/science.html').read_text(encoding='utf-8') + '</div>'
         elif slug == 'lab-news':
-            content = '<div class="section-empty"><h2>暂无发布的实验室快讯</h2><p>科研论文与成果简报可在“科研快报”中阅读。</p><a class="text-link" href="/research-bulletin/">浏览科研快报 <span aria-hidden="true">→</span></a></div>'
+            content = (ROOT / 'content/weekly-bulletin.html').read_text(encoding='utf-8')
         else:
             content = '<div class="section-empty"><h2>暂无发布的大震信息</h2><p>地震目录目前提供虚构示例，用于体验检索与浏览，不作为实时震情信息。</p><a class="text-link" href="/catalog.html">进入地震目录 <span aria-hidden="true">→</span></a></div>'
-        body = f'<div class="archive-shell" id="top">{breadcrumb(title)}<header class="archive-header"><p class="article-category">{english}</p><h1>{title}</h1><p>{description}</p></header>{category_links(slug)}{content}</div>'
-        pages[slug + '/index.html'] = page(title, description, body, category=slug)
-    body = '<div class="archive-shell" id="top">' + breadcrumb('资讯总览') + '<header class="archive-header"><p class="article-category">News & updates</p><h1>新闻资讯</h1><p>浏览研究成果、实验室动态、地震信息与科普内容。</p></header>' + category_links() + '<h2 class="archive-section-title">最新科研快报</h2>' + cards() + '</div>'
-    pages['news/index.html'] = page('新闻资讯', '研究成果、实验室动态、地震信息与科普内容。', body)
+        section = {'research-bulletin': 'research', 'earthquake-science': 'science'}.get(slug, 'news')
+        trail = breadcrumb(title) if section == 'news' else ''
+        navigation = category_links(slug) if section == 'news' else ''
+        body = f'<div class="archive-shell" id="top">{trail}<header class="archive-header"><p class="article-category">{english}</p><h1>{title}</h1><p>{description}</p></header>{navigation}{content}</div>'
+        pages[slug + '/index.html'] = page(title, description, body, category=slug, nav_section=section)
+    for slug, title, description, section in (
+        ('education', '人才培养', '《地震学》一流课程与虚拟仿真实验。', 'education'),
+        ('academic-exchange', '学术交流', '观看地震公开课，了解地震研究与抗震救灾。', 'research'),
+    ):
+        content = (ROOT / 'content' / (slug + '.html')).read_text(encoding='utf-8')
+        body = f'<div class="archive-shell" id="top"><header class="archive-header"><h1>{title}</h1><p>{description}</p></header>{content}</div>'
+        pages[slug + '/index.html'] = page(title, description, body, nav_section=section)
+    description = '浏览大震信息、地震目录与每周快报。'
+    body = f'<div class="archive-shell" id="top"><header class="archive-header"><h1>新闻资讯</h1><p>{description}</p></header>{category_links()}</div>'
+    pages['news/index.html'] = page('新闻资讯', description, body)
     for article in ARTICLES:
+        if 'external_url' in article:
+            continue
         title = article['title']
         year, month, day = article['date'].split('-')
         related = ''.join(f'<li><a href="{article_url(a)}">{a["title"]}</a><time datetime="{a["date"]}">{a["date"]}</time></li>' for a in ARTICLES if a != article)
         body = f'''<div class="news-shell" id="top">
           <nav class="article-breadcrumb" aria-label="当前位置"><a href="/">首页</a><span aria-hidden="true">/</span><a href="/research-bulletin/">科研快报</a><span aria-hidden="true">/</span><span aria-current="page">正文</span></nav>
           <article class="news-article" aria-labelledby="article-title"><header class="article-header"><p class="article-category">科研快报 · {article['journal']}</p><h1 id="article-title">{title}</h1><div class="article-meta"><span>发布日期：<time datetime="{article['date']}">{year}年{int(month)}月{int(day)}日</time></span></div></header>
-{(ROOT / 'content/articles' / (article['slug'] + '.html')).read_text()}
+{(ROOT / 'content/articles' / (article['slug'] + '.html')).read_text(encoding='utf-8')}
           <div class="article-return"><a class="text-link" href="/research-bulletin/"><span aria-hidden="true">←</span> 返回科研快报</a><a class="text-link" href="/">中心首页 <span aria-hidden="true">→</span></a></div></article>
           <section class="article-related" aria-labelledby="related-title"><h2 id="related-title">继续阅读</h2><ul>{related}</ul></section></div>'''
-        pages['research-bulletin/' + article['slug'] + '/index.html'] = page(title, article['summary'], body, category='research-bulletin', article=article)
+        pages['research-bulletin/' + article['slug'] + '/index.html'] = page(title, article['summary'], body, category='research-bulletin', article=article, nav_section='research')
         url = article_url(article)
         pages[article['legacy']] = f'''<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="canonical" href="https://seis.cdut.edu.cn{url}"><meta http-equiv="refresh" content="0; url={url}"></head><body><p>文章地址已更新。<a href="{url}">前往阅读：{title}</a></p></body></html>
@@ -147,11 +165,11 @@ def main():
     for name, text in pages.items():
         target = ROOT / name
         if args.check:
-            if not target.exists() or target.read_text() != text:
+            if not target.exists() or target.read_text(encoding='utf-8') != text:
                 outdated.append(name)
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(text)
+            target.write_text(text, encoding='utf-8')
     if outdated:
         raise SystemExit('Outdated pages: ' + ', '.join(outdated))
     print(('Checked ' if args.check else 'Built ') + str(len(pages)) + ' static pages')

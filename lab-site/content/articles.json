@@ -1,4 +1,5 @@
 [
+  {"slug": "rainfall-landslide-4d-imaging", "title": "利用环境地震噪声实现滑坡降雨入渗过程的四维成像", "date": "2026-11-13", "journal": "Geophysical Journal International", "summary": "研究团队利用环境地震噪声监测技术，实现了滑坡内部地震波速变化的高时间分辨率四维成像，揭示了降雨入渗过程中滑坡不同位置及深度的响应特征。", "image": "rainfall-landslide.png", "external_url": "https://seis.cdut.edu.cn/research-bulletin/rainfall-landslide-4d-imaging/"},
   {
     "slug": "mantle-iron-heterogeneity",
     "legacy": "news-mantle-iron-heterogeneity.html",

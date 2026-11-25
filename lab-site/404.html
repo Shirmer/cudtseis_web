@@ -12,11 +12,11 @@
   <meta property="og:image" content="/assets/img/field-observation.webp">
   <meta name="robots" content="noindex">
   <link rel="icon" type="image/png" href="/assets/img/seislab-favicon.png">
-  <link rel="stylesheet" href="/assets/css/site.css?v=20261104-structure2">
-  <link rel="stylesheet" href="/assets/css/news.css?v=20261104-structure2">
-  <link rel="stylesheet" href="/assets/css/sections.css?v=20261104-structure2">
-  <link rel="stylesheet" href="/assets/css/navigation.css?v=20261104-structure2">
-  <script src="/assets/js/site.js?v=20261104-structure2" defer></script>
+  <link rel="stylesheet" href="/assets/css/site.css?v=20261124-navigation">
+  <link rel="stylesheet" href="/assets/css/news.css?v=20261124-navigation">
+  <link rel="stylesheet" href="/assets/css/sections.css?v=20261124-navigation">
+  <link rel="stylesheet" href="/assets/css/navigation.css?v=20261124-navigation">
+  <script src="/assets/js/site.js?v=20261124-navigation" defer></script>
 </head>
 <body data-page="section" data-nav-section="" data-category="">
   <a class="skip-link" href="#main">跳到主要内容</a>
@@ -32,27 +32,43 @@
   </div>
   <div class="primary-nav-bar">
     <nav class="site-nav container" id="site-nav" aria-label="主导航">
-      <span class="nav-mobile-label">了解中心</span>
       <a href="/#top" data-section="top">首页</a>
       <a href="/#about" data-section="about">中心概况</a>
-      <a href="/#station" data-section="station">地震台</a>
-      <a href="/#research" data-section="research">研究方向</a>
-      <a href="/#team" data-section="team">研究团队</a>
+      <div class="nav-group" data-nav-group>
+        <div class="nav-group-heading">
+          <a href="/#research" data-section="research">科学研究</a>
+          <button type="button" class="nav-group-toggle" data-nav-toggle data-label="科学研究" aria-label="展开科学研究" aria-expanded="false" aria-controls="research-menu"><span aria-hidden="true">⌄</span></button>
+        </div>
+        <div class="nav-submenu" id="research-menu" hidden>
+          <a href="/#research">研究方向</a>
+          <a href="/#team">研究团队</a>
+          <a href="/research-bulletin/">科研快报</a>
+          <a href="/academic-exchange/">学术交流</a>
+          <a href="/terra.html">Terra 工作台</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group>
+        <div class="nav-group-heading">
+          <a href="/education/" data-section="education">人才培养</a>
+          <button type="button" class="nav-group-toggle" data-nav-toggle data-label="人才培养" aria-label="展开人才培养" aria-expanded="false" aria-controls="education-menu"><span aria-hidden="true">⌄</span></button>
+        </div>
+        <div class="nav-submenu" id="education-menu" hidden>
+          <a href="https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/tch?courseid=81984413&amp;clazzid=151864748&amp;cpi=8881610&amp;enc=3dd4e545d3e6f9f4af30ec97f157b3d9&amp;t=1795328835561&amp;pageHeader=-1&amp;v=2&amp;hideHead=0&amp;perspectiveType=" target="_blank" rel="noopener noreferrer">一流课程</a>
+          <a href="https://www.ilab-x.com/details/page?id=5788&amp;isView=true" target="_blank" rel="noopener noreferrer">虚拟仿真实验</a>
+        </div>
+      </div>
+      <a href="/earthquake-science/" data-section="science">科学传播</a>
       <div class="nav-group" data-nav-group>
         <div class="nav-group-heading">
           <a href="/news/" data-section="news">新闻资讯</a>
-          <button type="button" class="nav-group-toggle" data-nav-toggle aria-label="展开资讯栏目" aria-expanded="false" aria-controls="news-menu"><span aria-hidden="true">⌄</span></button>
+          <button type="button" class="nav-group-toggle" data-nav-toggle data-label="新闻资讯" aria-label="展开新闻资讯" aria-expanded="false" aria-controls="news-menu"><span aria-hidden="true">⌄</span></button>
         </div>
         <div class="nav-submenu" id="news-menu" hidden>
-          <a href="/research-bulletin/" data-category="research-bulletin">科研快报</a>
-          <a href="/lab-news/" data-category="lab-news">实验室快讯</a>
-          <a href="/major-earthquakes/" data-category="major-earthquakes">大震信息</a>
-          <a href="/earthquake-science/" data-category="earthquake-science">地震科普</a>
+          <a href="/major-earthquakes/">大震信息</a>
+          <a href="/catalog.html">地震目录</a>
+          <a href="/lab-news/">每周快报</a>
         </div>
       </div>
-      <span class="nav-mobile-label">数据工具</span>
-      <a href="/catalog.html" data-section="catalog">地震目录</a>
-      <a href="/terra.html" data-section="terra">Terra 工作台 <span aria-hidden="true">↗</span></a>
     </nav>
   </div>
 </header>
