@@ -22,6 +22,8 @@
 .home-header .nav-submenu a{padding:12px 14px;font-size:14px;color:#315b80;line-height:1.6}
 .home-header .nav-submenu a:hover,.home-header .nav-submenu a[aria-current]{background:#edf4fb;color:#00549d;text-decoration:none}
 .header-utility a[aria-current]{text-decoration:underline;text-underline-offset:4px}
+.home-header .wechat-entry{margin-right:auto;color:#00549d;font-size:13px;white-space:nowrap}
+.home-header .wechat-entry:hover{text-decoration:underline}
 .footer-inner strong{font-size:13px}
 .footer-inner p,.footer-inner>a{font-size:12px}
 @media(min-width:761px) and (max-width:1050px){
@@ -30,6 +32,8 @@
   .home-header .site-nav>a,.nav-group-heading>a{font-size:12px}
 }
 @media(max-width:760px){
+  .home-header .header-inner{flex-wrap:wrap;padding-block:10px}
+  .home-header .wechat-entry{order:1;flex-basis:100%;margin-left:47px;font-size:12px}
   .home-header .header-inner{min-height:82px}
   .home-header .brand{gap:10px}
   .home-header .brand img{width:37px;height:37px}

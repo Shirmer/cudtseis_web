@@ -7,13 +7,13 @@ import json
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '20261124-navigation'
+VERSION = '20261128-navigation'
 ARTICLES = json.loads((ROOT / 'content/articles.json').read_text(encoding='utf-8'))
 CATEGORIES = {
     'research-bulletin': ('科研快报', 'Research bulletin', '论文成果、研究方法与学术进展。'),
-    'lab-news': ('每周快报', 'Weekly bulletin', '学术交流、野外工作与团队活动。'),
+    'lab-news': ('学术交流', 'Academic exchange', '地球物理学论坛与学术活动。'),
     'major-earthquakes': ('大震信息', 'Major earthquakes', '重要地震事件与相关研究资料。'),
-    'earthquake-science': ('科学传播', 'Science communication', '认识地震与地球，阅读地学知识。'),
+    'earthquake-science': ('地震科普', 'Earthquake science', '认识地震与地球，阅读地学知识。'),
 }
 
 
@@ -86,13 +86,12 @@ def breadcrumb(label):
     return f'<nav class="article-breadcrumb" aria-label="当前位置"><a href="/">首页</a><span aria-hidden="true">/</span><a href="/news/">新闻资讯</a><span aria-hidden="true">/</span><span aria-current="page">{label}</span></nav>'
 
 
-def category_links(current=''):
-    items = (
-        ('major-earthquakes', '/major-earthquakes/', '大震信息'),
-        ('catalog', '/catalog.html', '地震目录'),
-        ('lab-news', '/lab-news/', '每周快报'),
-    )
-    return '<nav class="category-links" aria-label="资讯栏目">' + ''.join(
+def category_links(section, current=''):
+    label, items = {
+        'news': ('新闻资讯', (('major-earthquakes', '/major-earthquakes/', '大震信息'), ('catalog', '/catalog.html', '地震目录'))),
+        'science': ('科学传播', (('lab-news', '/lab-news/', '学术交流'), ('earthquake-science', '/earthquake-science/', '地震科普'))),
+    }[section]
+    return f'<nav class="category-links" aria-label="{label}">' + ''.join(
         f'<a href="{url}"' + (' aria-current="page"' if slug == current else '') + f'>{title}</a>'
         for slug, url, title in items) + '</nav>'
 
@@ -120,20 +119,23 @@ def build():
             content = (ROOT / 'content/weekly-bulletin.html').read_text(encoding='utf-8')
         else:
             content = '<div class="section-empty"><h2>暂无发布的大震信息</h2><p>地震目录目前提供虚构示例，用于体验检索与浏览，不作为实时震情信息。</p><a class="text-link" href="/catalog.html">进入地震目录 <span aria-hidden="true">→</span></a></div>'
-        section = {'research-bulletin': 'research', 'earthquake-science': 'science'}.get(slug, 'news')
+        section = 'research' if slug == 'research-bulletin' else 'news' if slug == 'major-earthquakes' else 'science'
         trail = breadcrumb(title) if section == 'news' else ''
-        navigation = category_links(slug) if section == 'news' else ''
+        navigation = category_links(section, slug) if section != 'research' else ''
         body = f'<div class="archive-shell" id="top">{trail}<header class="archive-header"><p class="article-category">{english}</p><h1>{title}</h1><p>{description}</p></header>{navigation}{content}</div>'
         pages[slug + '/index.html'] = page(title, description, body, category=slug, nav_section=section)
     for slug, title, description, section in (
         ('education', '人才培养', '《地震学》一流课程与虚拟仿真实验。', 'education'),
-        ('academic-exchange', '学术交流', '观看地震公开课，了解地震研究与抗震救灾。', 'research'),
+        ('academic-exchange', '地震公开课', '观看地震公开课，了解地震研究与抗震救灾。', 'research'),
     ):
         content = (ROOT / 'content' / (slug + '.html')).read_text(encoding='utf-8')
         body = f'<div class="archive-shell" id="top"><header class="archive-header"><h1>{title}</h1><p>{description}</p></header>{content}</div>'
         pages[slug + '/index.html'] = page(title, description, body, nav_section=section)
-    description = '浏览大震信息、地震目录与每周快报。'
-    body = f'<div class="archive-shell" id="top"><header class="archive-header"><h1>新闻资讯</h1><p>{description}</p></header>{category_links()}</div>'
+    description = '浏览学术活动和地震科普文章。'
+    body = f'<div class="archive-shell" id="top"><header class="archive-header"><h1>科学传播</h1><p>{description}</p></header>{category_links("science")}</div>'
+    pages['science/index.html'] = page('科学传播', description, body, nav_section='science')
+    description = '浏览大震信息与地震目录。'
+    body = f'<div class="archive-shell" id="top"><header class="archive-header"><h1>新闻资讯</h1><p>{description}</p></header>{category_links("news")}</div>'
     pages['news/index.html'] = page('新闻资讯', description, body)
     for article in ARTICLES:
         if 'external_url' in article:
